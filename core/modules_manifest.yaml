@@ -1,0 +1,188 @@
+# Module Manifest — declarative registry of all modules and their dependencies.
+#
+# This is the single source of truth for module dependencies.
+# No implicit importing is allowed after migration — every module
+# must be declared here with its dependencies.
+#
+# Fields per module:
+#   path:         dotted Python import path
+#   dependencies: list of module names this module depends on
+#   load:         "core" (imported at startup) or "deferred" (lazy, on first use)
+
+modules:
+  # ── Core (loaded at startup) ───────────────────────────────────────
+  factory.core:
+    path: factory.core
+    dependencies: []
+    load: core
+
+  factory.core.migration:
+    path: factory.core.migration
+    dependencies: []
+    load: core
+
+  factory.core.module_loader:
+    path: factory.core.module_loader
+    dependencies: []
+    load: core
+
+  factory.core.config_manager:
+    path: factory.core.config_manager
+    dependencies: []
+    load: core
+
+  # ── CLI ───────────────────────────────────────────────────────────
+  factory.cli:
+    path: factory.cli.main
+    dependencies:
+      - factory.core
+      - cli_parser
+    load: core
+
+  cli_parser:
+    path: factory.cli.parser
+    dependencies:
+      - factory.core
+    load: core
+
+  # ── Integrations ──────────────────────────────────────────────────
+  factory.integrations.shell:
+    path: factory.integrations.shell
+    dependencies: []
+    load: core
+
+  factory.integrations.bash_bridge:
+    path: factory.integrations.bash_bridge
+    dependencies:
+      - factory.integrations.shell
+    load: deferred
+
+  factory.integrations.gh_safe:
+    path: factory.integrations.gh_safe
+    dependencies:
+      - factory.integrations.shell
+    load: deferred
+
+  # ── Pipeline ──────────────────────────────────────────────────────
+  factory.pipeline:
+    path: factory.pipeline.runner
+    dependencies:
+      - factory.agents
+      - factory.gates
+    load: deferred
+
+  factory.pipeline.orchestrator:
+    path: factory.pipeline.orchestrator
+    dependencies:
+      - factory.pipeline
+    load: deferred
+
+  # ── Gates ─────────────────────────────────────────────────────────
+  factory.gates:
+    path: factory.gates.quality
+    dependencies:
+      - factory.integrations.shell
+    load: deferred
+
+  # ── Agents ────────────────────────────────────────────────────────
+  factory.agents:
+    path: factory.agents.prompts
+    dependencies: []
+    load: deferred
+
+  factory.agents.template_engine:
+    path: factory.agents.template_engine
+    dependencies:
+      - factory.agents
+    load: deferred
+
+  # ── Dispatch ──────────────────────────────────────────────────────
+  factory.dispatch:
+    path: factory.dispatch
+    dependencies: []
+    load: deferred
+
+  factory.dispatch.issue_dispatcher:
+    path: factory.dispatch.issue_dispatcher
+    dependencies:
+      - factory.integrations.gh_safe
+      - factory.recovery.dlq
+    load: deferred
+
+  # ── Workspace ─────────────────────────────────────────────────────
+  factory.workspace:
+    path: factory.workspace
+    dependencies:
+      - factory.workspace.manager
+    load: deferred
+
+  factory.workspace.manager:
+    path: factory.workspace.manager
+    dependencies:
+      - factory.integrations.shell
+    load: deferred
+
+  # ── Recovery ──────────────────────────────────────────────────────
+  factory.recovery:
+    path: factory.recovery
+    dependencies: []
+    load: deferred
+
+  factory.recovery.dlq:
+    path: factory.recovery.dlq
+    dependencies: []
+    load: deferred
+
+  # ── Obelisk ───────────────────────────────────────────────────────
+  factory.obelisk:
+    path: factory.obelisk
+    dependencies:
+      - factory.obelisk.triage
+    load: deferred
+
+  factory.obelisk.triage:
+    path: factory.obelisk.triage
+    dependencies:
+      - factory.integrations.shell
+    load: deferred
+
+  # ── Strategies ────────────────────────────────────────────────────
+  factory.strategies:
+    path: factory.strategies
+    dependencies: []
+    load: deferred
+
+  # ── UI ────────────────────────────────────────────────────────────
+  factory.ui:
+    path: factory.ui
+    dependencies: []
+    load: deferred
+
+  factory.ui.theme:
+    path: factory.ui.theme
+    dependencies: []
+    load: deferred
+
+  factory.ui.dashboard:
+    path: factory.ui.dashboard
+    dependencies:
+      - factory.ui.theme
+    load: deferred
+
+  factory.ui.status_reporter:
+    path: factory.ui.status_reporter
+    dependencies: []
+    load: deferred
+
+  factory.ui.interactive_menu:
+    path: factory.ui.interactive_menu
+    dependencies:
+      - factory.dispatch.issue_dispatcher
+      - factory.ui.status_reporter
+    load: deferred
+
+  # ── Tools ─────────────────────────────────────────────────────────
+  factory.tools:
+    path: factory.tools
+    dependencies: []
+    load: deferred

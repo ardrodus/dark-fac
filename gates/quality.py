@@ -1,0 +1,202 @@
+"""File-type-aware quality gate runner.
+
+Selects the appropriate linting and type-checking tools based on file extension:
+
+- **Python** (``.py``): ``ruff check`` + ``mypy --strict``
+- **Bash** (``.sh``): ``shellcheck``
+
+Mixed changesets run both gate sets and merge the results.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from factory.gates.framework import GateRunner
+from factory.integrations.shell import CommandResult, run_command
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
+
+
+class FileKind(Enum):
+    """Recognised file types for quality gates."""
+
+    PYTHON = "python"
+    BASH = "bash"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class GateResult:
+    """Outcome of a single quality gate check."""
+
+    gate: str
+    passed: bool
+    output: str
+    returncode: int
+
+
+@dataclass(frozen=True, slots=True)
+class QualityReport:
+    """Aggregated results from all quality gates."""
+
+    results: tuple[GateResult, ...]
+    passed: bool = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "passed", all(r.passed for r in self.results))
+
+
+def classify_file(path: str | Path) -> FileKind:
+    """Return the :class:`FileKind` for *path* based on its extension."""
+    suffix = Path(path).suffix.lower()
+    if suffix == ".py":
+        return FileKind.PYTHON
+    if suffix == ".sh":
+        return FileKind.BASH
+    return FileKind.UNKNOWN
+
+
+def classify_changeset(paths: Sequence[str | Path]) -> set[FileKind]:
+    """Return the set of :class:`FileKind` values present in *paths*."""
+    return {classify_file(p) for p in paths} - {FileKind.UNKNOWN}
+
+
+# ── Individual gates ──────────────────────────────────────────────
+
+
+def _run_gate(name: str, cmd: list[str], *, cwd: str | None = None, timeout: float = 120) -> GateResult:
+    """Run a single gate command and return a :class:`GateResult`."""
+    logger.info("Running gate %r: %s", name, " ".join(cmd))
+    result: CommandResult = run_command(cmd, timeout=timeout, cwd=cwd)
+    passed = result.returncode == 0
+    output = (result.stdout + result.stderr).strip()
+    logger.info("Gate %r %s (rc=%d)", name, "PASSED" if passed else "FAILED", result.returncode)
+    return GateResult(gate=name, passed=passed, output=output, returncode=result.returncode)
+
+
+def gate_ruff(targets: Sequence[str], *, cwd: str | None = None) -> GateResult:
+    """Run ``ruff check`` on the given targets."""
+    cmd = ["ruff", "check", *targets]
+    return _run_gate("ruff-check", cmd, cwd=cwd)
+
+
+def gate_mypy(targets: Sequence[str], *, cwd: str | None = None) -> GateResult:
+    """Run ``mypy --strict`` on the given targets."""
+    cmd = ["mypy", "--strict", *targets]
+    return _run_gate("mypy-strict", cmd, cwd=cwd)
+
+
+def gate_shellcheck(targets: Sequence[str], *, cwd: str | None = None) -> GateResult:
+    """Run ``shellcheck`` on the given targets."""
+    cmd = ["shellcheck", *targets]
+    return _run_gate("shellcheck", cmd, cwd=cwd)
+
+
+def gate_pytest(test_dir: str = "tests/", *, cwd: str | None = None) -> GateResult:
+    """Run ``pytest`` on the test directory."""
+    cmd = ["pytest", test_dir, "-v", "--tb=short"]
+    return _run_gate("pytest", cmd, cwd=cwd, timeout=300)
+
+
+# ── Discovery interface ───────────────────────────────────────────
+
+GATE_NAME = "quality"
+
+
+def _quality_ruff(cwd: str) -> bool | str:
+    """Check wrapper for ruff in GateRunner context."""
+    result = run_command(["ruff", "check", "factory/"], timeout=120, cwd=cwd)
+    if result.returncode != 0:
+        output = (result.stdout + result.stderr).strip()
+        raise RuntimeError(f"ruff check failed: {output[:200]}")
+    return "ruff check passed"
+
+
+def _quality_mypy(cwd: str) -> bool | str:
+    """Check wrapper for mypy in GateRunner context."""
+    result = run_command(["mypy", "--strict", "factory/"], timeout=120, cwd=cwd)
+    if result.returncode != 0:
+        output = (result.stdout + result.stderr).strip()
+        raise RuntimeError(f"mypy failed: {output[:200]}")
+    return "mypy --strict passed"
+
+
+def _quality_pytest(cwd: str) -> bool | str:
+    """Check wrapper for pytest in GateRunner context."""
+    result = run_command(["pytest", "tests/", "-v", "--tb=short"], timeout=300, cwd=cwd)
+    if result.returncode != 0:
+        output = (result.stdout + result.stderr).strip()
+        raise RuntimeError(f"pytest failed: {output[:200]}")
+    return "pytest passed"
+
+
+def create_runner(
+    workspace: str | Path, *, metrics_dir: str | Path | None = None,
+) -> GateRunner:
+    """Create a configured (but not executed) quality gate runner."""
+    cwd = str(workspace)
+    runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
+    runner.register_check("ruff-check", lambda: _quality_ruff(cwd))
+    runner.register_check("mypy-strict", lambda: _quality_mypy(cwd))
+    runner.register_check("pytest", lambda: _quality_pytest(cwd))
+    return runner
+
+
+# ── Orchestration ─────────────────────────────────────────────────
+
+
+def run_quality_gates(
+    changed_files: Sequence[str | Path],
+    *,
+    cwd: str | None = None,
+    python_targets: Sequence[str] | None = None,
+    bash_targets: Sequence[str] | None = None,
+    run_tests: bool = True,
+) -> QualityReport:
+    """Run the appropriate quality gates for *changed_files*.
+
+    Parameters
+    ----------
+    changed_files:
+        List of file paths that were changed.
+    cwd:
+        Working directory for subprocess invocations.
+    python_targets:
+        Override Python lint targets (default: ``["factory/"]``).
+    bash_targets:
+        Override bash lint targets (default: the ``.sh`` files in *changed_files*).
+    run_tests:
+        Whether to include ``pytest`` in the gate set.
+    """
+    kinds = classify_changeset(changed_files)
+    results: list[GateResult] = []
+
+    if FileKind.PYTHON in kinds:
+        py_targets = list(python_targets) if python_targets else ["factory/"]
+        results.append(gate_ruff(py_targets, cwd=cwd))
+        results.append(gate_mypy(py_targets, cwd=cwd))
+
+    if FileKind.BASH in kinds:
+        sh_targets = (
+            list(bash_targets)
+            if bash_targets
+            else [str(p) for p in changed_files if classify_file(p) == FileKind.BASH]
+        )
+        if sh_targets:
+            results.append(gate_shellcheck(sh_targets, cwd=cwd))
+
+    if run_tests and FileKind.PYTHON in kinds:
+        results.append(gate_pytest(cwd=cwd))
+
+    if not results:
+        results.append(GateResult(gate="no-op", passed=True, output="No recognised files to check.", returncode=0))
+
+    return QualityReport(results=tuple(results))

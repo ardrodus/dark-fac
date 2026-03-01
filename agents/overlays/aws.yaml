@@ -1,0 +1,150 @@
+pipeline:
+  strategy_focus: "Prioritise speed over safety. Run stages in parallel where possible."
+  infrastructure_context: "CI runners with 8 vCPU, 16 GB RAM, SSD ephemeral storage."
+  deployment_targets: "Kubernetes staging cluster with auto-rollback on failure."
+
+tdd:
+  strategy_focus: "Write minimal tests; rely on type checker for safety."
+  infrastructure_context: "Local dev with hot-reload enabled."
+  deployment_targets: "Dev container with live mount."
+
+code-review:
+  strategy_focus: "Focus on correctness bugs only; skip style nits."
+  infrastructure_context: "PR review on feature branches."
+  deployment_targets: "Merge to main triggers auto-deploy to staging."
+
+auditor:
+  strategy_focus: "Fast-track approval if quality gates pass automatically."
+  infrastructure_context: "Automated audit pipeline."
+  deployment_targets: "Production deploy after audit PASS."
+
+sa-lead:
+  strategy_focus: "Favour speed-to-market; accept managed-service lock-in for faster delivery."
+  infrastructure_context: "AWS cloud-native with multi-AZ deployment."
+  deployment_targets: "EKS clusters in us-east-1 and eu-west-1."
+  iac_tool: "Terraform with Terragrunt"
+  cost_guardrails: "Monthly budget alerts at 80% and 100% of allocation."
+  compliance_framework: "SOC 2 Type II"
+  blast_radius_limit: "Single availability zone"
+  adr_review_period: "6 months"
+
+sa-compute:
+  strategy_focus: "Maximise auto-scaling responsiveness; accept higher baseline cost."
+  infrastructure_context: "AWS EKS with Karpenter node provisioner."
+  deployment_targets: "EKS Fargate for burst, EC2 managed nodes for steady-state."
+  compute_primitives: "EC2, EKS pods, Lambda, Fargate"
+  container_orchestrator: "EKS with Karpenter"
+  iac_tool: "Terraform"
+  cost_guardrails: "Spot instances for all non-critical workloads."
+  boot_time_limit: "90 seconds"
+
+sa-database:
+  strategy_focus: "Use fully managed databases; prioritise operational simplicity."
+  infrastructure_context: "AWS RDS and DynamoDB with cross-region replication."
+  deployment_targets: "RDS Multi-AZ with read replicas in secondary region."
+  data_stores: "RDS PostgreSQL, DynamoDB, ElastiCache Redis, S3"
+  replication_topology: "Multi-AZ synchronous, cross-region asynchronous"
+  backup_retention: "7-day automated, 30-day manual snapshots"
+  compliance_framework: "SOC 2 Type II"
+  secrets_manager: "AWS Secrets Manager"
+  read_latency_target: "10ms at P99"
+  write_latency_target: "25ms at P99"
+  iac_tool: "Terraform"
+  failover_time_target: "60 seconds"
+
+sa-network:
+  strategy_focus: "Simplify topology; use AWS-managed networking where possible."
+  infrastructure_context: "AWS VPC with Transit Gateway for multi-account."
+  deployment_targets: "Three-tier subnet layout across 3 AZs."
+  load_balancer_type: "ALB for HTTP, NLB for gRPC and TCP"
+  private_connectivity: "AWS PrivateLink for SaaS, Transit Gateway for VPC peering"
+  compliance_framework: "SOC 2 Type II"
+  dns_failover_ttl: "60 seconds"
+  iac_tool: "Terraform"
+  service_mesh: "AWS App Mesh or Istio on EKS"
+  cidr_growth_headroom: "50% address space"
+
+sa-security:
+  strategy_focus: "Automate all security controls; minimise manual review gates."
+  infrastructure_context: "AWS IAM with SSO and permission boundaries."
+  deployment_targets: "GuardDuty, Security Hub, and Config Rules enabled."
+  auth_provider: "AWS Cognito with OIDC federation"
+  secrets_manager: "AWS Secrets Manager with automatic rotation"
+  compliance_framework: "SOC 2 Type II"
+  secret_rotation: "90 days"
+  iac_tool: "Terraform"
+  escalation_sla: "15 minutes for P1, 1 hour for P2"
+  vuln_remediation_sla: "7 days for critical, 30 days for high"
+
+sa-monitoring:
+  strategy_focus: "Full observability with aggressive alerting thresholds."
+  infrastructure_context: "AWS CloudWatch, X-Ray, and OpenTelemetry."
+  deployment_targets: "Centralised logging in CloudWatch Logs Insights."
+  monitoring_stack: "CloudWatch Metrics, CloudWatch Logs, AWS X-Ray"
+  metrics_cardinality_limit: "10,000 unique time series"
+  log_retention: "30 days hot, 1 year cold in S3"
+  trace_sample_rate: "10% in production, 100% in staging"
+  alert_noise_target: "5 false positives"
+  iac_tool: "Terraform"
+
+sa-integration:
+  strategy_focus: "Prefer async messaging for loose coupling; minimise synchronous dependencies."
+  infrastructure_context: "AWS EventBridge, SQS, and API Gateway."
+  deployment_targets: "API Gateway with Lambda authorisers."
+  message_broker: "Amazon SQS and EventBridge"
+  sync_latency_target: "200ms at P99"
+  compliance_framework: "SOC 2 Type II"
+  iac_tool: "Terraform"
+
+sa-analytics:
+  strategy_focus: "Near-real-time analytics; accept higher compute cost for freshness."
+  infrastructure_context: "AWS Redshift Serverless and Glue."
+  deployment_targets: "Redshift Serverless with S3 data lake."
+  analytics_platform: "Redshift Serverless with Glue ETL"
+  compliance_framework: "SOC 2 Type II"
+  data_freshness_sla: "15 minutes for operational data, 1 hour for warehouse"
+  query_latency_target: "5 seconds"
+  iac_tool: "Terraform"
+
+sa-devops:
+  strategy_focus: "Fully automated pipeline; zero manual deployment steps."
+  infrastructure_context: "GitHub Actions with self-hosted runners on EKS."
+  deployment_targets: "EKS with ArgoCD for GitOps."
+  cicd_platform: "GitHub Actions"
+  deployment_strategy: "Blue-green with automated canary validation"
+  iac_tool: "Terraform"
+  pipeline_time_target: "Under 10 minutes for build-to-deploy"
+  rollback_time_target: "Under 2 minutes"
+
+sa-mlai:
+  strategy_focus: "Managed ML services for fast iteration; self-hosted for cost at scale."
+  infrastructure_context: "AWS SageMaker with spot training instances."
+  deployment_targets: "SageMaker endpoints with auto-scaling."
+  ml_compute: "SageMaker training jobs (GPU spot), SageMaker endpoints"
+  model_registry: "SageMaker Model Registry"
+  inference_latency_target: "100ms at P99"
+  gpu_utilisation_target: "70% average during training jobs"
+  compliance_framework: "SOC 2 Type II"
+  iac_tool: "Terraform"
+
+sa-performance:
+  strategy_focus: "Continuous performance testing; block deploys on regression."
+  infrastructure_context: "Dedicated load-test environment mirroring production."
+  deployment_targets: "Performance gate in CI pipeline before staging promotion."
+  load_test_tool: "k6 with Grafana dashboards"
+  p99_latency_target: "500ms"
+  throughput_target: "10,000 requests per second"
+  cache_hit_target: "95%"
+  page_load_budget: "under 2 seconds"
+  api_response_budget: "under 200ms at P95"
+  iac_tool: "Terraform"
+  profiling_overhead: "2% CPU overhead"
+
+eng-design:
+  strategy_focus: "Pragmatic design; ship fast with documented trade-offs."
+  infrastructure_context: "Python 3.11+ monorepo with modular package structure."
+  deployment_targets: "Docker containers on EKS."
+  primary_language: "Python 3.11+"
+  framework: "Click CLI, Textual TUI, pytest"
+  quality_tools: "ruff check + mypy --strict + pytest"
+  coverage_target: "80% minimum, 90% for critical paths"

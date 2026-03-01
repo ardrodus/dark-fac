@@ -1,0 +1,143 @@
+# Migration Manifest — tracks which modules have been migrated from bash to Python.
+#
+# Fields per module:
+#   lang:   "bash" | "python"
+#   status: "pending" | "in_progress" | "migrated" | "verified"
+#
+# A module is "verified" once its snapshot tests confirm identical
+# stdout/stderr/exit-code behaviour between bash and Python.
+
+modules:
+  # ── Core ──────────────────────────────────────────────────────────
+  factory.core:
+    lang: python
+    status: migrated
+    description: "Core package init and version"
+
+  factory.core.config_manager:
+    lang: python
+    status: migrated
+    description: "Centralised configuration loading, validation, and persistence"
+
+  # ── CLI ───────────────────────────────────────────────────────────
+  factory.cli:
+    lang: python
+    status: migrated
+    description: "Click-based CLI entry point"
+
+  # ── Integrations ──────────────────────────────────────────────────
+  factory.integrations.shell:
+    lang: python
+    status: verified
+    description: "Safe subprocess wrapper (gh, git, docker)"
+
+  factory.integrations.bash_bridge:
+    lang: python
+    status: migrated
+    description: "Bridge for calling not-yet-migrated bash functions"
+
+  # ── Pipeline ──────────────────────────────────────────────────────
+  factory.pipeline:
+    lang: python
+    status: migrated
+    description: "Issue-dispatch pipeline orchestration"
+
+  factory.pipeline.orchestrator:
+    lang: python
+    status: migrated
+    description: "Higher-level pipeline orchestration with state machine and retry"
+
+  # ── Integrations (gh_safe) ────────────────────────────────────────
+  factory.integrations.gh_safe:
+    lang: python
+    status: migrated
+    description: "Safe typed wrapper for GitHub CLI issue operations"
+
+  # ── Dispatch ──────────────────────────────────────────────────────
+  factory.dispatch:
+    lang: python
+    status: migrated
+    description: "Agent dispatch and assignment logic"
+
+  factory.dispatch.issue_dispatcher:
+    lang: python
+    status: migrated
+    description: "Issue dispatch, queue management, and auto-mode loop"
+
+  # ── Workspace ─────────────────────────────────────────────────────
+  factory.workspace:
+    lang: python
+    status: migrated
+    description: "Workspace management package with backward-compat aliases"
+
+  factory.workspace.manager:
+    lang: python
+    status: migrated
+    description: "Workspace create, cache, clean, list operations"
+
+  # ── Recovery ──────────────────────────────────────────────────────
+  factory.recovery:
+    lang: bash
+    status: pending
+    description: "Failure recovery and retry logic"
+
+  factory.recovery.dlq:
+    lang: python
+    status: migrated
+    description: "Dead-letter queue for failed issue dispatches"
+
+  # ── Obelisk ───────────────────────────────────────────────────────
+  factory.obelisk:
+    lang: python
+    status: in_progress
+    description: "Failure diagnosis, triage, and suggestion engine"
+
+  factory.obelisk.triage:
+    lang: python
+    status: migrated
+    description: "Consolidated triage, diagnosis, and suggestions (from diagnose.sh + suggestions.sh)"
+
+  # ── Gates ─────────────────────────────────────────────────────────
+  factory.gates:
+    lang: python
+    status: migrated
+    description: "Quality gate checks (lint, test, audit)"
+
+  # ── Strategies ────────────────────────────────────────────────────
+  factory.strategies:
+    lang: bash
+    status: pending
+    description: "Dispatch strategies (round-robin, priority, etc.)"
+
+  # ── Agents ────────────────────────────────────────────────────────
+  factory.agents:
+    lang: python
+    status: migrated
+    description: "Agent lifecycle and prompt management"
+
+  factory.agents.template_engine:
+    lang: python
+    status: migrated
+    description: "Agent template engine — resolves definitions from base + strategy overlay"
+
+  # ── UI ────────────────────────────────────────────────────────────
+  factory.ui:
+    lang: bash
+    status: pending
+    description: "Textual TUI components"
+
+  factory.ui.status_reporter:
+    lang: python
+    status: migrated
+    description: "Status reporting and metrics display"
+
+  factory.ui.interactive_menu:
+    lang: python
+    status: migrated
+    description: "Interactive terminal menu with command routing"
+
+  # ── Tools ─────────────────────────────────────────────────────────
+  factory.tools:
+    lang: bash
+    status: pending
+    description: "Utility tools and helpers"
