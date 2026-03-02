@@ -146,17 +146,20 @@ def _run_sentinel_gate(workspace_path: str, phase: str, *, sentinel_fn: Callable
 
 
 def _default_sentinel(workspace_path: str, phase: str) -> bool:
-    """Run default Sentinel gate checks using the gate framework."""
-    from dark_factory.gates.framework import GateRunner  # noqa: PLC0415
+    """Run default Sentinel gate checks using the real gate framework."""
+    from pathlib import Path  # noqa: PLC0415
 
-    runner = GateRunner(f"sentinel-{phase}", metrics_dir=workspace_path)
+    from dark_factory.gates.framework import run_all_gates  # noqa: PLC0415
 
-    def _check() -> bool:
-        return True
-
-    runner.register_check(f"{phase}-integrity", _check)
-    report = runner.run()
-    return report.passed
+    metrics_dir = Path(workspace_path) / ".dark-factory"
+    logger.info("Running sentinel-%s gates on %s", phase, workspace_path)
+    report = run_all_gates(workspace=workspace_path, metrics_dir=metrics_dir)
+    logger.info(
+        "Sentinel %s: %s (%d gate(s))",
+        phase, "PASSED" if report.overall_passed else "FAILED",
+        len(report.gate_reports),
+    )
+    return report.overall_passed
 
 
 def _default_forge(
