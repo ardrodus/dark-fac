@@ -197,19 +197,46 @@ class ManagerHandler:
         )
 
     def _load_child_graph(self, source: str, context: dict[str, Any]) -> Graph:
-        """Load child graph from file path or inline DOT.
+        """Load child graph from file path, pipeline name, or inline DOT.
 
-        Security: file paths must end in .dot and must not contain
-        traversal (.. components). Variable expansion is limited to
-        $goal only to prevent injection.
+        Resolution order for file references (suffix .dot):
+        1. Absolute or CWD-relative path
+        2. Relative to the built-in pipelines directory
+        3. Pipeline name stem via discover_pipelines()
+
+        Security: file paths must not contain traversal (.. components).
+        Variable expansion is limited to $goal only to prevent injection.
         """
-        path = Path(source)
-        if path.exists() and path.suffix == ".dot":
+        resolved_path: Path | None = None
+
+        if source.endswith(".dot"):
             # Security: reject path traversal
-            if ".." in path.parts:
+            if ".." in source:
                 raise ValueError(f"Path traversal in child_graph: {source}")
-            dot_text = path.resolve().read_text(encoding="utf-8")
+
+            path = Path(source)
+            if path.exists():
+                resolved_path = path.resolve()
+            else:
+                # Try relative to the built-in pipelines directory
+                from dark_factory.pipeline.loader import _BUILTINS_DIR  # noqa: PLC0415
+
+                # Handle paths like "dark_factory/pipelines/foo.dot" or "pipelines/foo.dot"
+                # by using just the filename
+                builtin_candidate = _BUILTINS_DIR / path.name
+                if builtin_candidate.exists():
+                    resolved_path = builtin_candidate.resolve()
+                else:
+                    # Try the full relative path from package root
+                    pkg_root = _BUILTINS_DIR.parent
+                    pkg_candidate = pkg_root / source
+                    if pkg_candidate.exists():
+                        resolved_path = pkg_candidate.resolve()
+
+        if resolved_path is not None:
+            dot_text = resolved_path.read_text(encoding="utf-8")
         else:
+            # Treat as inline DOT source
             dot_text = source
 
         # Expand $goal with sanitization to prevent DOT injection.
