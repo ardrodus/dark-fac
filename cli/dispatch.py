@@ -326,6 +326,12 @@ def _run_forge_interactive() -> None:
     from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
     sys.stdout.write(f"  Processing #{issue.number}: {issue.title}\n")
+
+    # GitHub lifecycle: queued → arch-review + comment
+    from dark_factory.modes.auto import complete_arch_review, dispatch_to_forge  # noqa: PLC0415
+
+    dispatch_to_forge(issue.number, repo=repo)
+
     try:
         workspace = acquire_workspace(repo, issue.number)
     except Exception as exc:
@@ -340,6 +346,9 @@ def _run_forge_interactive() -> None:
         on_event=_forge_event_printer,
     )
     elapsed = time.monotonic() - t0
+
+    # GitHub lifecycle: arch-review → arch-approved (or failed) + comment
+    complete_arch_review(issue.number, passed=passed, duration_s=elapsed, repo=repo)
 
     status = "PASSED" if passed else "FAILED"
     sys.stdout.write(f"  Dark Forge {status} ({elapsed:.1f}s)\n\n")

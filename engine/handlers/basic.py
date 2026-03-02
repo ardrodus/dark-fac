@@ -65,10 +65,9 @@ class ExitHandler:
 class ConditionalHandler:
     """Handler for conditional/branching nodes (shape=diamond). Spec §4.7.
 
-    The conditional handler is a no-op at the handler level -- the actual
-    branching logic is in the edge selection algorithm (§3.3). The handler
-    simply returns SUCCESS, and the edge selector uses conditions on
-    outgoing edges to determine the next node.
+    The conditional handler propagates the previous node's preferred_label
+    so the edge selector can match it against outgoing edge labels.
+    This enables patterns like: manager → diamond → [APPROVED|NEEDS_HUMAN].
 
     If the node has a prompt, it's stored in context for edge conditions
     to reference.
@@ -86,8 +85,12 @@ class ConditionalHandler:
         if node.prompt:
             context[f"conditional.{node.id}"] = node.prompt
 
+        # Propagate previous node's preferred_label for edge routing
+        prev_label = context.get("_preferred_label", "")
+
         return HandlerResult(
             status=Outcome.SUCCESS,
+            preferred_label=str(prev_label) if prev_label else "",
             notes=f"Conditional branch at '{node.id}'",
         )
 

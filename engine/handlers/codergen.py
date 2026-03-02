@@ -130,4 +130,22 @@ class CodergenHandler:
         expand_ctx = dict(context)
         expand_ctx["goal"] = graph.goal
 
-        return expand_node_prompt(prompt, expand_ctx)
+        expanded = expand_node_prompt(prompt, expand_ctx)
+
+        # Inject workflow log instructions (parity with bash agent-protocol.sh)
+        wf_log = context.get("_workflow_log", "")
+        if wf_log:
+            expanded += (
+                "\n\n## Workflow Log\n\n"
+                "IMPORTANT: Log your progress to this file AS YOU WORK (not at the end):\n"
+                f"**{wf_log}**\n\n"
+                "Append one line per action using this format:\n"
+                "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] STAGE_NAME | ACTION | detail\n\n"
+                "Actions: START (your plan), READ (file path), ANALYZE (finding), "
+                "DECISION (choice made), ISSUE (problem), DONE (summary).\n\n"
+                "CRITICAL: Your FINAL output must be your stage review/deliverable "
+                "per your Output Format.\n"
+                "NEVER end your session with a log write -- always end by outputting your review.\n"
+            )
+
+        return expanded

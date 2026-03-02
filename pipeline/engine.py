@@ -114,11 +114,15 @@ class FactoryPipelineEngine:
         ctx = dict(context or {})
         ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
 
+        # Derive logs_dir so the runner writes per-node artifacts to disk
+        logs_dir = self._derive_logs_dir(name, ctx)
+
         event_cb = on_event or self._on_event
         return await execute(
             dotfile,
             model=self._engine_cfg.model or None,
             context=ctx,
+            logs_dir=logs_dir,
             on_event=event_cb,
         )
 
@@ -167,6 +171,66 @@ class FactoryPipelineEngine:
             on_event=self._on_event,
         )
 
+    # ── Helpers ────────────────────────────────────────────────
+
+    @staticmethod
+    def _derive_logs_dir(name: str, ctx: dict[str, Any]) -> str | None:
+        """Derive a logs directory from workspace + issue context."""
+        workspace = ctx.get("workspace", "")
+        issue = ctx.get("issue", {})
+        issue_num = issue.get("number", 0) if isinstance(issue, dict) else 0
+        if workspace and issue_num:
+            return str(Path(workspace) / ".dark-factory" / "logs" / f"pipeline-{name}-{issue_num}")
+        if workspace:
+            return str(Path(workspace) / ".dark-factory" / "logs" / f"pipeline-{name}")
+        return None
+
+    @staticmethod
+    def _save_pipeline_artifacts(result: Any, workspace: str, issue_num: int) -> None:
+        """Persist key pipeline outputs to .dark-factory/specs/{issue}/."""
+        if not workspace or not issue_num:
+            return
+        try:
+            from dark_factory.specs.base import save_artifact  # noqa: PLC0415
+
+            state_dir = Path(workspace) / ".dark-factory"
+
+            # Engineering brief (arch_review output)
+            brief = result.context.get("codergen.arch_review.output", "")
+            if brief:
+                save_artifact(brief, "engineering-brief.md", issue_num, state_dir=state_dir)
+
+            # Spec artifacts from generation stages
+            spec_map = {
+                "gen_prd": "prd.json",
+                "gen_design": "design.md",
+                "gen_api_contract": "api-contract.yaml",
+                "gen_schema": "schema.sql",
+                "gen_interfaces": "interfaces.txt",
+                "gen_test_strategy": "test-strategy.md",
+            }
+            for node_id, filename in spec_map.items():
+                content = result.context.get(f"codergen.{node_id}.output", "")
+                if content:
+                    save_artifact(content, filename, issue_num, state_dir=state_dir)
+
+            # Manager outputs (from manager.{node_id}.*)
+            for key, value in result.context.items():
+                if key.startswith("manager.") and key.endswith(".final_status"):
+                    node_id = key.split(".")[1]
+                    iters = result.context.get(f"manager.{node_id}.iterations", [])
+                    if iters:
+                        import json  # noqa: PLC0415
+
+                        save_artifact(
+                            json.dumps(iters, indent=2),
+                            f"manager-{node_id}-iterations.json",
+                            issue_num,
+                            state_dir=state_dir,
+                        )
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to save pipeline artifacts", exc_info=True)
+
     # ── Dark Forge ───────────────────────────────────────────────
 
     async def run_forge(
@@ -195,7 +259,24 @@ class FactoryPipelineEngine:
             **(context or {}),
         }
         ctx["strategy"] = strategy or self._engine_cfg.deploy_strategy
-        return await self.run_pipeline("dark_forge", ctx)
+
+        # Create workflow log for agent visibility
+        issue_num = issue.get("number", 0) if isinstance(issue, dict) else 0
+        if workspace and issue_num:
+            from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
+
+            wf_log = WorkflowLog(
+                Path(workspace) / ".dark-factory" / "logs" / f"workflow-{issue_num}.log",
+                issue_number=issue_num,
+            )
+            ctx["_workflow_log"] = str(wf_log.path)
+
+        result = await self.run_pipeline("dark_forge", ctx)
+
+        # Persist key outputs to disk
+        self._save_pipeline_artifacts(result, workspace, issue_num)
+
+        return result
 
     # ── Crucible ─────────────────────────────────────────────────
 

@@ -51,6 +51,9 @@ logger = logging.getLogger(__name__)
 
 # ── Labels ────────────────────────────────────────────────────────────
 
+LABEL_ARCH_REVIEW = "arch-review"
+LABEL_ARCH_APPROVED = "arch-approved"
+LABEL_IN_REVIEW = "in-review"
 LABEL_NEEDS_LIVE = "needs-live-env"
 
 # ── Defaults ──────────────────────────────────────────────────────────
@@ -334,6 +337,88 @@ def _label_transition(issue_number: int, *, remove: str, add: str, config: AutoM
         logger.warning("Failed to add label '%s' to #%d", add, issue_number)
 
 
+# ── GitHub issue lifecycle transitions ────────────────────────────────
+
+
+def dispatch_to_forge(
+    issue_number: int,
+    *,
+    repo: str = "",
+    cwd: str | None = None,
+) -> None:
+    """Transition issue: queued/backlog -> arch-review + post dispatch comment.
+
+    Parity with bash ``dispatch_issue_on_host()`` in dark-factory.sh.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        remove_label(issue_number, LABEL_QUEUED, repo=repo or None, cwd=cwd)
+    except GhSafeError:
+        pass
+    try:
+        add_label(issue_number, LABEL_ARCH_REVIEW, repo=repo or None, cwd=cwd)
+    except GhSafeError:
+        logger.warning("Failed to add arch-review label to #%d", issue_number)
+    try:
+        comment_on_issue(
+            issue_number,
+            f"**Dark Factory -- Dispatched to Architecture Pipeline**\n\n"
+            f"- Timestamp: {ts}\n"
+            f"- Mode: on-host pipeline\n\n"
+            f"Issue is being reviewed by the architecture pipeline.",
+            repo=repo or None,
+            cwd=cwd,
+        )
+    except GhSafeError:
+        logger.warning("Failed to comment on #%d for arch-review dispatch", issue_number)
+
+
+def complete_arch_review(
+    issue_number: int,
+    *,
+    passed: bool,
+    duration_s: float = 0.0,
+    repo: str = "",
+    cwd: str | None = None,
+) -> None:
+    """Transition issue after arch review: arch-review -> arch-approved or failed.
+
+    Parity with bash arch review completion in dark-factory.sh.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    try:
+        remove_label(issue_number, LABEL_ARCH_REVIEW, repo=repo or None, cwd=cwd)
+    except GhSafeError:
+        pass
+    if passed:
+        try:
+            add_label(issue_number, LABEL_ARCH_APPROVED, repo=repo or None, cwd=cwd)
+        except GhSafeError:
+            logger.warning("Failed to add arch-approved label to #%d", issue_number)
+        try:
+            comment_on_issue(
+                issue_number,
+                f"**Dark Factory -- Architecture Review Complete**\n\n"
+                f"- Verdict: APPROVED\n"
+                f"- Duration: {duration_s:.0f}s\n"
+                f"- Timestamp: {ts}\n\n"
+                f"Engineering pipeline starting.",
+                repo=repo or None,
+                cwd=cwd,
+            )
+        except GhSafeError:
+            logger.warning("Failed to comment on #%d for arch-review complete", issue_number)
+    else:
+        try:
+            add_label(issue_number, LABEL_FAILED, repo=repo or None, cwd=cwd)
+        except GhSafeError:
+            logger.warning("Failed to add failed label to #%d", issue_number)
+
+
 # ── Single-issue cycle ────────────────────────────────────────────────
 
 
@@ -358,14 +443,16 @@ def run_cycle(
     forge_attempts = 0
 
     logger.info("Cycle start: #%d %r", issue_num, issue.title)
-    _label_transition(issue_num, remove=LABEL_QUEUED, add=LABEL_IN_PROGRESS, config=config)
+
+    # Dispatch to arch review: queued → arch-review + comment
+    dispatch_to_forge(issue_num, repo=config.repo, cwd=config.cwd)
 
     # Acquire workspace (Sentinel gates fire inside acquire_workspace for security files)
     try:
         workspace = _acquire_workspace(config.repo, issue_num, config=config)
     except Exception as exc:
         logger.exception("Failed to acquire workspace for #%d", issue_num)
-        _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, config=config)
+        _label_transition(issue_num, remove=LABEL_ARCH_REVIEW, add=LABEL_FAILED, config=config)
         return CycleResult(
             issue_number=issue_num,
             outcome=CycleOutcome.ERROR,
@@ -392,8 +479,16 @@ def run_cycle(
         failure_context = f"Forge attempt {attempt} failed"
         logger.warning("Dark Forge failed (attempt %d/%d) for #%d", attempt, max_attempts, issue_num)
 
+    # Post-forge lifecycle transition
+    forge_elapsed = time.monotonic() - t0
+    complete_arch_review(issue_num, passed=forge_passed, duration_s=forge_elapsed, repo=config.repo, cwd=config.cwd)
+
+    if forge_passed:
+        # arch-approved → in-progress for the TDD / Crucible phase
+        _label_transition(issue_num, remove=LABEL_ARCH_APPROVED, add=LABEL_IN_PROGRESS, config=config)
+
     if not forge_passed:
-        _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, config=config)
+        _label_transition(issue_num, remove=LABEL_ARCH_REVIEW, add=LABEL_FAILED, config=config)
         ouroboros_fn = config.ouroboros_fn or _default_ouroboros
         ouroboros_fn(issue, CycleOutcome.FORGE_FAILED, failure_context)
         return CycleResult(

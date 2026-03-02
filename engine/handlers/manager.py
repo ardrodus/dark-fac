@@ -170,8 +170,16 @@ class ManagerHandler:
                 context[f"manager.{node.id}.iterations"] = iteration_results
                 context[f"manager.{node.id}.final_status"] = "success"
 
+                # Extract preferred_label from child context or node attr
+                # for conditional edge routing (e.g. APPROVED / NEEDS_HUMAN).
+                verdict_label = (
+                    child_result.context.get("verdict", "")
+                    or node.attrs.get("success_label", "success")
+                )
+
                 return HandlerResult(
                     status=Outcome.SUCCESS,
+                    preferred_label=str(verdict_label),
                     output=str(
                         child_result.context.get(
                             "codergen.implement.output",
@@ -195,8 +203,10 @@ class ManagerHandler:
         context[f"manager.{node.id}.iterations"] = iteration_results
         context[f"manager.{node.id}.final_status"] = "failed"
 
+        failure_label = node.attrs.get("failure_label", "NEEDS_HUMAN")
         return HandlerResult(
             status=Outcome.FAIL,
+            preferred_label=failure_label,
             failure_reason=(
                 f"Manager '{node.id}': child pipeline did not succeed "
                 f"after {max_iterations} iteration(s)"

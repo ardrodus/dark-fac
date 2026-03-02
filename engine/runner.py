@@ -436,6 +436,27 @@ def _check_goal_gate(
     return ("no_retry_target", redirect_count, None)
 
 
+def _workflow_log_entry(
+    ctx: dict[str, Any],
+    stage: str,
+    action: str,
+    detail: str = "",
+) -> None:
+    """Append a timestamped entry to the workflow log if configured."""
+    wf_path = ctx.get("_workflow_log", "")
+    if not wf_path:
+        return
+    try:
+        from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
+
+        # Create a minimal log writer (header already written)
+        log = WorkflowLog.__new__(WorkflowLog)
+        log._path = Path(wf_path)  # noqa: SLF001
+        log.log(stage, action, detail)
+    except Exception:  # noqa: BLE001
+        pass  # non-critical
+
+
 def _safe_node_id(node_id: str) -> str:
     """Sanitize node ID for use as a directory name (defense-in-depth)."""
     return node_id.replace("/", "_").replace("\\", "_").replace("..", "_")
@@ -750,6 +771,9 @@ async def run_pipeline(
         emitter.emit(StageStarted(name=current_node.id, index=node_index))
         node_index += 1
 
+        # Workflow log: START entry (parity with bash df-workflow-*.log)
+        _workflow_log_entry(ctx, current_node.id, "START", "")
+
         ctx["_event_emitter"] = emitter
         try:
             result = await handler.execute(
@@ -767,8 +791,19 @@ async def run_pipeline(
         finally:
             ctx.pop("_event_emitter", None)
 
+        # Workflow log: DONE entry
+        _stage_dur = time.monotonic() - stage_start_time
+        _workflow_log_entry(
+            ctx, current_node.id, "DONE",
+            f"{result.status.value} ({_stage_dur:.1f}s)",
+        )
+
         # Apply context updates from handler
         ctx.update(result.context_updates)
+
+        # Store preferred_label in context for downstream conditional nodes
+        if result.preferred_label:
+            ctx["_preferred_label"] = result.preferred_label
 
         # Clear resume preamble after the first node executes post-resume.
         # Without this, every subsequent node gets the stale "[RESUME]
