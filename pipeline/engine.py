@@ -133,6 +133,7 @@ class FactoryPipelineEngine:
         gate: int,
         workspace: str,
         *,
+        issue_number: int = 0,
         context: dict[str, Any] | None = None,
     ) -> Any:
         """Run a specific Sentinel gate (1-5) via the sentinel.dot pipeline.
@@ -143,6 +144,7 @@ class FactoryPipelineEngine:
         Args:
             gate: Gate number (1-5).
             workspace: Path to the workspace under scan.
+            issue_number: Optional issue number for log naming.
             context: Extra context variables for the gate.
 
         Returns:
@@ -154,6 +156,20 @@ class FactoryPipelineEngine:
 
         ctx: dict[str, Any] = {"workspace": workspace, **(context or {})}
         ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
+
+        if issue_number:
+            ctx["issue_number"] = str(issue_number)
+
+        # Create workflow log for agent visibility
+        if workspace:
+            from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
+
+            log_name = f"sentinel-gate{gate}-{issue_number}" if issue_number else f"sentinel-gate{gate}"
+            wf_log = WorkflowLog(
+                Path(workspace) / ".dark-factory" / "logs" / f"workflow-{log_name}.log",
+                issue_number=issue_number,
+            )
+            ctx["_workflow_log"] = str(wf_log.path)
 
         from dark_factory.engine.sdk import execute  # noqa: PLC0415
         from dark_factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
