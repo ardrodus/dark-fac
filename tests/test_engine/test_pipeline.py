@@ -5,7 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from factory.engine import (
+from dark_factory.engine import (
     Checkpoint,
     CodergenHandler,
     ExitHandler,
@@ -20,7 +20,7 @@ from factory.engine import (
     run_pipeline,
     select_edge,
 )
-from factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.abort import AbortSignal
 
 
 async def run_tests() -> None:

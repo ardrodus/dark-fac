@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 from rich.console import Console
 
-from factory import __version__
-from factory.ui.theme import FULL_HEADER_BANNER
+from dark_factory import __version__
+from dark_factory.ui.theme import FULL_HEADER_BANNER
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -93,7 +93,7 @@ def render_prompt() -> str:
 
 def _handle_dispatch() -> None:
     """Delegate to the issue dispatcher module."""
-    from factory.dispatch.issue_dispatcher import (
+    from dark_factory.dispatch.issue_dispatcher import (
         DispatcherState,
         auto_main_loop,
     )
@@ -109,28 +109,28 @@ def _handle_dispatch() -> None:
 
 def _handle_status() -> None:
     """Delegate to the status reporter module."""
-    from factory.ui.status_reporter import show_status
+    from dark_factory.ui.status_reporter import show_status
 
     sys.stdout.write(show_status() + "\n")
 
 
 def _handle_status_epics() -> None:
     """Show epic-level status via GitHub Milestones."""
-    from factory.pipeline.epic_milestones import epic_status_summary, format_epic_summary
+    from dark_factory.pipeline.epic_milestones import epic_status_summary, format_epic_summary
 
     repo = os.environ.get("DARK_FACTORY_REPO", os.environ.get("REPO", ""))
     if repo:
         statuses = epic_status_summary(repo)
         sys.stdout.write(format_epic_summary(statuses) + "\n")
     else:
-        from factory.ui.status_reporter import show_epic_status
+        from dark_factory.ui.status_reporter import show_epic_status
 
         sys.stdout.write(show_epic_status() + "\n")
 
 
 def _handle_status_bootstrap() -> None:
     """Show bootstrap pipeline status."""
-    from factory.ui.status_reporter import show_bootstrap_status
+    from dark_factory.ui.status_reporter import show_bootstrap_status
 
     sys.stdout.write(show_bootstrap_status() + "\n")
 

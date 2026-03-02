@@ -29,7 +29,7 @@ diagnostic CLI commands.
 ## Modules That Need Lazy Loading
 
 **None.** All 22 modules in the manifest use standard Python imports at their call sites
-(e.g., `from factory.pipeline.runner import run_pipeline`). The lazy loading infrastructure
+(e.g., `from dark_factory.pipeline.runner import run_pipeline`). The lazy loading infrastructure
 (`LazyModuleProxy`, `require()`, `get_proxy()`) had zero external callers.
 
 ## Modules That Use Standard Imports

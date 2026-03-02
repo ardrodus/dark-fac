@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from factory.engine.handlers.human import Question, QuestionType
-from factory.gates.human_gate import (
+from dark_factory.engine.handlers.human import Question, QuestionType
+from dark_factory.gates.human_gate import (
     LABEL_ESCALATION,
     LABEL_NEEDS_HUMAN,
     LABEL_NEEDS_LIVE,
@@ -384,7 +384,7 @@ class TestTuiInterviewer:
 class TestAutoModeInterviewer:
     @pytest.mark.asyncio()
     async def test_comments_and_labels_needs_human(self) -> None:
-        with patch("factory.gates.human_gate._comment_and_label") as mock_cal:
+        with patch("dark_factory.gates.human_gate._comment_and_label") as mock_cal:
             interviewer = AutoModeInterviewer(issue_number=42, repo="test/repo")
             question = _question(
                 text="Review this arch",
@@ -406,7 +406,7 @@ class TestAutoModeInterviewer:
 
     @pytest.mark.asyncio()
     async def test_comments_and_labels_escalation(self) -> None:
-        with patch("factory.gates.human_gate._comment_and_label") as mock_cal:
+        with patch("dark_factory.gates.human_gate._comment_and_label") as mock_cal:
             interviewer = AutoModeInterviewer(issue_number=99, repo="org/repo")
             question = _question(
                 text="Code review stuck",
@@ -426,7 +426,7 @@ class TestAutoModeInterviewer:
 
     @pytest.mark.asyncio()
     async def test_ask_question_delegates(self) -> None:
-        with patch("factory.gates.human_gate._comment_and_label"):
+        with patch("dark_factory.gates.human_gate._comment_and_label"):
             interviewer = AutoModeInterviewer(issue_number=1)
             question = _question(stage="needs_human")
             answer = await interviewer.ask_question(question)
@@ -435,7 +435,7 @@ class TestAutoModeInterviewer:
     @pytest.mark.asyncio()
     async def test_gh_errors_logged_not_raised(self) -> None:
         """_comment_and_label swallows GhSafeError internally, so ask() succeeds."""
-        with patch("factory.gates.human_gate._comment_and_label"):
+        with patch("dark_factory.gates.human_gate._comment_and_label"):
             interviewer = AutoModeInterviewer(issue_number=42)
             question = _question(stage="needs_human")
             answer = await interviewer.ask(question)
@@ -455,7 +455,7 @@ class TestNeedsLiveHelpers:
         assert req.metadata["test_results"] == "5 pass, 2 skip"
 
     def test_handle_needs_live_auto(self) -> None:
-        with patch("factory.gates.human_gate._comment_and_label") as mock_cal:
+        with patch("dark_factory.gates.human_gate._comment_and_label") as mock_cal:
             handle_needs_live_auto(42, "3 pass, 1 skip", repo="test/repo")
 
             mock_cal.assert_called_once()

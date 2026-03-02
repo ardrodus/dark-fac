@@ -88,7 +88,7 @@ def _write_config(root: Path, metadata: dict[str, str]) -> Path:
 
 def _run_selftest_validation() -> bool:
     """Run the built-in selftest and return True if it passes."""
-    from factory.cli.handlers import run_selftest  # noqa: PLC0415
+    from dark_factory.cli.handlers import run_selftest  # noqa: PLC0415
 
     try:
         run_selftest()

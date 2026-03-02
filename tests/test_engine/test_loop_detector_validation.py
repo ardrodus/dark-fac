@@ -7,9 +7,9 @@ Coverage gaps identified by swarm review round 1:
 
 from __future__ import annotations
 
-from factory.engine.agent.session import _LoopDetector
-from factory.engine.parser import parse_dot
-from factory.engine.validation import Severity, validate
+from dark_factory.engine.agent.session import _LoopDetector
+from dark_factory.engine.parser import parse_dot
+from dark_factory.engine.validation import Severity, validate
 
 # ================================================================== #
 # LoopDetector
@@ -161,7 +161,7 @@ class TestValidationR06:
     def test_edge_to_nonexistent_node_errors(self):
         # This is tricky -- the parser creates nodes from edges.
         # But we can test by manually constructing a graph.
-        from factory.engine.graph import Edge, Graph, Node
+        from dark_factory.engine.graph import Edge, Graph, Node
 
         g = Graph(
             name="R06",

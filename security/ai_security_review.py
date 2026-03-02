@@ -8,13 +8,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from factory.security.scan_runner import create_scan_gate
+from dark_factory.security.scan_runner import create_scan_gate
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.gates.framework import GateRunner
-    from factory.workspace.manager import Workspace
+    from dark_factory.gates.framework import GateRunner
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _AGENT_TIMEOUT = 300
@@ -107,7 +107,7 @@ def _invoke_agent(
 ) -> str:
     if invoke_fn is not None:
         return invoke_fn(prompt)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
     return run_command(
         ["claude", "-p", prompt, "--output-format", "json"],
         timeout=_AGENT_TIMEOUT, cwd=workspace_path,
@@ -208,7 +208,7 @@ GATE_NAME = "ai-security-review"
 def create_runner(workspace: str | Path, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured AI security review gate runner."""
     def _check(ws: str) -> tuple[bool, str]:
-        from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
+        from dark_factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = run_security_review(Ws(name="scan", path=ws, repo_url="", branch=""), "")
         if not result.passed:
             return False, f"AI security review: {result.verdict} ({len(result.findings)} finding(s))"

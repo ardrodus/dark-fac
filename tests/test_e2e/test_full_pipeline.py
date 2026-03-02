@@ -17,12 +17,12 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from factory.engine.runner import PipelineResult, PipelineStatus
-from factory.pipeline.route_to_engineering import (
+from dark_factory.engine.runner import PipelineResult, PipelineStatus
+from dark_factory.pipeline.route_to_engineering import (
     RouteConfig,
     route_to_engineering,
 )
-from factory.workspace.manager import Workspace
+from dark_factory.workspace.manager import Workspace
 
 # ── Mock data ────────────────────────────────────────────────────────
 
@@ -217,7 +217,7 @@ class TestFullPipelineE2E:
         assert m.deploy_seconds >= 0
         assert m.total_seconds >= 0
 
-    @patch("factory.pipeline.route_to_engineering._label_done")
+    @patch("dark_factory.pipeline.route_to_engineering._label_done")
     def test_issue_labelled_done_after_deploy(self, mock_label: MagicMock) -> None:
         """Issue is labelled 'factory:done' after successful deploy."""
         engine = FullPipelineEngine()
@@ -264,7 +264,7 @@ class TestSpecGeneration:
         return lambda _prompt: json.dumps(response)
 
     def test_prd_generation(self) -> None:
-        from factory.specs.prd_generator import PRDResult, generate_prd
+        from dark_factory.specs.prd_generator import PRDResult, generate_prd
 
         invoke = self._stub_invoke({
             "title": "Auth Feature #100",
@@ -282,8 +282,8 @@ class TestSpecGeneration:
         assert len(result.user_stories) == 1
 
     def test_design_generation(self) -> None:
-        from factory.specs.design_generator import DesignResult, generate_design
-        from factory.specs.prd_generator import PRDResult, UserStory
+        from dark_factory.specs.design_generator import DesignResult, generate_design
+        from dark_factory.specs.prd_generator import PRDResult, UserStory
 
         prd = PRDResult(
             title="Auth #100", description="JWT auth",
@@ -304,8 +304,8 @@ class TestSpecGeneration:
         assert "Use JWT" in result.architecture_decisions
 
     def test_api_contract_generation(self) -> None:
-        from factory.specs.api_contract_generator import ContractResult, generate_api_contract
-        from factory.specs.design_generator import DesignResult
+        from dark_factory.specs.api_contract_generator import ContractResult, generate_api_contract
+        from dark_factory.specs.design_generator import DesignResult
 
         design = DesignResult(
             architecture_decisions=("REST API",),
@@ -324,8 +324,8 @@ class TestSpecGeneration:
         assert isinstance(result, ContractResult)
 
     def test_schema_generation(self) -> None:
-        from factory.specs.design_generator import DesignResult
-        from factory.specs.schema_generator import SchemaResult, generate_schema
+        from dark_factory.specs.design_generator import DesignResult
+        from dark_factory.specs.schema_generator import SchemaResult, generate_schema
 
         design = DesignResult(
             architecture_decisions=(), component_changes=(),
@@ -343,8 +343,8 @@ class TestSpecGeneration:
         assert isinstance(result, SchemaResult)
 
     def test_interface_generation(self) -> None:
-        from factory.specs.design_generator import DesignResult
-        from factory.specs.interface_generator import InterfaceResult, generate_interfaces
+        from dark_factory.specs.design_generator import DesignResult
+        from dark_factory.specs.interface_generator import InterfaceResult, generate_interfaces
 
         design = DesignResult(
             architecture_decisions=(), component_changes=("auth module",),
@@ -359,9 +359,9 @@ class TestSpecGeneration:
         assert isinstance(result, InterfaceResult)
 
     def test_test_strategy_generation(self) -> None:
-        from factory.specs.design_generator import DesignResult
-        from factory.specs.prd_generator import PRDResult, UserStory
-        from factory.specs.test_strategy_generator import (
+        from dark_factory.specs.design_generator import DesignResult
+        from dark_factory.specs.prd_generator import PRDResult, UserStory
+        from dark_factory.specs.test_strategy_generator import (
             TestStrategyResult,
             generate_test_strategy,
         )
@@ -396,12 +396,12 @@ class TestSpecGeneration:
         interfaces, test strategy, scheduled stories (PRD user stories
         with dependency ordering).
         """
-        from factory.specs.api_contract_generator import ContractResult
-        from factory.specs.design_generator import DesignResult
-        from factory.specs.interface_generator import InterfaceResult
-        from factory.specs.prd_generator import PRDResult, UserStory
-        from factory.specs.schema_generator import SchemaResult
-        from factory.specs.test_strategy_generator import TestStrategyResult
+        from dark_factory.specs.api_contract_generator import ContractResult
+        from dark_factory.specs.design_generator import DesignResult
+        from dark_factory.specs.interface_generator import InterfaceResult
+        from dark_factory.specs.prd_generator import PRDResult, UserStory
+        from dark_factory.specs.schema_generator import SchemaResult
+        from dark_factory.specs.test_strategy_generator import TestStrategyResult
 
         # The 7th artifact (scheduled stories) is the PRD's user_stories
         # with depends_on fields producing a topological schedule.
@@ -439,9 +439,9 @@ class TestTDDLoopE2E:
 
     def test_tdd_pipeline_happy_path(self) -> None:
         """TDD pipeline runs through all three stages and succeeds."""
-        from factory.pipeline.tdd.feature_writer import TestRunResult
-        from factory.pipeline.tdd.orchestrator import TDDConfig, TDDResult, run_tdd_pipeline
-        from factory.pipeline.tdd.test_writer import SpecBundle
+        from dark_factory.pipeline.tdd.feature_writer import TestRunResult
+        from dark_factory.pipeline.tdd.orchestrator import TDDConfig, TDDResult, run_tdd_pipeline
+        from dark_factory.pipeline.tdd.test_writer import SpecBundle
 
         specs = SpecBundle(
             prd="Auth feature PRD",
@@ -495,8 +495,8 @@ class TestTDDLoopE2E:
 
             # Mock git operations inside _commit_tests and _get_diff
             with (
-                patch("factory.pipeline.tdd.test_writer._commit_tests", return_value=True),
-                patch("factory.pipeline.tdd.orchestrator._get_diff", return_value="mock diff"),
+                patch("dark_factory.pipeline.tdd.test_writer._commit_tests", return_value=True),
+                patch("dark_factory.pipeline.tdd.orchestrator._get_diff", return_value="mock diff"),
             ):
                 result = run_tdd_pipeline(
                     specs, ws, invoke_fn=mock_invoke, test_run_fn=mock_test_run,
@@ -507,9 +507,9 @@ class TestTDDLoopE2E:
 
     def test_tdd_stages_execute_in_order(self) -> None:
         """TDD stages: test_writer -> red test -> feature_writer -> green test -> reviewer."""
-        from factory.pipeline.tdd.feature_writer import TestRunResult
-        from factory.pipeline.tdd.orchestrator import TDDConfig, run_tdd_pipeline
-        from factory.pipeline.tdd.test_writer import SpecBundle
+        from dark_factory.pipeline.tdd.feature_writer import TestRunResult
+        from dark_factory.pipeline.tdd.orchestrator import TDDConfig, run_tdd_pipeline
+        from dark_factory.pipeline.tdd.test_writer import SpecBundle
 
         specs = SpecBundle(prd="PRD", design_doc="Design")
         stage_order: list[str] = []
@@ -551,8 +551,8 @@ class TestTDDLoopE2E:
                                      raw_output="1 passed")
 
             with (
-                patch("factory.pipeline.tdd.test_writer._commit_tests", return_value=True),
-                patch("factory.pipeline.tdd.orchestrator._get_diff", return_value="mock diff"),
+                patch("dark_factory.pipeline.tdd.test_writer._commit_tests", return_value=True),
+                patch("dark_factory.pipeline.tdd.orchestrator._get_diff", return_value="mock diff"),
             ):
                 run_tdd_pipeline(specs, ws, invoke_fn=mock_invoke, test_run_fn=mock_test_run)
 
@@ -647,9 +647,9 @@ class TestMockedCLIResponses:
 
         # Patch all external integrations
         with (
-            patch("factory.pipeline.route_to_engineering._label_done"),
-            patch("factory.pipeline.route_to_engineering._label_blocked"),
-            patch("factory.pipeline.route_to_engineering._notify_needs_live"),
+            patch("dark_factory.pipeline.route_to_engineering._label_done"),
+            patch("dark_factory.pipeline.route_to_engineering._label_blocked"),
+            patch("dark_factory.pipeline.route_to_engineering._notify_needs_live"),
         ):
             result = asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
@@ -659,7 +659,7 @@ class TestMockedCLIResponses:
 
     def test_sync_wrapper_with_mocked_engine(self) -> None:
         """The sync wrapper also works with mocked engine."""
-        from factory.pipeline.route_to_engineering import route_to_engineering_sync
+        from dark_factory.pipeline.route_to_engineering import route_to_engineering_sync
 
         engine = FullPipelineEngine()
         cfg = _make_config(engine)

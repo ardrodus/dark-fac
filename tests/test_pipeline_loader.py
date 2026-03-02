@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from factory.pipeline.loader import discover_pipelines
+from dark_factory.pipeline.loader import discover_pipelines
 
 
 @pytest.fixture()

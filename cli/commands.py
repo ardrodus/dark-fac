@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import click
 
-from factory import __version__
+from dark_factory import __version__
 
 
 @click.group()
@@ -25,7 +25,7 @@ def cli() -> None:
 @click.option("--lint", is_flag=True, help="Run file size compliance check.")
 def doctor(*, modules: bool, debug_modules: bool, deps: bool, lint: bool) -> None:
     """Run system health checks."""
-    from factory.cli.handlers import run_doctor
+    from dark_factory.cli.handlers import run_doctor
 
     run_doctor(modules=modules, debug_modules=debug_modules, deps=deps, lint=lint)
 
@@ -34,7 +34,7 @@ def doctor(*, modules: bool, debug_modules: bool, deps: bool, lint: bool) -> Non
 @click.argument("title", default="trivial-python-story")
 def smoke_test(title: str) -> None:
     """Run a trivial Python story through the pipeline end-to-end."""
-    from factory.cli.handlers import run_smoke_test
+    from dark_factory.cli.handlers import run_smoke_test
 
     run_smoke_test(title=title)
 
@@ -45,7 +45,7 @@ def smoke_test(title: str) -> None:
 @click.option("--run", "run_name", default="", help="Run a single gate by name.")
 def gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
     """Discover and run validation gates."""
-    from factory.cli.handlers import run_gates
+    from dark_factory.cli.handlers import run_gates
 
     run_gates(run_all=run_all, list_gates=list_gates, run_name=run_name)
 
@@ -53,7 +53,7 @@ def gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
 @cli.command()
 def selftest() -> None:
     """Run all built-in validators and report issues."""
-    from factory.cli.handlers import run_selftest
+    from dark_factory.cli.handlers import run_selftest
 
     run_selftest()
 
@@ -62,6 +62,6 @@ def selftest() -> None:
 @click.option("--epics", is_flag=True, help="Show epic-level progress.")
 def status(*, epics: bool) -> None:
     """Show pipeline or epic status."""
-    from factory.cli.handlers import run_status
+    from dark_factory.cli.handlers import run_status
 
     run_status(epics=epics)

@@ -21,17 +21,17 @@ pytestmark = pytest.mark.skip(
 
 import pytest
 
-from factory.engine.agent.env_context import (
+from dark_factory.engine.agent.env_context import (
     build_environment_context,
     get_git_context,
 )
-from factory.engine.agent.project_docs import (
+from dark_factory.engine.agent.project_docs import (
     _walk_path,
     discover_project_docs,
 )
-from factory.engine.agent.session import Session, SessionConfig
-from factory.engine.types import Client
-from factory.tests.test_engine.helpers import MockAdapter, make_text_response
+from dark_factory.engine.agent.session import Session, SessionConfig
+from dark_factory.engine.types import Client
+from dark_factory.tests.test_engine.helpers import MockAdapter, make_text_response
 
 # ================================================================== #
 # build_environment_context

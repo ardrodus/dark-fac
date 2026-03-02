@@ -6,7 +6,7 @@ Dark Forge, Sentinel, Crucible, and Ouroboros.
 
 Usage::
 
-    from factory.pipeline.engine import FactoryPipelineEngine
+    from dark_factory.pipeline.engine import FactoryPipelineEngine
 
     engine = FactoryPipelineEngine()                    # uses .dark-factory/config.json
     result = await engine.run_pipeline("dark_forge", {"issue": issue_json})
@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.engine.events import PipelineEvent
+    from dark_factory.engine.events import PipelineEvent
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,11 @@ class FactoryPipelineEngine:
         config_start: Path | None = None,
         on_event: Callable[[PipelineEvent], None] | None = None,
     ) -> None:
-        from factory.engine.claude_backend import (  # noqa: PLC0415
+        from dark_factory.engine.claude_backend import (  # noqa: PLC0415
             ClaudeCodeBackend,
             ClaudeCodeConfig,
         )
-        from factory.engine.config import load_engine_config  # noqa: PLC0415
+        from dark_factory.engine.config import load_engine_config  # noqa: PLC0415
 
         self._engine_cfg = load_engine_config(config_start)
         self._backend = ClaudeCodeBackend(
@@ -93,8 +93,8 @@ class FactoryPipelineEngine:
         Returns:
             :class:`~factory.engine.runner.PipelineResult`.
         """
-        from factory.engine.sdk import execute  # noqa: PLC0415
-        from factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
+        from dark_factory.engine.sdk import execute  # noqa: PLC0415
+        from dark_factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
 
         pipelines = discover_pipelines(project_root=self._config_start)
         dotfile = pipelines.get(name)
@@ -146,8 +146,8 @@ class FactoryPipelineEngine:
         ctx: dict[str, Any] = {"workspace": workspace, **(context or {})}
         ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
 
-        from factory.engine.sdk import execute  # noqa: PLC0415
-        from factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
+        from dark_factory.engine.sdk import execute  # noqa: PLC0415
+        from dark_factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
 
         pipelines = discover_pipelines(project_root=self._config_start)
         dotfile = pipelines.get("sentinel")

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from factory.security.config import SecurityConfig
+from dark_factory.security.config import SecurityConfig
 
 logger = logging.getLogger(__name__)
 _STATE_DIR = Path(".dark-factory") / "security"

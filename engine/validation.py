@@ -24,8 +24,8 @@ from collections import deque
 from dataclasses import dataclass
 from enum import StrEnum
 
-from factory.engine.conditions import evaluate_condition
-from factory.engine.graph import Graph
+from dark_factory.engine.conditions import evaluate_condition
+from dark_factory.engine.graph import Graph
 
 
 class Severity(StrEnum):

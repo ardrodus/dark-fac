@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from factory.crucible.orchestrator import CrucibleVerdict
-from factory.crucible.twin_runner import (
+from dark_factory.crucible.orchestrator import CrucibleVerdict
+from dark_factory.crucible.twin_runner import (
     _check_deps_safe,
     _check_no_secrets,
     _detect_scope,
@@ -14,8 +14,8 @@ from factory.crucible.twin_runner import (
     _verdict,
     run_crucible_twin,
 )
-from factory.integrations.shell import CommandResult
-from factory.workspace.manager import Workspace
+from dark_factory.integrations.shell import CommandResult
+from dark_factory.workspace.manager import Workspace
 
 # ── Helpers ──────────────────────────────────────────────────────
 

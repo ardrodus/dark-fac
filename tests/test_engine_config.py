@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from factory.engine.config import (
+from dark_factory.engine.config import (
     _DEFAULT_STYLESHEET,
     EngineConfig,
     _load_stylesheet,

@@ -14,7 +14,7 @@ The preamble includes:
 
 Usage::
 
-    from factory.engine.preamble import generate_resume_preamble
+    from dark_factory.engine.preamble import generate_resume_preamble
 
     preamble = generate_resume_preamble(
         graph=graph,
@@ -31,8 +31,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from factory.engine.graph import Graph
-from factory.engine.runner import Checkpoint
+from dark_factory.engine.graph import Graph
+from dark_factory.engine.runner import Checkpoint
 
 
 def generate_resume_preamble(

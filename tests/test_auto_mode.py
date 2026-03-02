@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
-from factory.integrations.gh_safe import IssueInfo
-from factory.modes.auto import (
+from dark_factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
+from dark_factory.integrations.gh_safe import IssueInfo
+from dark_factory.modes.auto import (
     LABEL_NEEDS_LIVE,
     AutoModeConfig,
     AutoModeState,
@@ -17,7 +17,7 @@ from factory.modes.auto import (
     run_cycle,
     run_dark_forge,
 )
-from factory.workspace.manager import Workspace
+from dark_factory.workspace.manager import Workspace
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -228,9 +228,9 @@ class TestRunCycle:
         comment_calls: list[int] = []
         label_calls: list[tuple[int, str]] = []
 
-        with patch("factory.modes.auto.comment_on_issue") as mock_comment, \
-             patch("factory.modes.auto.add_label") as mock_add, \
-             patch("factory.modes.auto.remove_label"):
+        with patch("dark_factory.modes.auto.comment_on_issue") as mock_comment, \
+             patch("dark_factory.modes.auto.add_label") as mock_add, \
+             patch("dark_factory.modes.auto.remove_label"):
             mock_comment.side_effect = lambda n, body, **kw: comment_calls.append(n)
             mock_add.side_effect = lambda n, lbl, **kw: label_calls.append((n, lbl))
 
@@ -292,7 +292,7 @@ class TestRunAutoMode:
     def test_processes_one_issue_and_exits(self) -> None:
         issues = [_issue(1, "First")]
 
-        with patch("factory.modes.auto.select_next_issue", side_effect=issues + [None]):
+        with patch("dark_factory.modes.auto.select_next_issue", side_effect=issues + [None]):
             results = run_auto_mode(config=_config(max_cycles=1))
 
         assert len(results) == 1
@@ -312,7 +312,7 @@ class TestRunAutoMode:
                 return _issue()
             return None
 
-        with patch("factory.modes.auto.select_next_issue", side_effect=no_issues):
+        with patch("dark_factory.modes.auto.select_next_issue", side_effect=no_issues):
             results = run_auto_mode(
                 config=_config(sleep_fn=track_sleep, poll_interval=5.0, max_cycles=1),
             )
@@ -329,8 +329,8 @@ class TestRunAutoMode:
         state.shutdown_requested = True
 
         # When shutdown_requested is True before the first poll, loop exits immediately
-        with patch("factory.modes.auto.select_next_issue"):
-            with patch("factory.modes.auto._install_signal_handlers") as mock_signals:
+        with patch("dark_factory.modes.auto.select_next_issue"):
+            with patch("dark_factory.modes.auto._install_signal_handlers") as mock_signals:
                 mock_signals.side_effect = lambda s: setattr(s, "shutdown_requested", True)
                 results = run_auto_mode(config=_config(max_cycles=None))
 
@@ -339,7 +339,7 @@ class TestRunAutoMode:
     def test_multiple_cycles(self) -> None:
         issues = [_issue(1, "First"), _issue(2, "Second"), _issue(3, "Third")]
 
-        with patch("factory.modes.auto.select_next_issue", side_effect=issues):
+        with patch("dark_factory.modes.auto.select_next_issue", side_effect=issues):
             results = run_auto_mode(config=_config(max_cycles=3))
 
         assert len(results) == 3

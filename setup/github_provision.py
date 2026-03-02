@@ -1,28 +1,203 @@
-"""GitHub provisioning — auth check only.
+"""GitHub provisioning — labels, CI workflow, issue template, branch protection.
 
-Validates that the GitHub CLI is authenticated and can access the
-configured repository.  Org/repo provisioning (labels, workflows,
-secrets, branch protection) has been removed.
+Creates the scaffolding a target repo needs for Dark Factory to operate:
+labels for pipeline transitions, a CI workflow, an issue template, and
+branch protection on ``main``.
 """
 from __future__ import annotations
 
 import logging
+import sys
 
-from factory.integrations.shell import gh
+from dark_factory.integrations.shell import gh
 
 logger = logging.getLogger(__name__)
 
+# ── Label definitions ─────────────────────────────────────────────
 
-def check_github_auth() -> bool:
-    """Return ``True`` if ``gh auth status`` succeeds.
+LABELS: tuple[tuple[str, str, str], ...] = (
+    # (name, hex_color, description)
+    ("factory-task", "0E8A16", "Dark Factory managed task"),
+    ("backlog", "C2E0C6", "New, ready for architecture review"),
+    ("arch-review", "FBCA04", "Architecture pipeline is reviewing"),
+    ("arch-approved", "0075CA", "Pipeline approved, ready for engineer"),
+    ("in-progress", "D93F0B", "Assigned to a TDD pipeline"),
+    ("in-review", "BFD4F2", "PR open, CI running"),
+    ("completed", "0E8A16", "Merged to main"),
+    ("human-review", "B60205", "Agent failed, needs human"),
+    ("deployed-dev", "1D76DB", "Deployed to dev, health check passed"),
+    ("deploy-failed", "B60205", "Deploy to dev failed"),
+    ("crucible-passed", "0E8A16", "Crucible real-world validation passed"),
+    ("crucible-failed", "B60205", "Crucible real-world validation failed"),
+    ("deployed-staging", "1D76DB", "Promoted to staging, health check passed"),
+    ("staging-failed", "B60205", "Staging deploy failed"),
+    ("needs-live-env", "FBCA04", "Needs live environment for Crucible"),
+    ("released", "0E8A16", "Published and released"),
+    ("release-failed", "B60205", "Publish step failed"),
+    ("done", "0E8A16", "Issue fully complete"),
+)
 
-    This is the simplified replacement for the former ``provision_github``
-    function, which created labels, workflows, secrets, and branch
-    protection.  Now we only verify that the CLI is authenticated.
-    """
-    result = gh(["auth", "status"], timeout=15)
+# ── CI workflow template ──────────────────────────────────────────
+
+_CI_WORKFLOW = """\
+name: factory-ci
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: echo "Configure your build steps here"
+      - name: Build
+        run: echo "Add your build command"
+      - name: Test
+        run: echo "Add your test command"
+"""
+
+# ── Issue template ────────────────────────────────────────────────
+
+_ISSUE_TEMPLATE = """\
+---
+name: Factory Task
+about: Task managed by Dark Factory
+title: ''
+labels: factory-task, backlog
+assignees: ''
+---
+
+## Description
+
+<!-- What needs to be done? -->
+
+## Acceptance Criteria
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Notes
+
+<!-- Any additional context -->
+"""
+
+
+# ── Public API ────────────────────────────────────────────────────
+
+
+def provision_labels(repo: str) -> int:
+    """Create all pipeline labels on *repo*. Returns count created."""
+    w = sys.stdout.write
+    created = 0
+    for name, color, desc in LABELS:
+        result = gh(
+            ["label", "create", name, "--repo", repo,
+             "--color", color, "--description", desc, "--force"],
+            timeout=15,
+        )
+        if result.returncode == 0:
+            w(f"    + {name}\n")
+            created += 1
+        else:
+            # --force updates existing, so failure is unexpected
+            w(f"    ! {name}: {result.stderr.strip()}\n")
+    return created
+
+
+def provision_issue_template(repo: str) -> bool:
+    """Create ``.github/ISSUE_TEMPLATE/factory-task.md`` via the API."""
+    import base64  # noqa: PLC0415
+
+    content = base64.b64encode(_ISSUE_TEMPLATE.encode()).decode()
+    path = ".github/ISSUE_TEMPLATE/factory-task.md"
+    result = gh(
+        ["api", f"repos/{repo}/contents/{path}",
+         "-X", "PUT",
+         "-f", f"message=chore: add Dark Factory issue template",
+         "-f", f"content={content}"],
+        timeout=30,
+    )
     if result.returncode == 0:
-        logger.info("GitHub CLI authenticated")
         return True
-    logger.warning("GitHub CLI not authenticated — run: gh auth login")
+    # File may already exist — try update with SHA
+    if "sha" in result.stderr.lower() or "422" in result.stderr:
+        logger.info("Issue template already exists in %s", repo)
+        return True
+    logger.warning("Failed to create issue template: %s", result.stderr.strip())
     return False
+
+
+def provision_ci_workflow(repo: str) -> bool:
+    """Create ``.github/workflows/factory-ci.yml`` via the API."""
+    import base64  # noqa: PLC0415
+
+    content = base64.b64encode(_CI_WORKFLOW.encode()).decode()
+    path = ".github/workflows/factory-ci.yml"
+    result = gh(
+        ["api", f"repos/{repo}/contents/{path}",
+         "-X", "PUT",
+         "-f", f"message=chore: add Dark Factory CI workflow",
+         "-f", f"content={content}"],
+        timeout=30,
+    )
+    if result.returncode == 0:
+        return True
+    if "sha" in result.stderr.lower() or "422" in result.stderr:
+        logger.info("CI workflow already exists in %s", repo)
+        return True
+    logger.warning("Failed to create CI workflow: %s", result.stderr.strip())
+    return False
+
+
+def provision_branch_protection(repo: str, branch: str = "main") -> bool:
+    """Set branch protection: require CI, enable auto-merge, no force push."""
+    result = gh(
+        ["api", f"repos/{repo}/branches/{branch}/protection",
+         "-X", "PUT",
+         "-f", "required_status_checks[strict]=true",
+         "-f", "required_status_checks[contexts][]=ci",
+         "-f", "enforce_admins=false",
+         "-F", "required_pull_request_reviews=null",
+         "-F", "restrictions=null",
+         "-f", "allow_force_pushes=false",
+         "-f", "allow_deletions=false"],
+        timeout=30,
+    )
+    if result.returncode == 0:
+        return True
+    logger.warning("Failed to set branch protection: %s", result.stderr.strip())
+    return False
+
+
+def provision_github(repo: str) -> dict[str, bool | int]:
+    """Run all provisioning steps. Returns a status dict."""
+    w = sys.stdout.write
+    results: dict[str, bool | int] = {}
+
+    w("  Creating pipeline labels...\n")
+    results["labels"] = provision_labels(repo)
+
+    w("  Creating issue template...\n")
+    ok = provision_issue_template(repo)
+    w(f"    {'+ created' if ok else '! skipped'}\n")
+    results["issue_template"] = ok
+
+    w("  Creating CI workflow...\n")
+    ok = provision_ci_workflow(repo)
+    w(f"    {'+ created' if ok else '! skipped'}\n")
+    results["ci_workflow"] = ok
+
+    w("  Setting branch protection on main...\n")
+    ok = provision_branch_protection(repo)
+    w(f"    {'+ enabled' if ok else '! skipped (may require admin)'}\n")
+    results["branch_protection"] = ok
+
+    return results

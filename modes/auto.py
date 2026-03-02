@@ -25,8 +25,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
-from factory.dispatch.issue_dispatcher import (
+from dark_factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
+from dark_factory.dispatch.issue_dispatcher import (
     LABEL_DONE,
     LABEL_FAILED,
     LABEL_IN_PROGRESS,
@@ -34,7 +34,7 @@ from factory.dispatch.issue_dispatcher import (
     DispatcherState,
     select_next_issue,
 )
-from factory.integrations.gh_safe import (
+from dark_factory.integrations.gh_safe import (
     GhSafeError,
     IssueInfo,
     add_label,
@@ -45,7 +45,7 @@ from factory.integrations.gh_safe import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.workspace.manager import Workspace
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def _run_sentinel_gate(workspace_path: str, phase: str, *, sentinel_fn: Callable
 
 def _default_sentinel(workspace_path: str, phase: str) -> bool:
     """Run default Sentinel gate checks using the gate framework."""
-    from factory.gates.framework import GateRunner  # noqa: PLC0415
+    from dark_factory.gates.framework import GateRunner  # noqa: PLC0415
 
     runner = GateRunner(f"sentinel-{phase}", metrics_dir=workspace_path)
 
@@ -158,8 +158,8 @@ def _default_sentinel(workspace_path: str, phase: str) -> bool:
 
 def _default_forge(issue: IssueInfo, workspace_path: str) -> bool:
     """Run the Dark Forge pipeline for an issue."""
-    from factory.pipeline.orchestrator import PipelineConfig, run_full_pipeline  # noqa: PLC0415
-    from factory.pipeline.runner import StoryContext  # noqa: PLC0415
+    from dark_factory.pipeline.orchestrator import PipelineConfig, run_full_pipeline  # noqa: PLC0415
+    from dark_factory.pipeline.runner import StoryContext  # noqa: PLC0415
 
     story = StoryContext(
         title=issue.title,
@@ -202,7 +202,7 @@ def run_dark_forge(
 
 def _default_crucible(workspace: Workspace, issue_number: int) -> CrucibleResult:
     """Run the Crucible test suite."""
-    from factory.crucible.orchestrator import run_crucible  # noqa: PLC0415
+    from dark_factory.crucible.orchestrator import run_crucible  # noqa: PLC0415
 
     return run_crucible(workspace, issue_number=issue_number)
 
@@ -251,7 +251,7 @@ def run_crucible_phase(
 
 def _default_deploy(workspace: Workspace, issue_number: int) -> bool:
     """Push the working branch to the remote."""
-    from factory.integrations.shell import git  # noqa: PLC0415
+    from dark_factory.integrations.shell import git  # noqa: PLC0415
 
     result = git(["push", "origin", workspace.branch], cwd=workspace.path, timeout=120)
     if result.returncode != 0:
@@ -267,7 +267,7 @@ def _default_deploy(workspace: Workspace, issue_number: int) -> bool:
 def _default_ouroboros(issue: IssueInfo, outcome: CycleOutcome, detail: str) -> None:
     """Capture learnings from the cycle into the knowledge store."""
     try:
-        from factory.knowledge.patterns import Pattern, PatternStore  # noqa: PLC0415
+        from dark_factory.knowledge.patterns import Pattern, PatternStore  # noqa: PLC0415
 
         store = PatternStore(".")
         pattern_name = f"auto-cycle-{issue.number}"
@@ -336,7 +336,7 @@ def _acquire_workspace(repo: str, issue_number: int, *, config: AutoModeConfig) 
     """Acquire a workspace for the issue."""
     if config.acquire_workspace_fn is not None:
         return config.acquire_workspace_fn(repo, issue_number)
-    from factory.workspace.manager import acquire_workspace  # noqa: PLC0415
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
     return acquire_workspace(repo, issue_number)
 

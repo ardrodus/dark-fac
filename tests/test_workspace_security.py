@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from factory.engine.agent.registry import (
+from dark_factory.engine.agent.registry import (
     _READ_TOOLS,
     _WRITE_TOOLS,
     ROLE_POLICIES,
@@ -27,7 +27,7 @@ from factory.engine.agent.registry import (
     check_security_policy,
     resolve_security_policy,
 )
-from factory.engine.types import ContentPart, ContentPartKind
+from dark_factory.engine.types import ContentPart, ContentPartKind
 
 # ------------------------------------------------------------------ #
 # Helpers

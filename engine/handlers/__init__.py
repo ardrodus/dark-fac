@@ -5,14 +5,14 @@ node type: start, exit, codergen (LLM), conditional, wait.human, tool,
 parallel (fan-out), fan_in (join).
 """
 
-from factory.engine.handlers.basic import (
+from dark_factory.engine.handlers.basic import (
     ConditionalHandler,
     ExitHandler,
     StartHandler,
     ToolHandler,
 )
-from factory.engine.handlers.codergen import CodergenBackend, CodergenHandler
-from factory.engine.handlers.human import (
+from dark_factory.engine.handlers.codergen import CodergenBackend, CodergenHandler
+from dark_factory.engine.handlers.human import (
     Answer,
     AutoApproveInterviewer,
     CallbackInterviewer,
@@ -23,9 +23,9 @@ from factory.engine.handlers.human import (
     QueueInterviewer,
     ask_question_via_ask,
 )
-from factory.engine.handlers.manager import ManagerHandler
-from factory.engine.handlers.parallel import FanInHandler, ParallelHandler
-from factory.engine.runner import HandlerRegistry
+from dark_factory.engine.handlers.manager import ManagerHandler
+from dark_factory.engine.handlers.parallel import FanInHandler, ParallelHandler
+from dark_factory.engine.runner import HandlerRegistry
 
 __all__ = [
     "StartHandler",

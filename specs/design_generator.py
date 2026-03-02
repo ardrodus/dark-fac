@@ -9,14 +9,14 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-from factory.specs.base import (
+from dark_factory.specs.base import (
     extract_json,
     format_analysis,
     run_generate,
     save_artifact,
     tup,
 )
-from factory.specs.prd_generator import PRDResult
+from dark_factory.specs.prd_generator import PRDResult
 
 
 @dataclass(frozen=True, slots=True)

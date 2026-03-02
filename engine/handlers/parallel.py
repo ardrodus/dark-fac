@@ -21,17 +21,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.events import (
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.events import (
     EventEmitter,
     ParallelBranchCompleted,
     ParallelBranchStarted,
     ParallelCompleted,
     ParallelStarted,
 )
-from factory.engine.graph import Graph, Node
-from factory.engine.runner import HandlerResult, Outcome
-from factory.engine.subgraph import execute_subgraph
+from dark_factory.engine.graph import Graph, Node
+from dark_factory.engine.runner import HandlerResult, Outcome
+from dark_factory.engine.subgraph import execute_subgraph
 
 # ------------------------------------------------------------------ #
 # Branch result tracking

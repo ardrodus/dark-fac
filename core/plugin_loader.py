@@ -148,7 +148,7 @@ class PluginLoader:
         """Import a plugin file and register it."""
         try:
             spec = importlib.util.spec_from_file_location(
-                f"factory.plugins.{info.name}", info.path,
+                f"dark_factory.plugins.{info.name}", info.path,
             )
             if spec is None or spec.loader is None:
                 logger.warning("Cannot create import spec for plugin %r", info.name)

@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from textual.app import ComposeResult
 from textual.widgets import Label, RichLog, Static
 
-from factory.ui.theme import PILLARS, THEME, format_relative_time
+from dark_factory.ui.theme import PILLARS, THEME, format_relative_time
 
 logger = logging.getLogger(__name__)
 

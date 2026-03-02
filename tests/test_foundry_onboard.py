@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from factory.modes.foundry_onboard import (
+from dark_factory.modes.foundry_onboard import (
     OnboardConfig,
     OnboardResult,
     OnboardStep,
@@ -308,7 +308,7 @@ def _fake_clone(_url: str, dest: Path) -> bool:
 class TestFoundryListIntegration:
     def test_workspace_appears_in_foundry_list(self, tmp_path: Path) -> None:
         """After onboarding, workspace appears in load_workspaces()."""
-        from factory.modes.foundry import load_workspaces
+        from dark_factory.modes.foundry import load_workspaces
 
         cfg = OnboardConfig(
             clone_fn=_fake_clone,
@@ -325,7 +325,7 @@ class TestFoundryListIntegration:
         assert workspaces[0].status == "active"
 
     def test_multiple_onboards_appear_in_list(self, tmp_path: Path) -> None:
-        from factory.modes.foundry import load_workspaces
+        from dark_factory.modes.foundry import load_workspaces
 
         cfg = OnboardConfig(
             clone_fn=_fake_clone,

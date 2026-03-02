@@ -10,7 +10,7 @@ import json
 import logging
 from dataclasses import dataclass
 
-from factory.integrations.shell import CommandError, gh
+from dark_factory.integrations.shell import CommandError, gh
 
 logger = logging.getLogger(__name__)
 

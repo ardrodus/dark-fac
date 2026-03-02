@@ -16,10 +16,10 @@ from typing import Any
 
 import pytest
 
-from factory.engine.agent.prompt_layer import build_system_prompt
-from factory.engine.graph import Edge, Graph, Node
-from factory.engine.preamble import generate_resume_preamble
-from factory.engine.runner import (
+from dark_factory.engine.agent.prompt_layer import build_system_prompt
+from dark_factory.engine.graph import Edge, Graph, Node
+from dark_factory.engine.preamble import generate_resume_preamble
+from dark_factory.engine.runner import (
     Checkpoint,
     HandlerRegistry,
     PipelineStatus,
@@ -258,7 +258,7 @@ class TestPreamblePipelineIntegration:
         ckpt = make_checkpoint(current_node="implement")
 
         registry = HandlerRegistry()
-        from factory.engine.handlers import register_default_handlers
+        from dark_factory.engine.handlers import register_default_handlers
 
         register_default_handlers(registry)
 
@@ -275,7 +275,7 @@ class TestPreamblePipelineIntegration:
         """Normal (non-resume) runs don't inject a preamble."""
         g = make_test_graph()
         registry = HandlerRegistry()
-        from factory.engine.handlers import register_default_handlers
+        from dark_factory.engine.handlers import register_default_handlers
 
         register_default_handlers(registry)
 

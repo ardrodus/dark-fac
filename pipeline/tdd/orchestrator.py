@@ -13,19 +13,19 @@ from typing import TYPE_CHECKING, TypeVar
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.workspace.manager import Workspace
+    from dark_factory.workspace.manager import Workspace
 
-from factory.pipeline.tdd.code_reviewer import (
+from dark_factory.pipeline.tdd.code_reviewer import (
     CodeReviewResult,
     ReviewVerdict,
     run_code_reviewer,
 )
-from factory.pipeline.tdd.feature_writer import (
+from dark_factory.pipeline.tdd.feature_writer import (
     FeatureWriterResult,
     TestRunResult,
     run_feature_writer,
 )
-from factory.pipeline.tdd.test_writer import SpecBundle, TestWriterResult, run_test_writer
+from dark_factory.pipeline.tdd.test_writer import SpecBundle, TestWriterResult, run_test_writer
 
 _T = TypeVar("_T")
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def _run_tests(
     """Execute the test suite in *workspace_path*."""
     if run_fn is not None:
         return run_fn(workspace_path, config)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
 
     result = run_command(
         list(config.test_command), timeout=config.test_timeout,
@@ -85,7 +85,7 @@ def _run_tests(
 
 def _get_diff(workspace_path: str) -> str:
     """Return the current git diff for the workspace."""
-    from factory.integrations.shell import git  # noqa: PLC0415
+    from dark_factory.integrations.shell import git  # noqa: PLC0415
 
     result = git(["diff", "HEAD~1"], cwd=workspace_path, check=False)
     if result.returncode != 0 or not result.stdout.strip():

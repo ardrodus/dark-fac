@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.integrations.shell import CommandResult
-    from factory.workspace.manager import Workspace
+    from dark_factory.integrations.shell import CommandResult
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _BUILD_T, _HEALTH_T, _TEST_T, _TD_T = 300, 60, 600, 30
@@ -65,7 +65,7 @@ class CrucibleConfig:
     docker_fn: Callable[..., CommandResult] | None = None
 
 def _dk(args: list[str], **kw: Any) -> CommandResult:  # noqa: ANN401
-    from factory.integrations.shell import docker  # noqa: PLC0415
+    from dark_factory.integrations.shell import docker  # noqa: PLC0415
     return docker(args, **kw)
 
 def _timed(phase: str, fn: Callable[[], bool], timeout: int) -> PhaseMetrics:

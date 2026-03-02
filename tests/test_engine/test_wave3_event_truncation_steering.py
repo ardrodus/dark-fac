@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import pytest
 
-from factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
-from factory.engine.agent.registry import ToolRegistry
-from factory.engine.agent.session import Session, SessionConfig, SteeringTurn
-from factory.engine.agent.truncation import TruncationLimits, truncate_output
-from factory.engine.types import (
+from dark_factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
+from dark_factory.engine.agent.registry import ToolRegistry
+from dark_factory.engine.agent.session import Session, SessionConfig, SteeringTurn
+from dark_factory.engine.agent.truncation import TruncationLimits, truncate_output
+from dark_factory.engine.types import (
     Client,
     ContentPart,
     ContentPartKind,
@@ -71,7 +71,7 @@ class FakeClient(Client):
 
 def _make_echo_tool(output: str = "ok") -> list:
     """Create a simple echo tool that returns *output*."""
-    from factory.engine.types import Tool
+    from dark_factory.engine.types import Tool
 
     async def _execute(**kwargs: object) -> str:  # noqa: ARG001
         return output
@@ -199,7 +199,7 @@ class TestToolCallEndEvent:
         """Even when output is truncated, the event gets the raw string."""
         large_output = "x" * 100_000  # Way over default limits
 
-        from factory.engine.types import Tool
+        from dark_factory.engine.types import Tool
 
         async def _big(**kwargs: object) -> str:  # noqa: ARG001
             return large_output
@@ -237,7 +237,7 @@ class TestToolCallEndEvent:
     @pytest.mark.asyncio
     async def test_event_output_not_just_length(self):
         """The event data should have 'output' string, not 'output_length' int."""
-        from factory.engine.types import Tool
+        from dark_factory.engine.types import Tool
 
         async def _exec(**kwargs: object) -> str:  # noqa: ARG001
             return "hello world"
@@ -331,7 +331,7 @@ class TestConfigurableTruncationLimits:
     @pytest.mark.asyncio
     async def test_config_overrides_truncation_in_execution(self):
         """Tool output should respect config overrides during execution."""
-        from factory.engine.types import Tool
+        from dark_factory.engine.types import Tool
 
         # Tool returns 200 chars
         async def _exec(**kwargs: object) -> str:  # noqa: ARG001

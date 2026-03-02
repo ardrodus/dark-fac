@@ -22,7 +22,7 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import DataTable, Footer, Header, Label, Static
 
-from factory.ui.theme import (
+from dark_factory.ui.theme import (
     COMPACT_ICONS,
     PILLARS,
     THEME,
@@ -48,7 +48,7 @@ def load_workspaces(config_root: Path | None = None) -> list[Workspace]:
     Returns the current workspace list.  When no persistent config
     exists yet, returns an empty list.
     """
-    from factory.modes.foundry_onboard import load_workspace_configs  # noqa: PLC0415
+    from dark_factory.modes.foundry_onboard import load_workspace_configs  # noqa: PLC0415
 
     entries = load_workspace_configs(config_root=config_root)
     return [

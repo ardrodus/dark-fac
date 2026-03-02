@@ -34,7 +34,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from factory.engine.graph import Graph, Node, NodeShape
+from dark_factory.engine.graph import Graph, Node, NodeShape
 
 logger = logging.getLogger(__name__)
 

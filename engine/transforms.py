@@ -23,8 +23,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Protocol, runtime_checkable
 
-from factory.engine.graph import Graph
-from factory.engine.variable_expansion import expand_variables
+from dark_factory.engine.graph import Graph
+from dark_factory.engine.variable_expansion import expand_variables
 
 
 @runtime_checkable

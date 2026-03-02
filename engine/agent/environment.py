@@ -6,7 +6,7 @@ or Kubernetes pods. Tools call the environment instead of direct OS APIs.
 
 Usage::
 
-    from factory.engine.agent.environment import LocalEnvironment, DockerEnvironment
+    from dark_factory.engine.agent.environment import LocalEnvironment, DockerEnvironment
 
     # Default: runs on host
     env = LocalEnvironment()

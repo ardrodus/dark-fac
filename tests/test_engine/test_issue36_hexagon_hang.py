@@ -22,15 +22,15 @@ from __future__ import annotations
 
 import pytest
 
-from factory.engine import (
+from dark_factory.engine import (
     HandlerRegistry,
     PipelineStatus,
     parse_dot,
     register_default_handlers,
     run_pipeline,
 )
-from factory.engine.graph import Edge, Graph, Node, NodeShape
-from factory.engine.validation import Severity, validate
+from dark_factory.engine.graph import Edge, Graph, Node, NodeShape
+from dark_factory.engine.validation import Severity, validate
 
 
 class TestIssue36ShapeRouting:

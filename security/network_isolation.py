@@ -15,10 +15,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.integrations.shell import docker
+from dark_factory.integrations.shell import docker
 
 if TYPE_CHECKING:
-    from factory.workspace.manager import Workspace
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _PROXY_PORT, _PROXY_IMAGE = 3128, "ubuntu/squid:latest"

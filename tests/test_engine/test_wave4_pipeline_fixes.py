@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from factory.engine import (
+from dark_factory.engine import (
     CodergenHandler,
     ExitHandler,
     HandlerRegistry,

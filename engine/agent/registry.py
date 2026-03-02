@@ -17,9 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
-from factory.engine.agent.truncation import TruncationLimits, truncate_output
-from factory.engine.types import ContentPart, ContentPartKind, Tool
+from dark_factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
+from dark_factory.engine.agent.truncation import TruncationLimits, truncate_output
+from dark_factory.engine.types import ContentPart, ContentPartKind, Tool
 
 # ------------------------------------------------------------------ #
 # Security policies for per-node tool confinement

@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.gates.framework import GateRunner
+from dark_factory.gates.framework import GateRunner
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -38,7 +38,7 @@ def run_tool(
     if not shutil.which(tool):
         logger.warning("%s not found — skipping", tool)
         return []
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
 
     raw = run_command(cmd, cwd=cwd, timeout=timeout).stdout.strip()
     if not raw:

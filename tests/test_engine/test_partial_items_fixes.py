@@ -23,20 +23,20 @@ class TestShellTimeoutClamping:
 
     def test_session_config_has_max_command_timeout_ms(self) -> None:
         """SessionConfig exposes max_command_timeout_ms with default 600000."""
-        from factory.engine.agent.session import SessionConfig
+        from dark_factory.engine.agent.session import SessionConfig
 
         config = SessionConfig()
         assert config.max_command_timeout_ms == 600_000
 
     def test_module_level_default_is_600s(self) -> None:
         """core._max_command_timeout_s defaults to 600 (= 600000ms)."""
-        from factory.engine.agent.tools import _max_command_timeout_s
+        from dark_factory.engine.agent.tools import _max_command_timeout_s
 
         assert _max_command_timeout_s == 600
 
     def test_set_max_command_timeout(self) -> None:
         """set_max_command_timeout() converts ms to seconds."""
-        from factory.engine.agent.tools import (
+        from dark_factory.engine.agent.tools import (
             _max_command_timeout_s,
             set_max_command_timeout,
         )
@@ -44,7 +44,7 @@ class TestShellTimeoutClamping:
         original = _max_command_timeout_s
         try:
             set_max_command_timeout(120_000)  # 2 minutes
-            from factory.engine.agent import tools as _tools_mod
+            from dark_factory.engine.agent import tools as _tools_mod
 
             assert _tools_mod._max_command_timeout_s == 120
         finally:
@@ -53,8 +53,8 @@ class TestShellTimeoutClamping:
     @pytest.mark.asyncio
     async def test_timeout_clamped_to_max(self) -> None:
         """When timeout exceeds max_command_timeout, it is clamped."""
-        from factory.engine.agent import tools as _tools_mod
-        from factory.engine.agent.tools import _shell, set_max_command_timeout
+        from dark_factory.engine.agent import tools as _tools_mod
+        from dark_factory.engine.agent.tools import _shell, set_max_command_timeout
 
         original = _tools_mod._max_command_timeout_s
 
@@ -69,8 +69,8 @@ class TestShellTimeoutClamping:
         try:
             set_max_command_timeout(60_000)  # 60 seconds max
             with (
-                patch("factory.engine.agent.tools._environment", mock_env),
-                patch("factory.engine.agent.tools._check_path_allowed", return_value=None),
+                patch("dark_factory.engine.agent.tools._environment", mock_env),
+                patch("dark_factory.engine.agent.tools._check_path_allowed", return_value=None),
             ):
                 await _shell("echo hi", timeout=120)  # 120s > 60s max
 
@@ -82,8 +82,8 @@ class TestShellTimeoutClamping:
     @pytest.mark.asyncio
     async def test_timeout_ms_clamped_to_max(self) -> None:
         """timeout_ms is also clamped after conversion."""
-        from factory.engine.agent import tools as _tools_mod
-        from factory.engine.agent.tools import _shell, set_max_command_timeout
+        from dark_factory.engine.agent import tools as _tools_mod
+        from dark_factory.engine.agent.tools import _shell, set_max_command_timeout
 
         original = _tools_mod._max_command_timeout_s
 
@@ -98,8 +98,8 @@ class TestShellTimeoutClamping:
         try:
             set_max_command_timeout(30_000)  # 30 seconds max
             with (
-                patch("factory.engine.agent.tools._environment", mock_env),
-                patch("factory.engine.agent.tools._check_path_allowed", return_value=None),
+                patch("dark_factory.engine.agent.tools._environment", mock_env),
+                patch("dark_factory.engine.agent.tools._check_path_allowed", return_value=None),
             ):
                 await _shell("echo hi", timeout_ms=120_000)  # 120s > 30s max
 
@@ -111,7 +111,7 @@ class TestShellTimeoutClamping:
     @pytest.mark.asyncio
     async def test_timeout_below_max_unchanged(self) -> None:
         """Timeouts below the max are not affected by clamping."""
-        from factory.engine.agent.tools import _shell
+        from dark_factory.engine.agent.tools import _shell
 
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -122,8 +122,8 @@ class TestShellTimeoutClamping:
         mock_env.exec_shell = AsyncMock(return_value=mock_result)
 
         with (
-            patch("factory.engine.agent.tools._environment", mock_env),
-            patch("factory.engine.agent.tools._check_path_allowed", return_value=None),
+            patch("dark_factory.engine.agent.tools._environment", mock_env),
+            patch("dark_factory.engine.agent.tools._check_path_allowed", return_value=None),
         ):
             await _shell("echo hi", timeout=30)  # well under 600s default
 
@@ -141,8 +141,8 @@ class TestVariableExpansionNoMutation:
 
     def test_input_graph_not_mutated(self) -> None:
         """apply() returns a new graph; the original is untouched."""
-        from factory.engine.graph import Edge, Graph, Node
-        from factory.engine.transforms import VariableExpansionTransform
+        from dark_factory.engine.graph import Edge, Graph, Node
+        from dark_factory.engine.transforms import VariableExpansionTransform
 
         graph = Graph(name="test")
         graph.nodes["start"] = Node(
@@ -165,8 +165,8 @@ class TestVariableExpansionNoMutation:
 
     def test_returned_graph_is_independent_copy(self) -> None:
         """Modifications to the returned graph don't affect the input."""
-        from factory.engine.graph import Edge, Graph, Node
-        from factory.engine.transforms import VariableExpansionTransform
+        from dark_factory.engine.graph import Edge, Graph, Node
+        from dark_factory.engine.transforms import VariableExpansionTransform
 
         graph = Graph(name="test")
         graph.nodes["a"] = Node(id="a", shape="Mdiamond", prompt="$x")
@@ -196,7 +196,7 @@ class TestDefaultMaxSubagentDepth:
         """spawn_subagent() default max_depth is 1."""
         import inspect
 
-        from factory.engine.agent.subagent import spawn_subagent
+        from dark_factory.engine.agent.subagent import spawn_subagent
 
         sig = inspect.signature(spawn_subagent)
         assert sig.parameters["max_depth"].default == 1
@@ -206,7 +206,7 @@ class TestDefaultMaxSubagentDepth:
         """SubagentManager.spawn() default max_depth is 1."""
         import inspect
 
-        from factory.engine.agent.subagent_manager import SubagentManager
+        from dark_factory.engine.agent.subagent_manager import SubagentManager
 
         sig = inspect.signature(SubagentManager.spawn)  # type: ignore[attr-defined]
         assert sig.parameters["max_depth"].default == 1

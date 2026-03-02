@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.pipeline.tdd.test_writer import SpecBundle
-    from factory.twins.registry import Twin, TwinRegistry
+    from dark_factory.pipeline.tdd.test_writer import SpecBundle
+    from dark_factory.twins.registry import Twin, TwinRegistry
 
 logger = logging.getLogger(__name__)
 

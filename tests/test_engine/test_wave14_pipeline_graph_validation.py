@@ -14,10 +14,10 @@ import inspect
 from pathlib import Path
 from typing import Any
 
-from factory.engine.graph import Edge, Graph, Node, NodeShape
-from factory.engine.runner import Handler, HandlerResult, Outcome
-from factory.engine.stylesheet import Selector, _selector_matches
-from factory.engine.validation import Severity, _rule_no_orphan_nodes
+from dark_factory.engine.graph import Edge, Graph, Node, NodeShape
+from dark_factory.engine.runner import Handler, HandlerResult, Outcome
+from dark_factory.engine.stylesheet import Selector, _selector_matches
+from dark_factory.engine.validation import Severity, _rule_no_orphan_nodes
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -360,7 +360,7 @@ class TestHandlerSignature:
 
     async def test_handler_execute_works_with_5_params(self) -> None:
         """A handler implementation can be called with the full 5-param signature."""
-        from factory.engine.agent.abort import AbortSignal
+        from dark_factory.engine.agent.abort import AbortSignal
 
         class FullHandler:
             def __init__(self) -> None:

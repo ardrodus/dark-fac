@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from factory.pipeline.arch_review.sa_lead import ArchReviewVerdict, run_sa_lead
-from factory.pipeline.arch_review.specialists import (
+from dark_factory.pipeline.arch_review.sa_lead import ArchReviewVerdict, run_sa_lead
+from dark_factory.pipeline.arch_review.specialists import (
     ALL_SPECIALISTS,
     Specialist,
     SpecialistResult,
@@ -57,7 +57,7 @@ def _cache_dir(issue: dict[str, object], config: ArchReviewConfig) -> Path:
     if config.cache_dir:
         base = Path(config.cache_dir)
     else:
-        from factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
+        from dark_factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
 
         base = resolve_config_dir()
     return base / "reviews" / str(_inum(issue))

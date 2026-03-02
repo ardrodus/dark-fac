@@ -14,14 +14,14 @@ pytestmark = pytest.mark.skip(
     reason="Requires TrackedSubagent (not yet ported to factory)"
 )
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.agent.session import Session
-from factory.engine.agent.subagent_manager import (
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.session import Session
+from dark_factory.engine.agent.subagent_manager import (
     SubagentManager,
     TrackedSubagent,
     create_interactive_tools,
 )
-from factory.engine.types import Client
+from dark_factory.engine.types import Client
 
 # ------------------------------------------------------------------ #
 # Helpers

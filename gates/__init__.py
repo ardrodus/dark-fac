@@ -8,9 +8,9 @@ each security gate independently at the appropriate pipeline lifecycle
 point via ``factory.gates.<gate_module>.create_runner``.
 """
 
-from factory.gates.contract_validation import run_contract_validation
-from factory.gates.design_review import run_design_review
-from factory.gates.framework import (
+from dark_factory.gates.contract_validation import run_contract_validation
+from dark_factory.gates.design_review import run_design_review
+from dark_factory.gates.framework import (
     GATE_REGISTRY,
     CheckResult,
     CheckStatus,
@@ -27,8 +27,8 @@ from factory.gates.framework import (
     run_gate_by_name,
     write_gate_report,
 )
-from factory.gates.integration_test import run_integration_test_gate
-from factory.gates.startup_health import run_startup_health
+from dark_factory.gates.integration_test import run_integration_test_gate
+from dark_factory.gates.startup_health import run_startup_health
 
 __all__ = [
     "CheckResult",

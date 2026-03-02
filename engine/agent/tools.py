@@ -23,11 +23,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from factory.engine.agent.environment import (
+from dark_factory.engine.agent.environment import (
     ExecutionEnvironment,
     LocalEnvironment,
 )
-from factory.engine.types import Tool
+from dark_factory.engine.types import Tool
 
 # ------------------------------------------------------------------ #
 # Execution Environment
@@ -869,7 +869,7 @@ READ_MANY_FILES = _make_tool(
 
 async def _apply_patch(patch: str, working_dir: str | None = None) -> str:
     """Apply a unified diff patch."""
-    from factory.engine.agent.apply_patch import _apply_patch_execute  # noqa: PLC0415
+    from dark_factory.engine.agent.apply_patch import _apply_patch_execute  # noqa: PLC0415
 
     return await _apply_patch_execute(patch, working_dir)
 

@@ -55,7 +55,7 @@ def _claude_settings_paths() -> list[Path]:
 
 def _detect_from_config() -> str:
     """Check .dark-factory/config.json for claude_model."""
-    from factory.core.config_manager import resolve_config_path  # noqa: PLC0415
+    from dark_factory.core.config_manager import resolve_config_path  # noqa: PLC0415
     return _read_json_key(resolve_config_path(), "claude_model")
 
 
@@ -117,7 +117,7 @@ def prompt_claude_model() -> str:
 
 def save_claude_model(model: str) -> None:
     """Persist *model* to .dark-factory/config.json and update the cache."""
-    from factory.core.config_manager import (  # noqa: PLC0415
+    from dark_factory.core.config_manager import (  # noqa: PLC0415
         load_config,
         save_config,
         set_config_value,

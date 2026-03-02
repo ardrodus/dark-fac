@@ -28,7 +28,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from factory.engine.handlers.human import Answer, Question
+    from dark_factory.engine.handlers.human import Answer, Question
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ def _comment_and_label(
     cwd: str | None = None,
 ) -> None:
     """Add a comment and label to a GitHub issue (best-effort)."""
-    from factory.integrations.gh_safe import (  # noqa: PLC0415
+    from dark_factory.integrations.gh_safe import (  # noqa: PLC0415
         GhSafeError,
         add_label,
         comment_on_issue,
@@ -258,7 +258,7 @@ class TuiInterviewer:
         self._issue_number = issue_number
 
     async def ask(self, question: Question) -> Answer:
-        from factory.engine.handlers.human import Answer as _Answer  # noqa: PLC0415
+        from dark_factory.engine.handlers.human import Answer as _Answer  # noqa: PLC0415
 
         gate_type = classify_gate(question.stage, question.metadata)
         request = HumanGateRequest(
@@ -301,7 +301,7 @@ class AutoModeInterviewer:
         self._cwd = cwd
 
     async def ask(self, question: Question) -> Answer:
-        from factory.engine.handlers.human import Answer as _Answer  # noqa: PLC0415
+        from dark_factory.engine.handlers.human import Answer as _Answer  # noqa: PLC0415
 
         gate_type = classify_gate(question.stage, question.metadata)
         label = _GATE_LABELS[gate_type]

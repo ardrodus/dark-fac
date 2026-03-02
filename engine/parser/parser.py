@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from factory.engine.graph import Edge, Graph, Node
+from dark_factory.engine.graph import Edge, Graph, Node
 
 
 @dataclass

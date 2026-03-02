@@ -6,13 +6,13 @@ import os
 
 import pytest
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
-from factory.engine.agent.registry import ToolRegistry
-from factory.engine.agent.session import Session, SessionState
-from factory.engine.agent.tools import ALL_CORE_TOOLS, set_allowed_roots
-from factory.engine.agent.truncation import TruncationLimits, truncate_output
-from factory.engine.types import Client, ContentPart
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
+from dark_factory.engine.agent.registry import ToolRegistry
+from dark_factory.engine.agent.session import Session, SessionState
+from dark_factory.engine.agent.tools import ALL_CORE_TOOLS, set_allowed_roots
+from dark_factory.engine.agent.truncation import TruncationLimits, truncate_output
+from dark_factory.engine.types import Client, ContentPart
 
 # ================================================================== #
 # AbortSignal

@@ -13,7 +13,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from factory.gates.framework import (
+from dark_factory.gates.framework import (
     API_EXTS,
     IFACE_EXTS,
     SCHEMA_EXTS,
@@ -23,7 +23,7 @@ from factory.gates.framework import (
     find_typed_spec,
     read_file,
 )
-from factory.integrations.shell import run_command
+from dark_factory.integrations.shell import run_command
 
 logger = logging.getLogger(__name__)
 

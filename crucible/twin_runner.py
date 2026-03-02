@@ -12,14 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from factory.crucible.orchestrator import CrucibleVerdict
-from factory.integrations.shell import git, run_command
+from dark_factory.crucible.orchestrator import CrucibleVerdict
+from dark_factory.integrations.shell import git, run_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.integrations.shell import CommandResult
-    from factory.workspace.manager import Workspace
+    from dark_factory.integrations.shell import CommandResult
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _TEST_TIMEOUT = 600
@@ -105,7 +105,7 @@ def _run_sentinel_gate1(
     """Run Sentinel Gate 1 on cloned test code. Returns True if clean."""
     if gate_fn is not None:
         return gate_fn(test_dir)
-    from factory.gates.framework import GateRunner  # noqa: PLC0415
+    from dark_factory.gates.framework import GateRunner  # noqa: PLC0415
 
     runner = GateRunner("sentinel-gate1-test-code", metrics_dir=test_dir / ".dark-factory")
     runner.register_check(

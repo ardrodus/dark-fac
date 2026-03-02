@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.integrations.shell import run_command
+from dark_factory.integrations.shell import run_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable

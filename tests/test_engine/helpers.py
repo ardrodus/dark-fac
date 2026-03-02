@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from factory.engine.types import (
+from dark_factory.engine.types import (
     ContentPart,
     FinishReason,
     Message,

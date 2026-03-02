@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import pytest
 
-from factory.engine.graph import Edge, Graph, Node
-from factory.engine.handlers.human import (
+from dark_factory.engine.graph import Edge, Graph, Node
+from dark_factory.engine.handlers.human import (
     AutoApproveInterviewer,
     CallbackInterviewer,
     Question,
     QuestionType,
     QueueInterviewer,
 )
-from factory.engine.transforms import (
+from dark_factory.engine.transforms import (
     GraphTransform,
     VariableExpansionTransform,
     apply_transforms,
@@ -342,8 +342,8 @@ class TestRunPipelineTransforms:
     @pytest.mark.anyio
     async def test_transforms_param_accepted(self) -> None:
         """run_pipeline accepts the transforms kwarg without error."""
-        from factory.engine.handlers.basic import ExitHandler, StartHandler
-        from factory.engine.runner import (
+        from dark_factory.engine.handlers.basic import ExitHandler, StartHandler
+        from dark_factory.engine.runner import (
             HandlerRegistry,
             run_pipeline,
         )
@@ -360,8 +360,8 @@ class TestRunPipelineTransforms:
     @pytest.mark.anyio
     async def test_transforms_applied_before_execution(self) -> None:
         """Transforms modify the graph before the engine runs."""
-        from factory.engine.handlers.basic import ExitHandler, StartHandler
-        from factory.engine.runner import (
+        from dark_factory.engine.handlers.basic import ExitHandler, StartHandler
+        from dark_factory.engine.runner import (
             HandlerRegistry,
             run_pipeline,
         )

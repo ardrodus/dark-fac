@@ -31,14 +31,14 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import DataTable, Footer, Header, Label, Static
 
-from factory.core.config_manager import (
+from dark_factory.core.config_manager import (
     ConfigData,
     get_config_value,
     load_config,
     save_config,
     set_config_value,
 )
-from factory.ui.theme import (
+from dark_factory.ui.theme import (
     THEME,
     apply_subsystem_theme,
     build_theme_css,

@@ -23,8 +23,8 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Label, ProgressBar, RichLog, Static
 
-from factory.ui.notifications import Notification, NotificationPanel, get_store
-from factory.ui.theme import (
+from dark_factory.ui.notifications import Notification, NotificationPanel, get_store
+from dark_factory.ui.theme import (
     COMPACT_ICONS,
     FULL_HEADER_BANNER,
     PILLARS,
@@ -352,7 +352,7 @@ class DashboardApp(App[None]):
         queue = self._state.human_gate_queue
         if queue is None or not queue.pending:
             return
-        from factory.gates.human_gate import HumanGateResponse  # noqa: PLC0415
+        from dark_factory.gates.human_gate import HumanGateResponse  # noqa: PLC0415
 
         request = queue.pending[0]
         action = "Approved" if approved else "Rejected"

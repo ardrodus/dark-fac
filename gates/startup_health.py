@@ -25,8 +25,8 @@ import logging
 import shutil
 from pathlib import Path
 
-from factory.gates.framework import GateReport, GateRunner
-from factory.integrations.shell import run_command
+from dark_factory.gates.framework import GateReport, GateRunner
+from dark_factory.integrations.shell import run_command
 
 logger = logging.getLogger(__name__)
 

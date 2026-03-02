@@ -19,11 +19,11 @@ import asyncio
 
 import pytest  # type: ignore[import-untyped]
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.agent.events import EventKind, SessionEvent
-from factory.engine.agent.session import Session, SessionConfig, SessionState
-from factory.engine.types import AccessDeniedError, AuthenticationError, Client, Response
-from factory.tests.test_engine.helpers import MockAdapter, make_text_response, make_tool_call_response
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.events import EventKind, SessionEvent
+from dark_factory.engine.agent.session import Session, SessionConfig, SessionState
+from dark_factory.engine.types import AccessDeniedError, AuthenticationError, Client, Response
+from dark_factory.tests.test_engine.helpers import MockAdapter, make_text_response, make_tool_call_response
 
 # ================================================================== #
 # Helpers
@@ -125,7 +125,7 @@ class TestP22EventKindVocabulary:
     @pytest.mark.skip(reason="Session event emission not fully ported")
     async def test_steering_injected_event_fires_in_session(self) -> None:
         """Session emits STEERING_INJECTED when a steering message is drained."""
-        from factory.engine.types import Tool
+        from dark_factory.engine.types import Tool
 
         async def _noop(**kwargs: object) -> str:
             return "ok"

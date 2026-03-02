@@ -3,9 +3,9 @@
 DOT-based pipeline runner for orchestrating multi-stage AI workflows.
 """
 
-from factory.engine.conditions import evaluate_condition
-from factory.engine.config import EngineConfig, load_engine_config
-from factory.engine.events import (
+from dark_factory.engine.conditions import evaluate_condition
+from dark_factory.engine.config import EngineConfig, load_engine_config
+from dark_factory.engine.events import (
     CheckpointSaved,
     EventEmitter,
     InterviewCompleted,
@@ -24,8 +24,8 @@ from factory.engine.events import (
     StageRetrying,
     StageStarted,
 )
-from factory.engine.graph import Edge, Graph, Node, NodeShape
-from factory.engine.handlers import (
+from dark_factory.engine.graph import Edge, Graph, Node, NodeShape
+from dark_factory.engine.handlers import (
     Answer,
     AutoApproveInterviewer,
     CallbackInterviewer,
@@ -43,8 +43,8 @@ from factory.engine.handlers import (
     ask_question_via_ask,
     register_default_handlers,
 )
-from factory.engine.parser import parse_dot
-from factory.engine.runner import (
+from dark_factory.engine.parser import parse_dot
+from dark_factory.engine.runner import (
     RETRY_PRESETS,
     Checkpoint,
     Handler,
@@ -58,13 +58,13 @@ from factory.engine.runner import (
     run_pipeline,
     select_edge,
 )
-from factory.engine.sdk import ExecuteConfig, execute
-from factory.engine.stylesheet import (
+from dark_factory.engine.sdk import ExecuteConfig, execute
+from dark_factory.engine.stylesheet import (
     Stylesheet,
     apply_stylesheet,
     parse_stylesheet,
 )
-from factory.engine.transforms import (
+from dark_factory.engine.transforms import (
     GraphTransform,
     VariableExpansionTransform,
     apply_transforms,

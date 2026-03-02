@@ -11,7 +11,7 @@ import logging
 import os
 from pathlib import Path
 
-from factory.integrations.shell import CommandResult, run_command
+from dark_factory.integrations.shell import CommandResult, run_command
 
 logger = logging.getLogger(__name__)
 

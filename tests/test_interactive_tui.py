@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from textual.widgets import ListView
 
-from factory.modes.interactive import (
+from dark_factory.modes.interactive import (
     MENU_ITEMS,
     InteractiveApp,
     MenuItem,

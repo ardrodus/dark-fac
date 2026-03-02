@@ -6,7 +6,7 @@ limits. Implements depth limiting to prevent infinite delegation.
 
 Usage::
 
-    from factory.engine.agent.subagent import spawn_subagent
+    from dark_factory.engine.agent.subagent import spawn_subagent
 
     # From within a parent session's tool handler:
     result = await spawn_subagent(
@@ -25,11 +25,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.agent.profiles import get_profile
-from factory.engine.agent.session import Session, SessionConfig
-from factory.engine.agent.tools import ALL_CORE_TOOLS
-from factory.engine.types import Usage
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.profiles import get_profile
+from dark_factory.engine.agent.session import Session, SessionConfig
+from dark_factory.engine.agent.tools import ALL_CORE_TOOLS
+from dark_factory.engine.types import Usage
 
 
 class SubagentError(Exception):
@@ -181,7 +181,7 @@ def _add_spawn_tool(
     abort_signal: AbortSignal | None,
 ) -> list[Any]:
     """Add a 'spawn_agent' tool that lets subagents spawn further subagents."""
-    from factory.engine.types import Tool  # noqa: PLC0415
+    from dark_factory.engine.types import Tool  # noqa: PLC0415
 
     async def spawn_agent_execute(
         task: str,

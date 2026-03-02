@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from factory.modes.foundry_config import (
+from dark_factory.modes.foundry_config import (
     _DEPLOY_PIPELINE_NOT_CONFIGURED,
     WorkspaceConfig,
     WorkspaceConfigScreen,
     has_custom_deploy_dot,
     resolve_deploy_pipeline,
 )
-from factory.ui.theme import SUBSYSTEM_THEMES
+from dark_factory.ui.theme import SUBSYSTEM_THEMES
 
 # ── Sample configs ───────────────────────────────────────────────
 

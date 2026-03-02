@@ -121,7 +121,7 @@ def _create_issue(
     if gh_fn is not None:
         result = gh_fn(args, check=True)  # type: ignore[operator]
     else:
-        from factory.integrations.shell import gh  # noqa: PLC0415
+        from dark_factory.integrations.shell import gh  # noqa: PLC0415
         result = gh(args, check=True)
     m = re.search(r"/issues/(\d+)", result.stdout)
     return int(m.group(1)) if m else None

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import builtins
     from collections.abc import Callable
 
-    from factory.integrations.shell import CommandResult
+    from dark_factory.integrations.shell import CommandResult
 
 logger = logging.getLogger(__name__)
 _REGISTRY_REL = Path(".dark-factory") / "twins" / "registry.json"
@@ -46,7 +46,7 @@ class Twin:
 
 
 def _default_docker(args: list[str]) -> CommandResult:
-    from factory.integrations.shell import docker  # noqa: PLC0415
+    from dark_factory.integrations.shell import docker  # noqa: PLC0415
     return docker(args)
 
 

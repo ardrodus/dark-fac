@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from factory.engine.claude_backend import ClaudeCodeBackend, ClaudeCodeConfig
-from factory.engine.graph import Node
-from factory.engine.runner import HandlerResult
+from dark_factory.engine.claude_backend import ClaudeCodeBackend, ClaudeCodeConfig
+from dark_factory.engine.graph import Node
+from dark_factory.engine.runner import HandlerResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -72,7 +72,7 @@ class TestClaudeCodeBackendRun:
         """Pipes prompt to stdin, returns stdout."""
         proc = _fake_process(stdout=b"Hello world")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend()
             result = await backend.run(_node(), "Say hello", {})
 
@@ -90,7 +90,7 @@ class TestClaudeCodeBackendRun:
         proc = _fake_process(stdout=b"ok")
         cfg = ClaudeCodeConfig(model="claude-sonnet-4-5")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend(cfg)
             await backend.run(_node(), "test", {})
 
@@ -105,7 +105,7 @@ class TestClaudeCodeBackendRun:
         cfg = ClaudeCodeConfig(model="config-model")
         node = _node(llm_model="node-model")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend(cfg)
             await backend.run(node, "test", {})
 
@@ -118,7 +118,7 @@ class TestClaudeCodeBackendRun:
         """No --model flag when neither config nor node specify a model."""
         proc = _fake_process(stdout=b"ok")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend()
             await backend.run(_node(), "test", {})
 
@@ -131,7 +131,7 @@ class TestClaudeCodeBackendRun:
         proc = _fake_process(stdout=b"ok")
         node = _node(attrs={"system_prompt": "You are helpful."})
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend()
             await backend.run(node, "test", {})
 
@@ -144,7 +144,7 @@ class TestClaudeCodeBackendRun:
         """No --system-prompt flag when node has no system_prompt."""
         proc = _fake_process(stdout=b"ok")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend()
             await backend.run(_node(), "test", {})
 
@@ -156,7 +156,7 @@ class TestClaudeCodeBackendRun:
         """RuntimeError on non-zero exit code with stderr content."""
         proc = _fake_process(returncode=1, stderr=b"Something went wrong")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
             backend = ClaudeCodeBackend()
             with pytest.raises(RuntimeError, match="exited with code 1"):
                 await backend.run(_node(), "test", {})
@@ -166,7 +166,7 @@ class TestClaudeCodeBackendRun:
         """RuntimeError message includes stderr content."""
         proc = _fake_process(returncode=2, stderr=b"API key invalid")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
             backend = ClaudeCodeBackend()
             with pytest.raises(RuntimeError, match="API key invalid"):
                 await backend.run(_node(), "test", {})
@@ -177,7 +177,7 @@ class TestClaudeCodeBackendRun:
         proc = _fake_process(stdout=b"ok")
         cfg = ClaudeCodeConfig(claude_path="/opt/bin/claude")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend(cfg)
             await backend.run(_node(), "test", {})
 
@@ -191,7 +191,7 @@ class TestClaudeCodeBackendRun:
         cfg = ClaudeCodeConfig(claude_path="claude", model="my-model")
         node = _node(attrs={"system_prompt": "Be brief."})
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend(cfg)
             result = await backend.run(node, "do stuff", {})
 
@@ -209,7 +209,7 @@ class TestClaudeCodeBackendRun:
         """Non-ASCII prompt is encoded as UTF-8."""
         proc = _fake_process(stdout=b"ok")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
             backend = ClaudeCodeBackend()
             await backend.run(_node(), "Héllo wörld", {})
 
@@ -220,7 +220,7 @@ class TestClaudeCodeBackendRun:
         """On success, returns a plain string (CodergenHandler wraps it)."""
         proc = _fake_process(stdout=b"done")
 
-        with patch("factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
+        with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
             backend = ClaudeCodeBackend()
             result = await backend.run(_node(), "test", {})
 

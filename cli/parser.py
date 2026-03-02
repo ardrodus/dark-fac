@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory import __version__
+from dark_factory import __version__
 
 if TYPE_CHECKING:
     from collections.abc import Callable

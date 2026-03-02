@@ -14,13 +14,13 @@ import sys
 
 import pytest
 
-from factory.engine.agent.environment import (
+from dark_factory.engine.agent.environment import (
     DockerEnvironment,
     ExecutionEnvironment,
     LocalEnvironment,
     ShellResult,
 )
-from factory.engine.agent.tools import (
+from dark_factory.engine.agent.tools import (
     get_environment,
     set_environment,
 )
@@ -213,7 +213,7 @@ class TestToolEnvironmentIntegration:
     @pytest.mark.asyncio
     async def test_tools_use_environment(self, tmp_path):
         """Verify that tool functions actually use _environment."""
-        from factory.engine.agent.tools import (
+        from dark_factory.engine.agent.tools import (
             _read_file,
             _write_file,
             set_allowed_roots,

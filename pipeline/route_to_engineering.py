@@ -24,9 +24,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.engine.runner import PipelineResult
-    from factory.pipeline.engine import FactoryPipelineEngine
-    from factory.workspace.manager import Workspace
+    from dark_factory.engine.runner import PipelineResult
+    from dark_factory.pipeline.engine import FactoryPipelineEngine
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def _ititle(issue: dict[str, object]) -> str:
 def _label_blocked(num: int, repo: str, reason: str) -> None:
     """Label issue as blocked."""
     try:
-        from factory.integrations.gh_safe import add_label  # noqa: PLC0415
+        from dark_factory.integrations.gh_safe import add_label  # noqa: PLC0415
 
         add_label(num, "blocked", repo=repo)
     except Exception:  # noqa: BLE001
@@ -113,7 +113,7 @@ def _notify_needs_live(num: int, repo: str) -> None:
         "Please validate manually in a live environment."
     )
     try:
-        from factory.integrations.gh_safe import add_label, comment_on_issue  # noqa: PLC0415
+        from dark_factory.integrations.gh_safe import add_label, comment_on_issue  # noqa: PLC0415
 
         comment_on_issue(num, body, repo=repo)
         add_label(num, LABEL_NEEDS_LIVE, repo=repo)
@@ -124,7 +124,7 @@ def _notify_needs_live(num: int, repo: str) -> None:
 def _label_done(num: int, repo: str) -> None:
     """Label issue as done after successful deploy."""
     try:
-        from factory.integrations.gh_safe import add_label  # noqa: PLC0415
+        from dark_factory.integrations.gh_safe import add_label  # noqa: PLC0415
 
         add_label(num, "factory:done", repo=repo)
     except Exception:  # noqa: BLE001
@@ -138,19 +138,19 @@ def _fail(msg: str, num: int, repo: str, m: PipelineMetrics) -> RouteResult:
 
 
 def _default_acquire(repo: str, num: int) -> Workspace:
-    from factory.workspace.manager import acquire_workspace  # noqa: PLC0415
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
     return acquire_workspace(repo, num)
 
 
 def _default_engine() -> FactoryPipelineEngine:
-    from factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
 
     return FactoryPipelineEngine()
 
 
 def _default_rev_parse(ws_path: str, ref: str) -> str:
-    from factory.integrations.shell import git  # noqa: PLC0415
+    from dark_factory.integrations.shell import git  # noqa: PLC0415
 
     result = git(["rev-parse", ref], cwd=ws_path)
     return result.stdout.strip()
@@ -162,7 +162,7 @@ def _extract_verdict(result: PipelineResult) -> str:
     Checks the last completed node against known verdict exit nodes.
     Falls back to the context ``verdict`` variable if set.
     """
-    from factory.engine.runner import PipelineStatus  # noqa: PLC0415
+    from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
 
     if result.status == PipelineStatus.FAILED:
         return _VERDICT_NO_GO
@@ -182,7 +182,7 @@ def _extract_verdict(result: PipelineResult) -> str:
 
 def _is_pipeline_ok(result: PipelineResult) -> bool:
     """Check if a pipeline result indicates success."""
-    from factory.engine.runner import PipelineStatus  # noqa: PLC0415
+    from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
 
     return result.status == PipelineStatus.COMPLETED
 

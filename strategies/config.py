@@ -3,7 +3,7 @@
 Strategy is a simple config value (``"console"`` or ``"web"``), not a class
 hierarchy.  Use :func:`get_config` to look up defaults::
 
-    from factory.strategies.config import get_config
+    from dark_factory.strategies.config import get_config
     cfg = get_config("console")
 """
 

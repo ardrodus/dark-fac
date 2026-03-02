@@ -29,7 +29,7 @@ def _resolve_log_dir(config_dir: Path | None = None) -> Path:
     if config_dir is not None:
         log_dir = config_dir / _LOG_DIR_NAME
     else:
-        from factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
+        from dark_factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
 
         log_dir = resolve_config_dir() / _LOG_DIR_NAME
     log_dir.mkdir(parents=True, exist_ok=True)

@@ -9,15 +9,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.setup.project_analyzer import AnalysisResult
+    from dark_factory.setup.project_analyzer import AnalysisResult
 
-from factory.specs.base import (
+from dark_factory.specs.base import (
     run_generate,
     save_artifact,
     strip_fences,
     validate_checks,
 )
-from factory.specs.design_generator import DesignResult
+from dark_factory.specs.design_generator import DesignResult
 
 _SKIP = frozenset(("node_modules", ".git", "vendor", "__pycache__"))
 _PY = ("requirements.txt", "setup.py", "setup.cfg", "pyproject.toml")

@@ -10,7 +10,7 @@ import contextlib
 from collections.abc import Generator
 from typing import Any
 
-from factory.ui.theme import PILLARS, THEME
+from dark_factory.ui.theme import PILLARS, THEME
 
 
 @contextlib.contextmanager

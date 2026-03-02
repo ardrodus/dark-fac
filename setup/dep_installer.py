@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.setup.project_analyzer import AnalysisResult
+    from dark_factory.setup.project_analyzer import AnalysisResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +108,7 @@ def install_project_deps(analysis: AnalysisResult, *, plat_os: str = "") -> Inst
         sys.stdout.write("  No project-specific tools required.\n")
         return InstallResult()
     if not plat_os:
-        from factory.setup.platform import detect_platform  # noqa: PLC0415
+        from dark_factory.setup.platform import detect_platform  # noqa: PLC0415
         plat_os = detect_platform().os
     w = sys.stdout.write
     w("\n  Checking project dependencies...\n\n")

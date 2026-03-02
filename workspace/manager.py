@@ -15,7 +15,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from factory.integrations.shell import CommandError, git
+from dark_factory.integrations.shell import CommandError, git
 
 logger = logging.getLogger(__name__)
 
@@ -425,7 +425,7 @@ def _run_sentinel_gate(ws_path: Path) -> bool:
         logger.info("Sentinel gates skipped (WSREG_SKIP_SENTINEL=true)")
         return True
 
-    from factory.gates.framework import GateRunner  # noqa: PLC0415
+    from dark_factory.gates.framework import GateRunner  # noqa: PLC0415
 
     runner = GateRunner("sentinel-acquire", metrics_dir=str(ws_path.parent))
     cwd = str(ws_path)

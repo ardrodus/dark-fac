@@ -1,5 +1,5 @@
 """Knowledge system — pattern confidence, staleness, tags, and conflict resolution."""
-from factory.knowledge.patterns import (
+from dark_factory.knowledge.patterns import (
     Pattern,
     PatternStore,
     PatternType,

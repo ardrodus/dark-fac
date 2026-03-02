@@ -5,7 +5,7 @@ inside larger applications (e.g., Dark Factory auto mode).
 
 Usage::
 
-    from factory.engine.sdk import execute
+    from dark_factory.engine.sdk import execute
 
     result = await execute(
         "factory/pipelines/dark_forge.dot",
@@ -29,8 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from factory.engine.events import PipelineEvent
-from factory.engine.runner import PipelineResult
+from dark_factory.engine.events import PipelineEvent
+from dark_factory.engine.runner import PipelineResult
 
 
 @dataclass
@@ -87,18 +87,18 @@ async def execute(
         FileNotFoundError: If dotfile doesn't exist.
         ValueError: If the DOT file fails validation.
     """
-    from factory.engine import (  # noqa: PLC0415
+    from dark_factory.engine import (  # noqa: PLC0415
         HandlerRegistry,
         parse_dot,
         register_default_handlers,
     )
-    from factory.engine import run_pipeline as _run_pipeline  # noqa: PLC0415
-    from factory.engine.claude_backend import (  # noqa: PLC0415
+    from dark_factory.engine import run_pipeline as _run_pipeline  # noqa: PLC0415
+    from dark_factory.engine.claude_backend import (  # noqa: PLC0415
         ClaudeCodeBackend,
         ClaudeCodeConfig,
     )
-    from factory.engine.config import load_engine_config  # noqa: PLC0415
-    from factory.engine.validation import validate_or_raise  # noqa: PLC0415
+    from dark_factory.engine.config import load_engine_config  # noqa: PLC0415
+    from dark_factory.engine.validation import validate_or_raise  # noqa: PLC0415
 
     # --- Load factory config (fallback values) ---
     engine_cfg = load_engine_config(Path(dotfile).parent)
@@ -117,14 +117,14 @@ async def execute(
     # --- Apply Stylesheet ---
     # Priority: explicit stylesheet_path > config stylesheet
     if stylesheet_path:
-        from factory.engine.stylesheet import apply_stylesheet  # noqa: PLC0415
+        from dark_factory.engine.stylesheet import apply_stylesheet  # noqa: PLC0415
 
         style_path = Path(stylesheet_path)
         if style_path.exists():
             graph.model_stylesheet = style_path.read_text(encoding="utf-8")
             apply_stylesheet(graph)
     elif engine_cfg.model_stylesheet and not graph.model_stylesheet:
-        from factory.engine.stylesheet import apply_stylesheet  # noqa: PLC0415
+        from dark_factory.engine.stylesheet import apply_stylesheet  # noqa: PLC0415
 
         graph.model_stylesheet = engine_cfg.model_stylesheet
         apply_stylesheet(graph)
@@ -142,7 +142,7 @@ async def execute(
 
     # --- Human Gate Callback ---
     if on_human_gate:
-        from factory.engine.handlers import (  # noqa: PLC0415
+        from dark_factory.engine.handlers import (  # noqa: PLC0415
             CallbackInterviewer,
             HumanHandler,
         )

@@ -8,7 +8,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from factory.core.config_manager import ConfigData
+    from dark_factory.core.config_manager import ConfigData
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ _DEGRADED_EPILOGUE = (
 def _mem_available() -> bool:
     """Check if claude-mem is available. Returns True if unknown."""
     try:
-        from factory.integrations.health import is_up  # type: ignore[import-not-found]  # noqa: PLC0415
+        from dark_factory.integrations.health import is_up  # type: ignore[import-not-found]  # noqa: PLC0415
         return is_up("mem")  # type: ignore[no-any-return]
     except Exception:  # noqa: BLE001
         return True

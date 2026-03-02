@@ -4,6 +4,6 @@ Exposes the discovery protocol (``GATE_NAME`` + ``create_runner``) so the
 gate framework auto-discovers this gate alongside the others.
 """
 
-from factory.security.ai_security_review import GATE_NAME, create_runner
+from dark_factory.security.ai_security_review import GATE_NAME, create_runner
 
 __all__ = ["GATE_NAME", "create_runner"]

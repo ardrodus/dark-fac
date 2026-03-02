@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from factory.modes.interactive import MENU_ITEMS, InteractiveApp
-from factory.ui.theme import (
+from dark_factory.modes.interactive import MENU_ITEMS, InteractiveApp
+from dark_factory.ui.theme import (
     ALL_THEME_CLASSES,
     SUBSYSTEM_THEMES,
     SubsystemTheme,

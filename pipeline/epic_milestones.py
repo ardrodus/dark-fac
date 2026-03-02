@@ -9,10 +9,10 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from factory.integrations.shell import CommandError, gh
+from dark_factory.integrations.shell import CommandError, gh
 
 if TYPE_CHECKING:
-    from factory.core.config_manager import ConfigData
+    from dark_factory.core.config_manager import ConfigData
 
 logger = logging.getLogger(__name__)
 

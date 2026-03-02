@@ -223,7 +223,7 @@ def format_stage_table(stages: Sequence[StageMetric]) -> str:
     """Format stages as a text table with visual icons."""
     if not stages:
         return "  (no stages recorded)"
-    from factory.ui.theme import stage_icon  # noqa: PLC0415
+    from dark_factory.ui.theme import stage_icon  # noqa: PLC0415
 
     lines: list[str] = []
     for s in stages:

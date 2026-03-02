@@ -5,7 +5,7 @@ of ``factory.workspace.manager`` directly.  These aliases will be removed
 after one release cycle.
 """
 
-from factory.workspace.manager import (
+from dark_factory.workspace.manager import (
     Workspace,
     WorkspaceInfo,
     WorkspaceResult,

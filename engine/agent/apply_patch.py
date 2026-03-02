@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from factory.engine.agent.tools import _check_path_allowed
+from dark_factory.engine.agent.tools import _check_path_allowed
 
 
 @dataclass
@@ -189,8 +189,8 @@ async def _apply_v4a_patch(patch_text: str, base_dir: str | None = None) -> str:
     """
     import os
 
-    from factory.engine.agent.environment import LocalEnvironment  # noqa: PLC0415
-    from factory.engine.agent.tools import get_environment  # noqa: PLC0415
+    from dark_factory.engine.agent.environment import LocalEnvironment  # noqa: PLC0415
+    from dark_factory.engine.agent.tools import get_environment  # noqa: PLC0415
 
     env = get_environment()
     base = Path(base_dir or os.getcwd())
@@ -392,8 +392,8 @@ async def apply_patch_to_file(
     resolved = target.resolve()
 
     # Route through execution environment for Docker compatibility (spec S4.1)
-    from factory.engine.agent.environment import LocalEnvironment  # noqa: PLC0415
-    from factory.engine.agent.tools import get_environment  # noqa: PLC0415
+    from dark_factory.engine.agent.environment import LocalEnvironment  # noqa: PLC0415
+    from dark_factory.engine.agent.tools import get_environment  # noqa: PLC0415
 
     env = get_environment()
 

@@ -47,7 +47,7 @@ def invoke_agent(
     """Call the Claude agent (or a provided stub for testing)."""
     if invoke_fn is not None:
         return invoke_fn(prompt)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
     return run_command(
         ["claude", "-p", prompt, "--output-format", "json"],
         timeout=AGENT_TIMEOUT, check=True,

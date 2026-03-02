@@ -20,8 +20,8 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
 
-from factory import __version__
-from factory.ui.theme import (
+from dark_factory import __version__
+from dark_factory.ui.theme import (
     COMPACT_ICONS,
     PILLARS,
     THEME,

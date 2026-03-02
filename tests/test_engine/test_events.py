@@ -6,14 +6,14 @@ import asyncio
 
 import pytest
 
-from factory.engine import (
+from dark_factory.engine import (
     HandlerRegistry,
     PipelineStatus,
     parse_dot,
     register_default_handlers,
     run_pipeline,
 )
-from factory.engine.events import (
+from dark_factory.engine.events import (
     CheckpointSaved,
     EventEmitter,
     InterviewCompleted,
@@ -289,7 +289,7 @@ class TestRunnerEventEmission:
     @pytest.mark.asyncio
     async def test_pipeline_failed_event_on_no_start(self):
         """PipelineFailed emitted when pipeline fails."""
-        from factory.engine.graph import Graph
+        from dark_factory.engine.graph import Graph
 
         g = Graph(name="empty")
         registry = HandlerRegistry()
@@ -360,7 +360,7 @@ class TestRunnerEventEmission:
         When a node exhausts retries, only StageFailed should be emitted --
         StageCompleted must NOT follow for that node.
         """
-        from factory.engine.runner import HandlerResult, Outcome
+        from dark_factory.engine.runner import HandlerResult, Outcome
 
         class AlwaysFailHandler:
             """Handler that always returns FAIL."""
@@ -411,7 +411,7 @@ class TestRunnerEventEmission:
     @pytest.mark.asyncio
     async def test_stage_retrying_includes_error_reason(self):
         """StageRetrying events include the failure reason so users can diagnose retries."""
-        from factory.engine.runner import HandlerResult, Outcome
+        from dark_factory.engine.runner import HandlerResult, Outcome
 
         class AlwaysFailHandler:
             async def execute(self, node, context, graph, logs_root, abort_signal=None):
@@ -546,7 +546,7 @@ class TestVerboseEventPrinter:
     @pytest.mark.skip(reason="CLI module not ported to factory")
     def test_console_printer_formats_event(self, capsys):
         """_console_event_printer writes event description to stdout."""
-        from factory.engine.cli import _console_event_printer  # type: ignore[import-not-found]  # noqa: PLC0415
+        from dark_factory.engine.cli import _console_event_printer  # type: ignore[import-not-found]  # noqa: PLC0415
 
         event = PipelineStarted(name="TestPipeline", id="abc123")
         _console_event_printer(event)
@@ -565,8 +565,8 @@ class TestPublicExports:
     """Event types are importable from the top-level package."""
 
     def test_event_types_importable_from_package(self):
-        """All event types can be imported from factory.engine."""
-        from factory.engine import (  # noqa: F401
+        """All event types can be imported from dark_factory.engine."""
+        from dark_factory.engine import (  # noqa: F401
             CheckpointSaved,
             EventEmitter,
             InterviewCompleted,

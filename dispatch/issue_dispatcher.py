@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from factory.integrations.gh_safe import (
+from dark_factory.integrations.gh_safe import (
     GhSafeError,
     IssueInfo,
     add_label,

@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from factory.integrations.shell import docker
+from dark_factory.integrations.shell import docker
 
 logger = logging.getLogger(__name__)
 _CPU_SPIKE_PCT, _MEM_SPIKE_PCT, _DISK_SPIKE_MB = 90.0, 95.0, 500

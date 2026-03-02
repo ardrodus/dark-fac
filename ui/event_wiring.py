@@ -6,7 +6,7 @@ GatePanel, LogPanel, NotificationPanel).
 
 Usage::
 
-    from factory.ui.event_wiring import wire_events
+    from dark_factory.ui.event_wiring import wire_events
 
     app = DashboardApp(state=state)
     emitter = EventEmitter(on_event=wire_events(app, state))
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from factory.engine.events import (
+from dark_factory.engine.events import (
     CheckpointSaved,
     InterviewCompleted,
     InterviewStarted,
@@ -38,14 +38,14 @@ from factory.engine.events import (
     StageRetrying,
     StageStarted,
 )
-from factory.ui.dashboard import (
+from dark_factory.ui.dashboard import (
     AgentInfo,
     DashboardApp,
     DashboardState,
     GateSummary,
     StageStatus,
 )
-from factory.ui.notifications import notify
+from dark_factory.ui.notifications import notify
 
 
 def _find_stage(state: DashboardState, name: str) -> int | None:

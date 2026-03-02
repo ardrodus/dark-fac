@@ -393,7 +393,7 @@
   - Bash `logger.sh` uses size-based rotation (50 MB); PRD specifies daily files + 7-day retention — implemented PRD requirements, not bash behavior
   - Bash has 4 JSONL fields (`ts`, `level`, `component`, `msg`); Python PRD requires 7 (`timestamp`, `level`, `phase`, `tag`, `message`, `duration_ms`, `metadata`) — Python exceeds bash by design
   - Python `logging` module uses `WARNING` not `WARN` — need a level mapping dict (`{"WARN": "WARNING"}`) before `getattr(logging, ...)` to avoid silent fallback to `INFO`
-  - Followed the same lazy-import pattern (`from factory.core.config_manager import resolve_config_dir  # noqa: PLC0415`) used by `instance_lock.py` to avoid circular imports
+  - Followed the same lazy-import pattern (`from dark_factory.core.config_manager import resolve_config_dir  # noqa: PLC0415`) used by `instance_lock.py` to avoid circular imports
   - `_purge_old_logs()` uses `st_mtime` comparison rather than parsing dates from filenames — simpler and more robust
   - `json.dumps(separators=(",", ":"))` produces compact JSONL (no spaces) which is idiomatic for log files
 ---
@@ -757,17 +757,17 @@
   - `factory/engine/agent/project_docs.py` — discover_project_docs() replacing attractor_agent.project_docs
   - `factory/engine/agent/subagent_manager.py` — SubagentManager + create_interactive_tools() replacing attractor_agent.subagent_manager
 - **Files modified:**
-  - `engine/runner.py` — RetryPolicy import from factory.engine.types
-  - `engine/backends.py` — imports from factory.engine.types + factory.engine.agent.profiles
+  - `engine/runner.py` — RetryPolicy import from dark_factory.engine.types
+  - `engine/backends.py` — imports from dark_factory.engine.types + factory.engine.agent.profiles
   - `engine/sdk.py` — fully rewritten to use ClaudeCodeBackend (removed all provider-specific code: Bedrock, Anthropic, OpenAI, Gemini adapters)
   - `engine/agent/session.py` — all attractor_* imports replaced with local modules
-  - `engine/agent/tools.py` — Tool import from factory.engine.types; fixed `handler=` → `execute=` kwarg on APPLY_PATCH
-  - `engine/agent/registry.py` — ContentPart, ContentPartKind, Tool from factory.engine.types
+  - `engine/agent/tools.py` — Tool import from dark_factory.engine.types; fixed `handler=` → `execute=` kwarg on APPLY_PATCH
+  - `engine/agent/registry.py` — ContentPart, ContentPartKind, Tool from dark_factory.engine.types
   - `engine/agent/subagent.py` — get_profile + Usage from local modules
   - `engine/__init__.py` — removed "Ported from attractor_pipeline" docstring
   - `engine/agent/__init__.py` — updated docstring
   - `tests/conftest.py` — removed all attractor_* mock stubs (no longer needed)
-  - `tests/test_workspace_security.py` — replaced _FakeContentPart with real ContentPart from factory.engine.types; removed patch() workarounds
+  - `tests/test_workspace_security.py` — replaced _FakeContentPart with real ContentPart from dark_factory.engine.types; removed patch() workarounds
 - **Quality:** ruff check ✓, mypy ✓ (0 errors in 162 files), pytest ✓ (155 passed)
 - **Learnings:**
   - When the mocked attractor_llm.types.Tool was replaced with a real dataclass, a latent bug surfaced: APPLY_PATCH used `handler=` keyword but the actual field is `execute=`. MagicMock silently swallowed this; real types caught it immediately.
@@ -790,7 +790,7 @@
   - The config_manager.py `_DEFAULTS` dict is deep-merged with config.json on load, so new sections added to defaults are always present even if config.json doesn't mention them — no migration needed for existing config files.
   - Stylesheet loading follows the same pattern as security config: check for file in `.dark-factory/`, fall back to built-in default. A shipped default stylesheet (`* { llm_model: claude-sonnet-4-5; }`) ensures nodes always have a model assigned even without explicit config.
   - The `sdk.py` priority chain is: explicit function arg > config.json value > hardcoded default. This allows CLI overrides while still respecting project-level config.
-  - ruff's `I001` import sorting is strict about alphabetical ordering within import blocks — the `from factory.engine.config` import must come before `from factory.engine.conditions` alphabetically within the block.
+  - ruff's `I001` import sorting is strict about alphabetical ordering within import blocks — the `from dark_factory.engine.config` import must come before `from dark_factory.engine.conditions` alphabetically within the block.
 ---
 
 ## 2026-03-02 - US-006
@@ -1084,7 +1084,7 @@
   - `pipelines/sentinel.dot` — Added invocation path documentation mapping DOT nodes to Python entry points
 - **Learnings:**
   - The gate framework has two consumption patterns: (1) `GATE_REGISTRY` + `run_all_gates()`/`discover_gates()` for batch execution, and (2) individual `create_runner()` calls for sentinel's per-lifecycle-point invocation. Both use the same `GATE_NAME` + `create_runner` protocol.
-  - Security gate wrappers in gates/ are pure re-exports (`from factory.security.X import GATE_NAME, create_runner`). The thin wrapper layer separates the "gate" concept from the "security scan" implementation, enabling the engine to import from `factory.gates` without knowing security internals.
+  - Security gate wrappers in gates/ are pure re-exports (`from dark_factory.security.X import GATE_NAME, create_runner`). The thin wrapper layer separates the "gate" concept from the "security scan" implementation, enabling the engine to import from `factory.gates` without knowing security internals.
   - `image_scan.create_runner` takes `image_tag` (not `workspace`) as its first arg, making it semantically different from other gate runners. The framework's `discover_gates()` passes `workspace` as the first arg, so image-scan will receive a workspace path as `image_tag` — this works but is a known mismatch.
   - `ai_security_review.py` was the only security module missing `GATE_NAME`/`create_runner`. All other security modules (dependency_scan, sast_scan, secret_scan, image_scan, sbom_scan) already had them.
   - `network_isolation.py` is an infrastructure module (not a scan gate) — sentinel.dot's `netiso_scan` node is an AI prompt node, not a shell tool node, so it doesn't need a gate wrapper.

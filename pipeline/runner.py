@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from factory.agents.prompts import AGENT_PROMPTS
-from factory.gates.quality import (
+from dark_factory.agents.prompts import AGENT_PROMPTS
+from dark_factory.gates.quality import (
     FileKind,
     QualityReport,
     classify_changeset,

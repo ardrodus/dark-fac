@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from factory.engine.events import (
+from dark_factory.engine.events import (
     CheckpointSaved,
     InterviewCompleted,
     InterviewStarted,
@@ -24,8 +24,8 @@ from factory.engine.events import (
     StageRetrying,
     StageStarted,
 )
-from factory.ui.dashboard import DashboardState
-from factory.ui.event_wiring import wire_events
+from dark_factory.ui.dashboard import DashboardState
+from dark_factory.ui.event_wiring import wire_events
 
 
 @pytest.fixture()
@@ -204,7 +204,7 @@ def test_unknown_event_ignored(handler, app: MagicMock) -> None:
 
 def test_dispatch_covers_all_event_types() -> None:
     """The dispatch table should have an entry for every concrete event."""
-    from factory.ui.event_wiring import _DISPATCH
+    from dark_factory.ui.event_wiring import _DISPATCH
 
     expected = {
         PipelineStarted, PipelineCompleted, PipelineFailed,

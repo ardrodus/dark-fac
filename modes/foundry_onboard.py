@@ -57,7 +57,7 @@ class OnboardResult:
 
 def _default_clone(repo_url: str, dest: Path) -> bool:
     """Clone *repo_url* into *dest* using git."""
-    from factory.integrations.shell import git  # noqa: PLC0415
+    from dark_factory.integrations.shell import git  # noqa: PLC0415
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     result = git(["clone", repo_url, str(dest)], timeout=120)
@@ -66,7 +66,7 @@ def _default_clone(repo_url: str, dest: Path) -> bool:
 
 def _default_wire_webhooks(repo: str) -> bool:
     """Wire GitHub webhooks for *repo* using gh CLI."""
-    from factory.integrations.shell import gh  # noqa: PLC0415
+    from dark_factory.integrations.shell import gh  # noqa: PLC0415
 
     result = gh(
         ["api", "repos/" + repo + "/hooks", "--method", "GET"],
@@ -80,7 +80,7 @@ def _default_wire_webhooks(repo: str) -> bool:
 
 def _default_run_gate1(workspace_path: Path) -> bool:
     """Run Gate 1 baseline scan on the workspace."""
-    from factory.gates.framework import GateRunner  # noqa: PLC0415
+    from dark_factory.gates.framework import GateRunner  # noqa: PLC0415
 
     runner = GateRunner(
         "gate1-baseline",
@@ -88,7 +88,7 @@ def _default_run_gate1(workspace_path: Path) -> bool:
     )
 
     def _lint_check() -> bool:
-        from factory.integrations.shell import run_command  # noqa: PLC0415
+        from dark_factory.integrations.shell import run_command  # noqa: PLC0415
 
         result = run_command(
             ["ruff", "check", "."],

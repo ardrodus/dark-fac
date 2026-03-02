@@ -9,12 +9,12 @@ from __future__ import annotations
 import pytest
 from textual.widgets import DataTable, Label
 
-from factory.modes.foundry import (
+from dark_factory.modes.foundry import (
     FoundryScreen,
     Workspace,
     load_workspaces,
 )
-from factory.ui.theme import SUBSYSTEM_THEMES
+from dark_factory.ui.theme import SUBSYSTEM_THEMES
 
 # ── Sample data ──────────────────────────────────────────────────
 

@@ -23,20 +23,20 @@ class TestRetryPresets:
 
     def test_retry_presets_all_five_exist(self) -> None:
         """All five preset names are present in RETRY_PRESETS."""
-        from factory.engine.runner import RETRY_PRESETS
+        from dark_factory.engine.runner import RETRY_PRESETS
 
         expected = {"none", "standard", "aggressive", "linear", "patient"}
         assert expected == set(RETRY_PRESETS.keys())
 
     def test_retry_preset_none_has_zero_retries(self) -> None:
         """The 'none' preset never retries."""
-        from factory.engine.runner import RETRY_PRESETS
+        from dark_factory.engine.runner import RETRY_PRESETS
 
         assert RETRY_PRESETS["none"].max_retries == 0
 
     def test_retry_preset_standard_values(self) -> None:
         """The 'standard' preset has the spec-mandated values."""
-        from factory.engine.runner import RETRY_PRESETS
+        from dark_factory.engine.runner import RETRY_PRESETS
 
         std = RETRY_PRESETS["standard"]
         assert std.max_retries == 3
@@ -47,7 +47,7 @@ class TestRetryPresets:
 
     def test_retry_preset_aggressive_values(self) -> None:
         """The 'aggressive' preset has 5 retries with tighter backoff."""
-        from factory.engine.runner import RETRY_PRESETS
+        from dark_factory.engine.runner import RETRY_PRESETS
 
         agg = RETRY_PRESETS["aggressive"]
         assert agg.max_retries == 5
@@ -58,7 +58,7 @@ class TestRetryPresets:
 
     def test_retry_preset_linear_no_jitter(self) -> None:
         """The 'linear' preset uses backoff_factor=1.0 and jitter=False."""
-        from factory.engine.runner import RETRY_PRESETS
+        from dark_factory.engine.runner import RETRY_PRESETS
 
         lin = RETRY_PRESETS["linear"]
         assert lin.backoff_factor == pytest.approx(1.0)
@@ -66,7 +66,7 @@ class TestRetryPresets:
 
     def test_retry_preset_patient_values(self) -> None:
         """The 'patient' preset waits up to 120 s and retries 10 times."""
-        from factory.engine.runner import RETRY_PRESETS
+        from dark_factory.engine.runner import RETRY_PRESETS
 
         pat = RETRY_PRESETS["patient"]
         assert pat.max_retries == 10
@@ -76,14 +76,14 @@ class TestRetryPresets:
 
     def test_get_retry_preset_known_name(self) -> None:
         """get_retry_preset returns the correct policy for a known name."""
-        from factory.engine.runner import RETRY_PRESETS, get_retry_preset
+        from dark_factory.engine.runner import RETRY_PRESETS, get_retry_preset
 
         for name in RETRY_PRESETS:
             assert get_retry_preset(name) is RETRY_PRESETS[name]
 
     def test_get_retry_preset_unknown_returns_none(self) -> None:
         """get_retry_preset returns None for an unrecognised name."""
-        from factory.engine.runner import get_retry_preset
+        from dark_factory.engine.runner import get_retry_preset
 
         assert get_retry_preset("bogus") is None
         assert get_retry_preset("") is None
@@ -100,27 +100,27 @@ class TestRetryPolicyJitter:
 
     def test_retry_policy_has_jitter_field(self) -> None:
         """RetryPolicy exposes a 'jitter' attribute."""
-        from factory.engine.types import RetryPolicy
+        from dark_factory.engine.types import RetryPolicy
 
         policy = RetryPolicy()
         assert hasattr(policy, "jitter"), "RetryPolicy must have a 'jitter' attribute"
 
     def test_jitter_default_is_true(self) -> None:
         """jitter defaults to True on a freshly constructed RetryPolicy."""
-        from factory.engine.types import RetryPolicy
+        from dark_factory.engine.types import RetryPolicy
 
         assert RetryPolicy().jitter is True
 
     def test_jitter_can_be_disabled(self) -> None:
         """jitter=False is accepted and stored correctly."""
-        from factory.engine.types import RetryPolicy
+        from dark_factory.engine.types import RetryPolicy
 
         policy = RetryPolicy(jitter=False)
         assert policy.jitter is False
 
     def test_jitter_false_gives_deterministic_delay(self) -> None:
         """With jitter=False, compute_delay is deterministic across calls."""
-        from factory.engine.types import RetryPolicy
+        from dark_factory.engine.types import RetryPolicy
 
         policy = RetryPolicy(initial_delay=1.0, backoff_factor=2.0, jitter=False)
         delays = [policy.compute_delay(0) for _ in range(20)]
@@ -129,7 +129,7 @@ class TestRetryPolicyJitter:
 
     def test_jitter_true_introduces_variance(self) -> None:
         """With jitter=True, compute_delay varies across repeated calls."""
-        from factory.engine.types import RetryPolicy
+        from dark_factory.engine.types import RetryPolicy
 
         policy = RetryPolicy(initial_delay=10.0, backoff_factor=1.0, jitter=True)
         delays = [policy.compute_delay(0) for _ in range(50)]
@@ -138,7 +138,7 @@ class TestRetryPolicyJitter:
 
     def test_jitter_field_is_dataclass_field(self) -> None:
         """jitter is a proper dataclass field (not a property or class var)."""
-        from factory.engine.types import RetryPolicy
+        from dark_factory.engine.types import RetryPolicy
 
         fields = {f.name for f in dataclasses.fields(RetryPolicy)}
         assert "jitter" in fields
@@ -154,7 +154,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_get_set(self) -> None:
         """get() and set() work like dict.__getitem__ / __setitem__."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         ctx = PipelineContext()
         ctx.set("answer", 42)
@@ -162,7 +162,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_get_default(self) -> None:
         """get() returns the supplied default for missing keys."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         ctx = PipelineContext()
         assert ctx.get("missing") is None
@@ -170,7 +170,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_snapshot_is_copy(self) -> None:
         """snapshot() returns a shallow copy; mutating it does not affect the context."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         ctx = PipelineContext()
         ctx.set("x", 1)
@@ -185,7 +185,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_clone_is_independent(self) -> None:
         """clone() produces a PipelineContext whose mutations do not leak back."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         original = PipelineContext()
         original.set("shared", "original")
@@ -204,7 +204,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_apply_updates(self) -> None:
         """apply_updates() merges a dict into the context (last-write wins)."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         ctx = PipelineContext()
         ctx.set("a", 1)
@@ -215,7 +215,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_append_log(self) -> None:
         """append_log() accumulates entries under the '_log' key."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         ctx = PipelineContext()
         ctx.append_log("step 1")
@@ -227,7 +227,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_clone_deep_independence(self) -> None:
         """clone() produces an independent deep copy -- nested mutables don't leak."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         ctx = PipelineContext()
         ctx.append_log("step-1")
@@ -238,7 +238,7 @@ class TestPipelineContext:
 
     def test_pipeline_context_append_log_order_preserved(self) -> None:
         """append_log() preserves insertion order across many entries."""
-        from factory.engine.runner import PipelineContext
+        from dark_factory.engine.runner import PipelineContext
 
         ctx = PipelineContext()
         entries = [f"entry-{i}" for i in range(10)]
@@ -250,8 +250,8 @@ class TestPipelineContext:
     @pytest.mark.asyncio
     async def test_run_pipeline_accepts_dict_context(self) -> None:
         """run_pipeline() accepts a bare dict for context (backward compat)."""
-        from factory.engine.graph import Edge, Graph, Node
-        from factory.engine.runner import (
+        from dark_factory.engine.graph import Edge, Graph, Node
+        from dark_factory.engine.runner import (
             HandlerRegistry,
             HandlerResult,
             Outcome,
@@ -286,8 +286,8 @@ class TestPipelineContext:
     @pytest.mark.asyncio
     async def test_run_pipeline_accepts_pipeline_context(self) -> None:
         """run_pipeline() also accepts a PipelineContext object directly."""
-        from factory.engine.graph import Edge, Graph, Node
-        from factory.engine.runner import (
+        from dark_factory.engine.graph import Edge, Graph, Node
+        from dark_factory.engine.runner import (
             HandlerRegistry,
             HandlerResult,
             Outcome,
@@ -331,7 +331,7 @@ class TestQuestionAnswerDataclasses:
 
     def test_question_dataclass_fields(self) -> None:
         """Question exposes the spec-mandated fields with correct defaults."""
-        from factory.engine.handlers.human import Question, QuestionType
+        from dark_factory.engine.handlers.human import Question, QuestionType
 
         q = Question(text="Do you approve?")
 
@@ -345,7 +345,7 @@ class TestQuestionAnswerDataclasses:
 
     def test_question_dataclass_all_fields(self) -> None:
         """Question can be constructed with every field supplied explicitly."""
-        from factory.engine.handlers.human import Question, QuestionType
+        from dark_factory.engine.handlers.human import Question, QuestionType
 
         q = Question(
             text="Pick one",
@@ -367,13 +367,13 @@ class TestQuestionAnswerDataclasses:
 
     def test_question_is_dataclass(self) -> None:
         """Question is a real dataclass (not just a plain class)."""
-        from factory.engine.handlers.human import Question
+        from dark_factory.engine.handlers.human import Question
 
         assert dataclasses.is_dataclass(Question)
 
     def test_answer_dataclass_fields(self) -> None:
         """Answer exposes the spec-mandated fields with correct defaults."""
-        from factory.engine.handlers.human import Answer
+        from dark_factory.engine.handlers.human import Answer
 
         a = Answer(value="yes")
 
@@ -383,7 +383,7 @@ class TestQuestionAnswerDataclasses:
 
     def test_answer_dataclass_all_fields(self) -> None:
         """Answer can be constructed with every field supplied explicitly."""
-        from factory.engine.handlers.human import Answer
+        from dark_factory.engine.handlers.human import Answer
 
         a = Answer(value="yes", selected_option="yes", text="User selected yes")
 
@@ -393,7 +393,7 @@ class TestQuestionAnswerDataclasses:
 
     def test_answer_is_dataclass(self) -> None:
         """Answer is a real dataclass (not just a plain class)."""
-        from factory.engine.handlers.human import Answer
+        from dark_factory.engine.handlers.human import Answer
 
         assert dataclasses.is_dataclass(Answer)
 
@@ -404,7 +404,7 @@ class TestInterviewerAcceptsQuestionReturnsAnswer:
     @pytest.mark.asyncio
     async def test_interviewer_accepts_question_returns_answer(self) -> None:
         """AutoApproveInterviewer satisfies the Question -> Answer API."""
-        from factory.engine.handlers.human import (
+        from dark_factory.engine.handlers.human import (
             Answer,
             AutoApproveInterviewer,
             Question,
@@ -421,7 +421,7 @@ class TestInterviewerAcceptsQuestionReturnsAnswer:
     @pytest.mark.asyncio
     async def test_auto_approve_ask_question_with_options(self) -> None:
         """AutoApproveInterviewer.ask_question() returns first option when options given."""
-        from factory.engine.handlers.human import (
+        from dark_factory.engine.handlers.human import (
             Answer,
             AutoApproveInterviewer,
             Question,
@@ -443,7 +443,7 @@ class TestInterviewerAcceptsQuestionReturnsAnswer:
     @pytest.mark.asyncio
     async def test_queue_interviewer_ask_question(self) -> None:
         """QueueInterviewer.ask_question() draws answers from the pre-filled queue."""
-        from factory.engine.handlers.human import (
+        from dark_factory.engine.handlers.human import (
             Answer,
             Question,
             QueueInterviewer,
@@ -463,7 +463,7 @@ class TestInterviewerAcceptsQuestionReturnsAnswer:
     @pytest.mark.asyncio
     async def test_ask_question_selected_option_set_when_in_options(self) -> None:
         """selected_option is populated when the returned value is one of the options."""
-        from factory.engine.handlers.human import (
+        from dark_factory.engine.handlers.human import (
             AutoApproveInterviewer,
             Question,
             QuestionType,
@@ -484,7 +484,7 @@ class TestInterviewerAcceptsQuestionReturnsAnswer:
     @pytest.mark.asyncio
     async def test_ask_question_selected_option_none_for_free_text(self) -> None:
         """selected_option is None when there are no options (free-text question)."""
-        from factory.engine.handlers.human import AutoApproveInterviewer, Question
+        from dark_factory.engine.handlers.human import AutoApproveInterviewer, Question
 
         interviewer = AutoApproveInterviewer()
         q = Question(text="Any thoughts?")
@@ -496,7 +496,7 @@ class TestInterviewerAcceptsQuestionReturnsAnswer:
     @pytest.mark.asyncio
     async def test_callback_interviewer_ask_question(self) -> None:
         """CallbackInterviewer.ask_question() delegates to the underlying callback."""
-        from factory.engine.handlers.human import (
+        from dark_factory.engine.handlers.human import (
             Answer,
             CallbackInterviewer,
             Question,
@@ -516,7 +516,7 @@ class TestInterviewerAcceptsQuestionReturnsAnswer:
         """The flat ask() method still exists on all interviewer implementations."""
         import inspect
 
-        from factory.engine.handlers.human import (
+        from dark_factory.engine.handlers.human import (
             AutoApproveInterviewer,
             ConsoleInterviewer,
             QueueInterviewer,

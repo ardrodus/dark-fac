@@ -18,7 +18,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from factory.core.config_manager import get_config_value, load_config
+from dark_factory.core.config_manager import get_config_value, load_config
 
 logger = logging.getLogger(__name__)
 

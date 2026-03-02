@@ -14,7 +14,7 @@ Plus agent protocol epilogue appended at the end.
 
 Usage::
 
-    from factory.engine.agent.prompt_layer import build_system_prompt, PromptLayer
+    from dark_factory.engine.agent.prompt_layer import build_system_prompt, PromptLayer
 
     prompt = build_system_prompt(
         agent_type="sa-code-quality",
@@ -124,7 +124,7 @@ def build_system_prompt(
     # ── Layer 1: System preamble ──────────────────────────────────
     # Agent protocol pre-work context loading instructions.
     if include_protocol and agent_type:
-        from factory.agents.protocol import (  # noqa: PLC0415
+        from dark_factory.agents.protocol import (  # noqa: PLC0415
             generate_preamble as _gen_preamble,
         )
 
@@ -178,7 +178,7 @@ def build_system_prompt(
 
     # ── Epilogue: post-work knowledge capture ─────────────────────
     if include_protocol and agent_type:
-        from factory.agents.protocol import (  # noqa: PLC0415
+        from dark_factory.agents.protocol import (  # noqa: PLC0415
             generate_epilogue as _gen_epilogue,
         )
 

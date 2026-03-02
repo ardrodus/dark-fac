@@ -13,10 +13,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.graph import Graph, Node
-from factory.engine.runner import HandlerResult, Outcome
-from factory.engine.variable_expansion import expand_node_prompt
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.graph import Graph, Node
+from dark_factory.engine.runner import HandlerResult, Outcome
+from dark_factory.engine.variable_expansion import expand_node_prompt
 
 
 class CodergenBackend(Protocol):

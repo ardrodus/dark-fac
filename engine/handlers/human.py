@@ -20,14 +20,14 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.events import (
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.events import (
     EventEmitter,
     InterviewCompleted,
     InterviewStarted,
 )
-from factory.engine.graph import Graph, Node
-from factory.engine.runner import HandlerResult, Outcome
+from dark_factory.engine.graph import Graph, Node
+from dark_factory.engine.runner import HandlerResult, Outcome
 
 # ------------------------------------------------------------------ #
 # Question type enum (Spec §6, §11.8)

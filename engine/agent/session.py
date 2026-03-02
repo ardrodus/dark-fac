@@ -19,10 +19,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.agent.environment import ExecutionEnvironment, LocalEnvironment
-from factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
-from factory.engine.agent.tools import (
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.environment import ExecutionEnvironment, LocalEnvironment
+from dark_factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
+from dark_factory.engine.agent.tools import (
     get_environment,
     set_environment,
     set_max_command_timeout,
@@ -30,9 +30,9 @@ from factory.engine.agent.tools import (
 )
 
 if TYPE_CHECKING:
-    from factory.engine.agent.profiles import ProviderProfile
-from factory.engine.agent.registry import ToolRegistry
-from factory.engine.types import (
+    from dark_factory.engine.agent.profiles import ProviderProfile
+from dark_factory.engine.agent.registry import ToolRegistry
+from dark_factory.engine.types import (
     AccessDeniedError,
     AuthenticationError,
     Client,
@@ -214,7 +214,7 @@ class Session:
 
         # Wire subagent tools with real client (§9.12.34-36)
         # Done here -- not in profiles -- so the tools close over the real client.
-        from factory.engine.agent.subagent_manager import (  # noqa: PLC0415
+        from dark_factory.engine.agent.subagent_manager import (  # noqa: PLC0415
             SubagentManager,
             create_interactive_tools,
         )
@@ -719,11 +719,11 @@ class Session:
 
         Spec reference: coding-agent-loop-spec §6.3-6.5.
         """
-        from factory.engine.agent.env_context import (  # noqa: PLC0415
+        from dark_factory.engine.agent.env_context import (  # noqa: PLC0415
             build_environment_context,
             get_git_context,
         )
-        from factory.engine.agent.project_docs import (  # noqa: PLC0415
+        from dark_factory.engine.agent.project_docs import (  # noqa: PLC0415
             discover_project_docs,
         )
 

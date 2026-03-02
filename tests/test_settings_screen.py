@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 from textual.widgets import DataTable, Label
 
-from factory.core.config_manager import ConfigData, load_config
-from factory.modes.settings import (
+from dark_factory.core.config_manager import ConfigData, load_config
+from dark_factory.modes.settings import (
     AUTO_UPDATE_CYCLE,
     SettingsModel,
     SettingsScreen,
@@ -21,7 +21,7 @@ from factory.modes.settings import (
     load_settings,
     settings_from_config,
 )
-from factory.ui.theme import SUBSYSTEM_THEMES
+from dark_factory.ui.theme import SUBSYSTEM_THEMES
 
 # ── Settings model tests ────────────────────────────────────────
 
@@ -145,7 +145,7 @@ def test_save_settings_persists_to_disk(tmp_path: Path) -> None:
         dashboard_refresh_interval=3.0,
     )
     apply_settings_to_config(cfg, s)
-    from factory.core.config_manager import save_config as _save
+    from dark_factory.core.config_manager import save_config as _save
     _save(cfg)
 
     raw = json.loads(config_path.read_text(encoding="utf-8"))

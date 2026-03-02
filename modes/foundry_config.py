@@ -26,7 +26,7 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, Label, Static
 
-from factory.ui.theme import (
+from dark_factory.ui.theme import (
     COMPACT_ICONS,
     PILLARS,
     THEME,

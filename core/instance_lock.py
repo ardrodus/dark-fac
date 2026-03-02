@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
-_LOCK_FILENAME = "factory.lock"
+_LOCK_FILENAME = "dark_factory.lock"
 
 
 class InstanceLockError(Exception):
@@ -46,7 +46,7 @@ def _resolve_lock_path(config_dir: Path | None = None) -> Path:
     """Return the path to the lock file inside the config directory."""
     if config_dir is not None:
         return config_dir / _LOCK_FILENAME
-    from factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
+    from dark_factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
     return resolve_config_dir() / _LOCK_FILENAME
 
 

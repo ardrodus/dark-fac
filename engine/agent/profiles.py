@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.engine.agent.session import SessionConfig
-    from factory.engine.types import Tool
+    from dark_factory.engine.agent.session import SessionConfig
+    from dark_factory.engine.types import Tool
 
 
 @dataclass

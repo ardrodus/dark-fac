@@ -15,11 +15,11 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.agent.environment import LocalEnvironment, _sigterm_sigkill
-from factory.engine.agent.events import EventKind, SessionEvent
-from factory.engine.agent.session import Session, SessionConfig, SessionState
-from factory.engine.types import Client, Message, Response, Usage
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.environment import LocalEnvironment, _sigterm_sigkill
+from dark_factory.engine.agent.events import EventKind, SessionEvent
+from dark_factory.engine.agent.session import Session, SessionConfig, SessionState
+from dark_factory.engine.types import Client, Message, Response, Usage
 
 # ================================================================== #
 # Helpers
@@ -53,8 +53,8 @@ class TestSigtermSigkillEscalation:
         ]
 
         with (
-            patch("factory.engine.agent.environment.os.getpgid", return_value=42),
-            patch("factory.engine.agent.environment.os.killpg") as mock_killpg,
+            patch("dark_factory.engine.agent.environment.os.getpgid", return_value=42),
+            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
         ):
             _sigterm_sigkill(mock_proc)
 
@@ -70,8 +70,8 @@ class TestSigtermSigkillEscalation:
         mock_proc.wait.return_value = None  # exits promptly after SIGTERM
 
         with (
-            patch("factory.engine.agent.environment.os.getpgid", return_value=42),
-            patch("factory.engine.agent.environment.os.killpg") as mock_killpg,
+            patch("dark_factory.engine.agent.environment.os.getpgid", return_value=42),
+            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
         ):
             _sigterm_sigkill(mock_proc)
 
@@ -85,8 +85,8 @@ class TestSigtermSigkillEscalation:
         mock_proc.pid = 42
 
         with (
-            patch("factory.engine.agent.environment.os.getpgid", side_effect=OSError),
-            patch("factory.engine.agent.environment.os.killpg") as mock_killpg,
+            patch("dark_factory.engine.agent.environment.os.getpgid", side_effect=OSError),
+            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
         ):
             _sigterm_sigkill(mock_proc)
 
@@ -106,9 +106,9 @@ class TestSigtermSigkillEscalation:
         ]
 
         with (
-            patch("factory.engine.agent.environment.subprocess.Popen", return_value=mock_proc),
-            patch("factory.engine.agent.environment.os.getpgid", return_value=42),
-            patch("factory.engine.agent.environment.os.killpg") as mock_killpg,
+            patch("dark_factory.engine.agent.environment.subprocess.Popen", return_value=mock_proc),
+            patch("dark_factory.engine.agent.environment.os.getpgid", return_value=42),
+            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
         ):
             env = LocalEnvironment()
             result = await env.exec_shell("sleep 100", timeout=1)

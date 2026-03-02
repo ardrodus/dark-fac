@@ -191,7 +191,7 @@ empty deploy template.
 The pipeline loader is available as a Python API:
 
 ```python
-from factory.pipeline.loader import discover_pipelines
+from dark_factory.pipeline.loader import discover_pipelines
 
 # Discover all available pipelines (built-in + user + config overrides)
 pipelines = discover_pipelines(project_root=Path("/path/to/project"))
@@ -202,7 +202,7 @@ pipelines = discover_pipelines(project_root=Path("/path/to/project"))
 To run a discovered pipeline:
 
 ```python
-from factory.pipeline.engine import FactoryPipelineEngine
+from dark_factory.pipeline.engine import FactoryPipelineEngine
 
 engine = FactoryPipelineEngine()
 result = await engine.run_pipeline("deploy", {"workspace": "/path/to/ws"})

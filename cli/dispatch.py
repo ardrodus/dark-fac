@@ -13,14 +13,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.cli.parser import ParsedCommand
+    from dark_factory.cli.parser import ParsedCommand
 
 logger = logging.getLogger(__name__)
 
 
 def dispatch_config(parsed: ParsedCommand) -> None:
     """Dispatch the ``config`` command."""
-    from factory.cli.handlers import run_config
+    from dark_factory.cli.handlers import run_config
 
     action = parsed.args[0] if parsed.args else ""
     key = parsed.args[1] if len(parsed.args) > 1 else ""
@@ -30,14 +30,14 @@ def dispatch_config(parsed: ParsedCommand) -> None:
 
 def dispatch_dashboard(parsed: ParsedCommand) -> None:
     """Dispatch the ``dashboard`` command."""
-    from factory.cli.handlers import run_dashboard
+    from dark_factory.cli.handlers import run_dashboard
 
     run_dashboard()
 
 
 def dispatch_doctor(parsed: ParsedCommand) -> None:
     """Dispatch the ``doctor`` command."""
-    from factory.cli.handlers import run_doctor
+    from dark_factory.cli.handlers import run_doctor
 
     run_doctor(
         modules=parsed.flags.get("modules", False),
@@ -49,7 +49,7 @@ def dispatch_doctor(parsed: ParsedCommand) -> None:
 
 def dispatch_ingest(parsed: ParsedCommand) -> None:
     """Dispatch the ``ingest`` command."""
-    from factory.cli.handlers import run_ingest
+    from dark_factory.cli.handlers import run_ingest
 
     prd_path = parsed.args[0] if parsed.args else ""
     repo = parsed.args[1] if len(parsed.args) > 1 else ""
@@ -64,7 +64,7 @@ def dispatch_ingest(parsed: ParsedCommand) -> None:
 
 def dispatch_gates(parsed: ParsedCommand) -> None:
     """Dispatch the ``gates`` command."""
-    from factory.cli.handlers import run_gates
+    from dark_factory.cli.handlers import run_gates
 
     run_name = parsed.args[0] if parsed.args else ""
     run_gates(
@@ -76,7 +76,7 @@ def dispatch_gates(parsed: ParsedCommand) -> None:
 
 def dispatch_smoke_test(parsed: ParsedCommand) -> None:
     """Dispatch the ``smoke-test`` command."""
-    from factory.cli.handlers import run_smoke_test
+    from dark_factory.cli.handlers import run_smoke_test
 
     title = parsed.args[0] if parsed.args else "trivial-python-story"
     run_smoke_test(title=title)
@@ -84,29 +84,29 @@ def dispatch_smoke_test(parsed: ParsedCommand) -> None:
 
 def dispatch_status(parsed: ParsedCommand) -> None:
     """Dispatch the ``status`` command."""
-    from factory.cli.handlers import run_status
+    from dark_factory.cli.handlers import run_status
 
     run_status(epics=parsed.flags.get("epics", False))
 
 
 def dispatch_onboard(parsed: ParsedCommand) -> None:
     """Dispatch the ``onboard`` command."""
-    from factory.cli.handlers import run_onboard
+    from dark_factory.cli.handlers import run_onboard
 
     run_onboard(self_onboard=parsed.flags.get("self", False))
 
 
 def dispatch_selftest(parsed: ParsedCommand) -> None:
     """Dispatch the ``selftest`` command."""
-    from factory.cli.handlers import run_selftest
+    from dark_factory.cli.handlers import run_selftest
 
     run_selftest()
 
 
 def dispatch_auto(parsed: ParsedCommand) -> None:
     """Dispatch the ``auto`` command (``--auto`` / ``-a`` flag)."""
-    from factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
-    from factory.dispatch.issue_dispatcher import DispatcherState, auto_main_loop  # noqa: PLC0415
+    from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
+    from dark_factory.dispatch.issue_dispatcher import DispatcherState, auto_main_loop  # noqa: PLC0415
 
     dev = parsed.flags.get("dev_mode", False)
 
@@ -125,13 +125,13 @@ def dispatch_test(parsed: ParsedCommand) -> None:
     """Dispatch the ``test`` command (``--test <PR>`` flag)."""
     import shutil  # noqa: PLC0415
 
-    from factory.crucible.orchestrator import (  # noqa: PLC0415
+    from dark_factory.crucible.orchestrator import (  # noqa: PLC0415
         CrucibleConfig,
         CrucibleVerdict,
         run_crucible,
     )
-    from factory.ui.cli_colors import print_error  # noqa: PLC0415
-    from factory.workspace.manager import Workspace  # noqa: PLC0415
+    from dark_factory.ui.cli_colors import print_error  # noqa: PLC0415
+    from dark_factory.workspace.manager import Workspace  # noqa: PLC0415
 
     pr_number = int(parsed.args[0]) if parsed.args else 0
     if pr_number <= 0:
@@ -148,7 +148,7 @@ def dispatch_test(parsed: ParsedCommand) -> None:
         )
         raise SystemExit(1)
 
-    from factory.core.config_manager import load_config  # noqa: PLC0415
+    from dark_factory.core.config_manager import load_config  # noqa: PLC0415
 
     config = load_config()
     repo_root = config.data.get("project", {}).get("repo_root", "")
@@ -170,10 +170,51 @@ def dispatch_test(parsed: ParsedCommand) -> None:
         raise SystemExit(1)
 
 
+def _needs_onboarding() -> bool:
+    """Return True if onboarding hasn't completed yet.
+
+    Onboarding is considered complete when config.json exists AND contains
+    at least one repo entry in ``owner/repo`` format (not a local path).
+    """
+    import json  # noqa: PLC0415
+
+    from dark_factory.core.config_manager import resolve_config_path  # noqa: PLC0415
+
+    config_path = resolve_config_path()
+    if not config_path.is_file():
+        return True
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return True
+    repos = data.get("repos", [])
+    if not isinstance(repos, list) or not repos:
+        return True
+    # Check that at least one active repo is in owner/repo format
+    for repo in repos:
+        if isinstance(repo, dict) and repo.get("active"):
+            name = repo.get("name", "")
+            if isinstance(name, str) and "/" in name and ":\\" not in name:
+                return False
+    return True
+
+
 def dispatch_interactive(parsed: ParsedCommand) -> None:
-    """Dispatch the ``interactive`` command (default when no args)."""
-    from factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
-    from factory.ui.interactive_menu import run_interactive  # noqa: PLC0415
+    """Dispatch the ``interactive`` command (default when no args).
+
+    On first run — or if a previous onboarding didn't complete — automatically
+    triggers onboarding before entering the interactive menu.
+    """
+    if _needs_onboarding():
+        sys.stdout.write("First run detected \u2014 starting onboarding...\n\n")
+        from dark_factory.setup.orchestrator import run_onboarding  # noqa: PLC0415
+
+        rc = run_onboarding()
+        if rc != 0:
+            raise SystemExit(rc)
+
+    from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
+    from dark_factory.ui.interactive_menu import run_interactive  # noqa: PLC0415
 
     try:
         with instance_lock():
@@ -185,7 +226,7 @@ def dispatch_interactive(parsed: ParsedCommand) -> None:
 
 def dispatch_workspace(parsed: ParsedCommand) -> None:
     """Dispatch the ``workspace`` command."""
-    from factory.cli.handlers import run_workspace
+    from dark_factory.cli.handlers import run_workspace
 
     action = parsed.args[0] if parsed.args else ""
     name = parsed.args[1] if len(parsed.args) > 1 else ""
@@ -226,7 +267,7 @@ def dispatch(parsed: ParsedCommand) -> None:
     if handler is not None:
         handler(parsed)
     else:
-        from factory.ui.cli_colors import print_error  # noqa: PLC0415
+        from dark_factory.ui.cli_colors import print_error  # noqa: PLC0415
 
         known = ", ".join(sorted(DISPATCH_TABLE))
         print_error(

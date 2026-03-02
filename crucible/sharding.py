@@ -9,7 +9,7 @@ import binascii
 from dataclasses import dataclass
 from pathlib import Path
 
-from factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
+from dark_factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
 
 
 def _crc32_shard(name: str, num_shards: int) -> int:

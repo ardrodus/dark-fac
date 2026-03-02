@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from factory.engine import (
+from dark_factory.engine import (
     HandlerRegistry,
     Outcome,
     PipelineStatus,
@@ -19,11 +19,11 @@ from factory.engine import (
     register_default_handlers,
     run_pipeline,
 )
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.handlers.parallel import (
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.handlers.parallel import (
     heuristic_select,
 )
-from factory.engine.subgraph import execute_subgraph
+from dark_factory.engine.subgraph import execute_subgraph
 
 # ================================================================== #
 # execute_subgraph

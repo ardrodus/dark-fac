@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from factory.engine import (
+from dark_factory.engine import (
     Checkpoint,
     CodergenHandler,
     ExitHandler,
@@ -19,14 +19,14 @@ from factory.engine import (
     run_pipeline,
     select_edge,
 )
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.parser.parser import ParseError
-from factory.engine.stylesheet import (
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.parser.parser import ParseError
+from dark_factory.engine.stylesheet import (
     StylesheetParseError,
     apply_stylesheet,
     parse_stylesheet,
 )
-from factory.engine.validation import Severity, validate, validate_or_raise
+from dark_factory.engine.validation import Severity, validate, validate_or_raise
 
 # ================================================================== #
 # DOT Parser

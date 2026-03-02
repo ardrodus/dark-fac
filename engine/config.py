@@ -5,7 +5,7 @@ consume, populated from the centralised factory config system.
 
 Usage::
 
-    from factory.engine.config import load_engine_config
+    from dark_factory.engine.config import load_engine_config
 
     cfg = load_engine_config()          # from cwd
     cfg = load_engine_config(start=p)   # from explicit path
@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from factory.core.config_manager import (
+from dark_factory.core.config_manager import (
     get_config_value,
     load_config,
     resolve_config_dir,

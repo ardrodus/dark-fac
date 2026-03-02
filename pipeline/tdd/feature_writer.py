@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.workspace.manager import Workspace
+    from dark_factory.workspace.manager import Workspace
 
-from factory.pipeline.tdd.test_writer import SpecBundle
+from dark_factory.pipeline.tdd.test_writer import SpecBundle
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def _invoke_agent(
 ) -> str:
     if invoke_fn is not None:
         return invoke_fn(prompt)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
 
     return run_command(
         ["claude", "-p", prompt, "--output-format", "json"],
@@ -141,7 +141,7 @@ def _commit_implementation(workspace_path: str, files: list[str]) -> bool:
     """Stage and commit implementation files to the workspace branch."""
     if not files:
         return False
-    from factory.integrations.shell import git  # noqa: PLC0415
+    from dark_factory.integrations.shell import git  # noqa: PLC0415
 
     for f in files:
         git(["add", f], cwd=workspace_path, check=False)

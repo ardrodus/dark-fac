@@ -16,8 +16,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.gates.framework import GateRunner
-from factory.integrations.shell import CommandResult, run_command
+from dark_factory.gates.framework import GateRunner
+from dark_factory.integrations.shell import CommandResult, run_command
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

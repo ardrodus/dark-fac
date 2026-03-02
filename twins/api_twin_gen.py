@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from factory.specs.api_contract_generator import ContractResult, ContractType
+from dark_factory.specs.api_contract_generator import ContractResult, ContractType
 
 logger = logging.getLogger(__name__)
 _WIREMOCK_IMAGE = "wiremock/wiremock:3.3.1"

@@ -6,15 +6,15 @@ import asyncio
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from factory.engine.runner import PipelineResult, PipelineStatus
-from factory.pipeline.route_to_engineering import (
+from dark_factory.engine.runner import PipelineResult, PipelineStatus
+from dark_factory.pipeline.route_to_engineering import (
     RouteConfig,
     _extract_verdict,
     _is_pipeline_ok,
     route_to_engineering,
     route_to_engineering_sync,
 )
-from factory.workspace.manager import Workspace
+from dark_factory.workspace.manager import Workspace
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -222,7 +222,7 @@ class TestRouteToEngineeringGo:
         assert ctx["workspace"] == "/tmp/ws"
         assert ctx["branch"] == "dark-factory/issue-42"
 
-    @patch("factory.pipeline.route_to_engineering._label_done")
+    @patch("dark_factory.pipeline.route_to_engineering._label_done")
     def test_labels_issue_done_on_go(self, mock_label: MagicMock) -> None:
         engine = FakeEngine(
             crucible_result=_pipeline_ok(completed_nodes=["go"]),
@@ -381,7 +381,7 @@ class TestCrucibleNeedsLive:
         assert result.verdict == "needs_live"
         assert "NEEDS_LIVE" in result.error_message
 
-    @patch("factory.pipeline.route_to_engineering._notify_needs_live")
+    @patch("dark_factory.pipeline.route_to_engineering._notify_needs_live")
     def test_needs_live_notifies(self, mock_notify: MagicMock) -> None:
         engine = FakeEngine(
             crucible_result=_pipeline_ok(completed_nodes=["needs_live"]),
@@ -485,26 +485,26 @@ class TestPipelineMetrics:
 
 class TestIssueHelpers:
     def test_inum_with_int(self) -> None:
-        from factory.pipeline.route_to_engineering import _inum
+        from dark_factory.pipeline.route_to_engineering import _inum
 
         assert _inum({"number": 42}) == 42
 
     def test_inum_with_string(self) -> None:
-        from factory.pipeline.route_to_engineering import _inum
+        from dark_factory.pipeline.route_to_engineering import _inum
 
         assert _inum({"number": "7"}) == 7
 
     def test_inum_missing(self) -> None:
-        from factory.pipeline.route_to_engineering import _inum
+        from dark_factory.pipeline.route_to_engineering import _inum
 
         assert _inum({}) == 0
 
     def test_ititle(self) -> None:
-        from factory.pipeline.route_to_engineering import _ititle
+        from dark_factory.pipeline.route_to_engineering import _ititle
 
         assert _ititle({"title": "Fix bug"}) == "Fix bug"
 
     def test_ititle_missing(self) -> None:
-        from factory.pipeline.route_to_engineering import _ititle
+        from dark_factory.pipeline.route_to_engineering import _ititle
 
         assert _ititle({}) == ""

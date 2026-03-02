@@ -29,9 +29,9 @@ from typing import Any, Protocol
 
 import anyio  # type: ignore[import-not-found]
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.conditions import evaluate_condition
-from factory.engine.events import (
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.conditions import evaluate_condition
+from dark_factory.engine.events import (
     CheckpointSaved,
     EventEmitter,
     PipelineCompleted,
@@ -43,9 +43,9 @@ from factory.engine.events import (
     StageRetrying,
     StageStarted,
 )
-from factory.engine.graph import Edge, Graph, Node
-from factory.engine.stylesheet import apply_stylesheet
-from factory.engine.types import RetryPolicy
+from dark_factory.engine.graph import Edge, Graph, Node
+from dark_factory.engine.stylesheet import apply_stylesheet
+from dark_factory.engine.types import RetryPolicy
 
 # ------------------------------------------------------------------ #
 # Retry presets (Spec §3.6, §11.5)
@@ -631,7 +631,7 @@ async def run_pipeline(
 
     # Apply graph transforms before validation (Spec §9, §11.11)
     if transforms:
-        from factory.engine.transforms import apply_transforms
+        from dark_factory.engine.transforms import apply_transforms
 
         graph = apply_transforms(graph, transforms)
 
@@ -656,7 +656,7 @@ async def run_pipeline(
 
         # Generate fidelity preamble so the LLM has context about
         # what happened before the checkpoint (Spec §5.4)
-        from factory.engine.preamble import generate_resume_preamble
+        from dark_factory.engine.preamble import generate_resume_preamble
 
         preamble = generate_resume_preamble(graph, checkpoint)
         ctx["_resume_preamble"] = preamble

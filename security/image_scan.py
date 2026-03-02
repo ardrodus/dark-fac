@@ -7,8 +7,8 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from factory.gates.framework import GateRunner
-from factory.security.scan_runner import run_tool
+from dark_factory.gates.framework import GateRunner
+from dark_factory.security.scan_runner import run_tool
 
 logger = logging.getLogger(__name__)
 _CRIT, _HIGH, _MED = 9.0, 7.0, 4.0

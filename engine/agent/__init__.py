@@ -16,12 +16,12 @@ Modules:
     subagent: Subagent spawning for delegated tasks
 """
 
-from factory.engine.agent.abort import AbortSignal
-from factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
-from factory.engine.agent.registry import ToolRegistry
-from factory.engine.agent.session import Session, SessionConfig, SessionState, SteeringTurn
-from factory.engine.agent.tools import ALL_CORE_TOOLS
-from factory.engine.agent.truncation import TruncationLimits, truncate_output
+from dark_factory.engine.agent.abort import AbortSignal
+from dark_factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
+from dark_factory.engine.agent.registry import ToolRegistry
+from dark_factory.engine.agent.session import Session, SessionConfig, SessionState, SteeringTurn
+from dark_factory.engine.agent.tools import ALL_CORE_TOOLS
+from dark_factory.engine.agent.truncation import TruncationLimits, truncate_output
 
 __all__ = [
     "ALL_CORE_TOOLS",

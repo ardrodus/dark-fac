@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from factory.engine.agent.prompt_layer import (
+from dark_factory.engine.agent.prompt_layer import (
     PromptLayer,
     build_system_prompt,
     layer_prompt_for_node,

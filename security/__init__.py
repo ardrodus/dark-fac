@@ -1,11 +1,11 @@
 """Security gates — secret scanning, dependency scanning, SAST, image scanning, AI review, config, runtime."""
 
-from factory.security.ai_security_review import (
+from dark_factory.security.ai_security_review import (
     SecurityFinding,
     SecurityReviewResult,
     run_security_review,
 )
-from factory.security.config import (
+from dark_factory.security.config import (
     SecurityConfig,
     SecurityException,
     add_exception,
@@ -14,12 +14,12 @@ from factory.security.config import (
     prune_expired,
     save_security_config,
 )
-from factory.security.dependency_scan import Finding, run_dependency_scan
-from factory.security.dependency_scan import ScanResult as DepScanResult
-from factory.security.image_scan import Finding as ImageFinding
-from factory.security.image_scan import ScanResult as ImageScanResult
-from factory.security.image_scan import run_image_scan
-from factory.security.runtime_monitor import (
+from dark_factory.security.dependency_scan import Finding, run_dependency_scan
+from dark_factory.security.dependency_scan import ScanResult as DepScanResult
+from dark_factory.security.image_scan import Finding as ImageFinding
+from dark_factory.security.image_scan import ScanResult as ImageScanResult
+from dark_factory.security.image_scan import run_image_scan
+from dark_factory.security.runtime_monitor import (
     Baseline,
     PulseResult,
     baseline_container,
@@ -28,25 +28,25 @@ from factory.security.runtime_monitor import (
     check_resources,
     security_pulse,
 )
-from factory.security.runtime_monitor import Finding as RuntimeFinding
-from factory.security.sast_scan import SastFinding, run_sast_scan
-from factory.security.sast_scan import ScanResult as SastScanResult
-from factory.security.sbom_scan import (
+from dark_factory.security.runtime_monitor import Finding as RuntimeFinding
+from dark_factory.security.sast_scan import SastFinding, run_sast_scan
+from dark_factory.security.sast_scan import ScanResult as SastScanResult
+from dark_factory.security.sbom_scan import (
     SBOM,
     SBOMDiff,
     SBOMResult,
     diff_sbom,
     generate_sbom,
 )
-from factory.security.sbom_scan import (
+from dark_factory.security.sbom_scan import (
     Component as SBOMComponent,
 )
-from factory.security.scan_runner import create_scan_gate, run_tool
-from factory.security.secret_scan import ScanResult, SecretFinding, run_secret_scan
-from factory.security.triage import (
+from dark_factory.security.scan_runner import create_scan_gate, run_tool
+from dark_factory.security.secret_scan import ScanResult, SecretFinding, run_secret_scan
+from dark_factory.security.triage import (
     Finding as TriageFinding,
 )
-from factory.security.triage import (
+from dark_factory.security.triage import (
     PatternAdvisory,
     PatternResult,
     TriagedFinding,
@@ -55,7 +55,7 @@ from factory.security.triage import (
     respond_to_finding,
     security_triage,
 )
-from factory.security.triage import (
+from dark_factory.security.triage import (
     TriageResult as SecurityTriageResult,
 )
 
