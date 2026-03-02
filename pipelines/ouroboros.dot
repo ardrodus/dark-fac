@@ -43,7 +43,7 @@ digraph ouroboros {
     // --- Step 1: Detect version ---
     detect_version [
         shape=box,
-        prompt="Check the current factory version against the upstream release.\n\nWorkspace: $workspace\n\nSteps:\n1. Read the local version from $workspace/pyproject.toml or $workspace/dark_factory/__init__.py\n2. Query the upstream release (GitHub releases API or git ls-remote --tags)\n3. Compare semantic versions\n\nOutput:\n- current_version\n- latest_version\n- update_available (bool)\n- changelog_summary (if update available)\n\nWrite results to: $workspace/.dark-factory/ouroboros/version-check.json"
+        prompt="Check the current factory version against the upstream release.\n\nWorkspace: $workspace\n\nSteps:\n1. Read the local version from $workspace/pyproject.toml or $workspace/dark_factory/__init__.py\n2. Query the upstream release (GitHub releases API or git ls-remote --tags)\n3. Compare semantic versions\n\nWrite results to: $workspace/.dark-factory/ouroboros/version-check.json\nInclude: current_version, latest_version, update_available, changelog_summary\n\nOutput your verdict as the final line: UPDATE_AVAILABLE or UP_TO_DATE"
     ]
     version_check [shape=diamond, label="Update\nAvailable?"]
 
@@ -94,14 +94,14 @@ digraph ouroboros {
     // --- Auto-Update flow ---
     path_select -> detect_version [label="auto_update"]
     detect_version -> version_check
-    version_check -> staging_deploy [label="yes"]
-    version_check -> update_skipped [label="no"]
+    version_check -> staging_deploy [label="UPDATE_AVAILABLE"]
+    version_check -> update_skipped [label="UP_TO_DATE"]
     staging_deploy -> smoke_test -> smoke_verdict
     smoke_verdict -> swap_live [label="PASS"]
     smoke_verdict -> rollback [label="FAIL"]
     swap_live -> post_update_diag -> post_diag_verdict
-    post_diag_verdict -> update_done [label="healthy"]
-    post_diag_verdict -> auto_rollback [label="unhealthy"]
+    post_diag_verdict -> update_done [label="HEALTHY"]
+    post_diag_verdict -> auto_rollback [label="UNHEALTHY"]
     auto_rollback -> update_done [label="rolled back"]
     rollback -> update_done [label="staging discarded"]
 
@@ -180,11 +180,11 @@ digraph ouroboros {
     guardrail_verdict -> self_forge [label="ALLOW"]
     guardrail_verdict -> guardrail_denied [label="DENY"]
     self_forge -> self_crucible_syntax -> syntax_verdict
-    syntax_verdict -> self_crucible_tests [label="clean"]
-    syntax_verdict -> syntax_failed [label="errors"]
+    syntax_verdict -> self_crucible_tests [label="PASS"]
+    syntax_verdict -> syntax_failed [label="FAIL"]
     self_crucible_tests -> tests_verdict
-    tests_verdict -> self_crucible_pipeline [label="pass"]
-    tests_verdict -> tests_failed [label="fail"]
+    tests_verdict -> self_crucible_pipeline [label="PASS"]
+    tests_verdict -> tests_failed [label="FAIL"]
     self_crucible_pipeline -> pipeline_verdict
     pipeline_verdict -> self_crucible_health [label="PASS"]
     pipeline_verdict -> pipeline_failed [label="FAIL"]

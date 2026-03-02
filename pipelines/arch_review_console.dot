@@ -59,6 +59,6 @@ digraph arch_review_console {
     sa_performance_console -> sa_lead_console -> verdict
 
     verdict -> approved [label="APPROVED"]
-    verdict -> sa_code_quality [label="NEEDS_CHANGES\n(re-run pipeline)"]
+    verdict -> sa_code_quality [label="NEEDS_CHANGES"]
     verdict -> needs_human [label="NEEDS_HUMAN"]
 }

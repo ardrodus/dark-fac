@@ -24,8 +24,16 @@ logger = logging.getLogger(__name__)
 # Verdict keywords that agents can emit on their final line to drive
 # conditional edge routing (e.g. arch_verdict diamond).
 _VERDICT_KEYWORDS: frozenset[str] = frozenset({
+    # Dark Forge arch review
     "APPROVED", "NEEDS_CHANGES", "NEEDS_HUMAN",
+    # Feature TDD fix loop
     "ALL_PASS", "FIXES_NEEDED",
+    # Crucible
+    "CLEAN", "BLOCK", "GO", "NO_GO", "NEEDS_LIVE",
+    # Ouroboros
+    "ALLOW", "DENY", "PASS", "FAIL",
+    "HEALTHY", "UNHEALTHY",
+    "UPDATE_AVAILABLE", "UP_TO_DATE",
 })
 
 

@@ -71,6 +71,6 @@ digraph arch_review_web {
     sa_integration_web -> sa_lead_web -> verdict
 
     verdict -> approved [label="APPROVED"]
-    verdict -> sa_frontend [label="NEEDS_CHANGES\n(re-run pipeline)"]
+    verdict -> sa_frontend [label="NEEDS_CHANGES"]
     verdict -> needs_human [label="NEEDS_HUMAN"]
 }

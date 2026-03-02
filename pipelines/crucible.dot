@@ -61,7 +61,7 @@ digraph crucible {
 
     detect_scope -> run_and_analyze -> verdict
 
-    verdict -> go [label="pass >= 95%\nreal_bugs == 0"]
-    verdict -> no_go [label="real_bugs > 0"]
-    verdict -> needs_live [label="needs_live > 0\nreal_bugs == 0"]
+    verdict -> go [label="GO"]
+    verdict -> no_go [label="NO_GO"]
+    verdict -> needs_live [label="NEEDS_LIVE"]
 }

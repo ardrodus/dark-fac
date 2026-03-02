@@ -159,6 +159,7 @@ class ToolHandler:
             return HandlerResult(
                 status=Outcome.SUCCESS,
                 output=output,
+                preferred_label="PASS",
                 notes="Command succeeded (exit 0)",
             )
 
@@ -166,6 +167,7 @@ class ToolHandler:
             status=Outcome.FAIL,
             failure_reason=f"Exit code {result.returncode}",
             output=output,
+            preferred_label="FAIL",
             notes=f"Command failed (exit {result.returncode})",
         )
 

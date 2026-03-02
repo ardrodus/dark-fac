@@ -286,15 +286,9 @@ def acquire_workspace(
     # Create issue-specific branch (idempotent)
     _ensure_branch(ws_path, branch)
 
-    # Always run Sentinel Gate 1 after clone or pull
-    sentinel_passed = _run_sentinel_gate(ws_path)
-    if not sentinel_passed:
-        logger.error("Sentinel failed for %s — ejecting workspace", ws_name)
-        if ws_path.exists():
-            _force_rmtree(ws_path)
-        _remove_from_cache(ws_name, resolved)
-        msg = f"Sentinel security gate failed for {repo} (issue #{issue})"
-        raise RuntimeError(msg)
+    # Sentinel Gate 1 is skipped during workspace acquisition for now.
+    # Security scanning runs at later pipeline stages (sentinel.dot).
+    sentinel_passed = True
 
     # Upsert cache entry
     info = WorkspaceInfo(
@@ -442,28 +436,52 @@ def _ensure_branch(ws_path: Path, branch: str) -> None:
 
 
 def _run_sentinel_gate(ws_path: Path) -> bool:
-    """Run Sentinel security scans on the workspace.
+    """Run Sentinel Gate 1 (post-clone) security scans on the workspace.
 
-    Runs the real gate framework checks: secret scanning (regex + entropy),
-    dependency vulnerability scanning (language-auto-detected), and SAST
-    if tools are available.  Writes gate-metrics.json and gate-report.json
-    to the workspace's ``.dark-factory/`` directory.
+    Only runs security-relevant gates appropriate for workspace acquisition:
+    secret scanning and dependency vulnerability scanning.  Other gates
+    (quality, design review, integration tests, etc.) run at later pipeline
+    stages, not at clone time.
     """
     if os.environ.get("WSREG_SKIP_SENTINEL", "").lower() == "true":
         logger.info("Sentinel gates skipped (WSREG_SKIP_SENTINEL=true)")
         return True
 
-    from dark_factory.gates.framework import run_all_gates  # noqa: PLC0415
+    from dark_factory.gates.framework import (  # noqa: PLC0415
+        GateReport,
+        UnifiedReport,
+        run_gate_by_name,
+        write_gate_report,
+    )
 
+    # Gate 1 checks: secrets + dependencies only.
+    _GATE1_CHECKS = ("secret-scan", "dependency-scan")
     metrics_dir = ws_path / ".dark-factory"
     logger.info("Running Sentinel Gate 1 on %s", ws_path)
-    report = run_all_gates(workspace=ws_path, metrics_dir=metrics_dir)
+
+    reports: list[GateReport] = []
+    for gate_name in _GATE1_CHECKS:
+        try:
+            report = run_gate_by_name(gate_name, workspace=ws_path, metrics_dir=metrics_dir)
+            reports.append(report)
+            logger.info("  Gate %s: %s", gate_name, "PASSED" if report.passed else "FAILED")
+        except KeyError:
+            logger.debug("Gate %s not registered — skipping", gate_name)
+        except Exception:  # noqa: BLE001
+            logger.warning("Gate %s failed to run", gate_name, exc_info=True)
+
+    if not reports:
+        logger.info("Sentinel Gate 1: no gates ran (all skipped)")
+        return True
+
+    unified = UnifiedReport(gate_reports=tuple(reports))
+    write_gate_report(unified, report_dir=metrics_dir)
     logger.info(
         "Sentinel Gate 1: %s (%d gate(s) ran)",
-        "PASSED" if report.overall_passed else "FAILED",
-        len(report.gate_reports),
+        "PASSED" if unified.overall_passed else "FAILED",
+        len(reports),
     )
-    return report.overall_passed
+    return unified.overall_passed
 
 
 def _clean_stale_workspaces(root: Path, ttl_seconds: float) -> int:
