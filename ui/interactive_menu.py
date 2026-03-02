@@ -136,13 +136,6 @@ def _handle_status_bootstrap() -> None:
     sys.stdout.write(show_bootstrap_status() + "\n")
 
 
-def _handle_obelisk() -> None:
-    """Launch the Obelisk interactive diagnostic sub-menu."""
-    from factory.obelisk.menu import obelisk_menu
-
-    obelisk_menu()
-
-
 # ── Default command table ──────────────────────────────────────────
 
 
@@ -163,7 +156,6 @@ def build_default_commands() -> tuple[MenuCommand, ...]:
         MenuCommand(key="s", label="Status", description="Show pipeline status", handler=_handle_status),
         MenuCommand(key="e", label="Epics", description="Show epic progress", handler=_handle_status_epics),
         MenuCommand(key="b", label="Bootstrap", description="Show bootstrap status", handler=_handle_status_bootstrap),
-        MenuCommand(key="o", label="Obelisk", description="Open Obelisk diagnostics menu", handler=_handle_obelisk),
         MenuCommand(key="h", label="Help", description="Show this menu", handler=_noop_help),
         MenuCommand(key="q", label="Quit", description="Exit interactive mode", handler=_noop_help),
     )

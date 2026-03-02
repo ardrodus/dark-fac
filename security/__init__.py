@@ -1,5 +1,6 @@
 """Security gates — secret scanning, dependency scanning, SAST, image scanning, AI review, config, runtime."""
 
+from factory.security.scan_runner import create_scan_gate, run_tool
 from factory.security.ai_security_review import (
     SecurityFinding,
     SecurityReviewResult,
@@ -40,15 +41,6 @@ from factory.security.sbom_scan import (
     generate_sbom,
 )
 from factory.security.secret_scan import ScanResult, SecretFinding, run_secret_scan
-from factory.security.sentinel import GateResult, SentinelVerdict, run_sentinel
-from factory.security.dashboard import (
-    GateStatus,
-    ScanHistoryEntry,
-    SecurityPanel,
-    SecurityPosture,
-    SeverityCounts,
-    collect_security_data,
-)
 from factory.security.triage import (
     Finding as TriageFinding,
     PatternAdvisory,
@@ -62,6 +54,8 @@ from factory.security.triage import (
 )
 
 __all__ = [
+    "create_scan_gate",
+    "run_tool",
     "Baseline",
     "PulseResult",
     "RuntimeFinding",
@@ -98,9 +92,6 @@ __all__ = [
     "SBOMResult",
     "diff_sbom",
     "generate_sbom",
-    "GateResult",
-    "SentinelVerdict",
-    "run_sentinel",
     "TriageFinding",
     "TriagedFinding",
     "SecurityTriageResult",
@@ -110,10 +101,4 @@ __all__ = [
     "get_pending_findings",
     "respond_to_finding",
     "security_triage",
-    "GateStatus",
-    "SeverityCounts",
-    "ScanHistoryEntry",
-    "SecurityPosture",
-    "SecurityPanel",
-    "collect_security_data",
 ]

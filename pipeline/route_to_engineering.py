@@ -1,8 +1,7 @@
 """Route-to-engineering — full issue-to-PR pipeline orchestrator.
 
 Acquires workspace, generates specs, runs TDD pipeline, security review,
-and creates a PR linked to the issue.  On failure: labels issue blocked,
-creates DLQ entry, triggers Obelisk triage.
+and creates a PR linked to the issue.  On failure: labels issue as blocked.
 """
 from __future__ import annotations
 
@@ -63,22 +62,13 @@ def _ititle(issue: dict[str, object]) -> str:
 
 
 def _label_blocked(num: int, repo: str, reason: str) -> None:
-    """Label issue blocked, enqueue DLQ, trigger Obelisk."""
+    """Label issue as blocked."""
     try:
         from factory.integrations.gh_safe import add_label  # noqa: PLC0415
         add_label(num, "blocked", repo=repo)
     except Exception:  # noqa: BLE001
         logger.warning("Failed to label issue #%d as blocked", num)
-    try:
-        from factory.recovery.dlq import DLQEntry, enqueue  # noqa: PLC0415
-        enqueue(DLQEntry(issue_number=num, reason=reason))
-    except Exception:  # noqa: BLE001
-        logger.warning("Failed to enqueue DLQ for #%d", num)
-    try:
-        from factory.obelisk.triage import run_triage  # noqa: PLC0415
-        run_triage("route_to_engineering", {"issue": num, "reason": reason})
-    except Exception:  # noqa: BLE001
-        logger.warning("Obelisk triage failed for #%d", num)
+    logger.warning("Issue #%d blocked: %s", num, reason)
 
 
 def _fail(msg: str, num: int, repo: str, m: PipelineMetrics) -> RouteResult:
@@ -119,13 +109,16 @@ def _run_tdd(
     return run_tdd_pipeline(specs, ws, tc, invoke_fn=invoke_fn)
 
 
-def _contract_validation(ws: Workspace, specs: SpecBundle) -> bool:
-    from factory.pipeline.gates.contract_validation_gate import run_contract_validation  # noqa: PLC0415
-    result = run_contract_validation(ws, specs)
+def _contract_validation(ws: Workspace, issue_num: int) -> bool:
+    from factory.gates.contract_validation import run_contract_validation  # noqa: PLC0415
+    from factory.gates.framework import CheckStatus  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+    specs_dir = str(Path(ws.path) / ".dark-factory" / "specs")
+    result = run_contract_validation(ws.path, specs_dir, str(issue_num))
     if not result.passed:
-        for v in result.violations[:10]:
-            logger.warning("Contract violation [%s]: expected %s, got %s",
-                           v.dimension, v.expected, v.actual)
+        for c in result.checks:
+            if c.status == CheckStatus.FAIL:
+                logger.warning("Contract violation [%s]: %s", c.name, c.details)
     return result.passed
 
 
@@ -236,7 +229,7 @@ def route_to_engineering(
     # Stage 4: Contract validation
     try:
         s = time.monotonic()
-        cvg_ok = _contract_validation(workspace, bundle)
+        cvg_ok = _contract_validation(workspace, num)
         cvg_s = round(time.monotonic() - s, 2)
     except Exception as exc:  # noqa: BLE001
         return _fail(f"Contract validation failed: {exc}", num, repo, _m())

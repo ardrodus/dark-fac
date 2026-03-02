@@ -1,32 +1,25 @@
-"""PRD generator — convert GitHub issue + arch guidance into a PRD.
-
-Ports generate-prd.sh.  Invokes Claude to produce a PRDResult with
-user stories and acceptance criteria.  Supports L1/L2/L3 detail levels.
-"""
+"""PRD generator — convert GitHub issue + arch guidance into a PRD."""
 from __future__ import annotations
 
 import json
-import logging
-import re
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
-logger = logging.getLogger(__name__)
-_AGENT_TIMEOUT = 300
+from factory.specs.base import extract_json, run_generate, save_artifact, tup
+
 _MAX_STORIES = 20
-_STATE_DIR = Path(".dark-factory")
 
 
 class DetailLevel(Enum):
     """PRD zoom level."""
-    L1 = "L1"  # one-liner summary
-    L2 = "L2"  # story list + dependency graph
-    L3 = "L3"  # full detailed PRD
+    L1 = "L1"
+    L2 = "L2"
+    L3 = "L3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,13 +46,6 @@ class PRDResult:
     errors: tuple[str, ...] = field(default_factory=tuple)
 
 
-def _tup(raw: object) -> tuple[str, ...]:
-    """Coerce list-or-scalar to tuple of strings."""
-    if isinstance(raw, list):
-        return tuple(str(x) for x in raw)
-    return (str(raw),) if raw else ()
-
-
 def _build_prompt(
     issue: dict[str, object], guidance: str | None, level: DetailLevel,
 ) -> str:
@@ -84,26 +70,6 @@ def _build_prompt(
     )
 
 
-def _invoke_agent(
-    prompt: str, *, invoke_fn: Callable[[str], str] | None = None,
-) -> str:
-    if invoke_fn is not None:
-        return invoke_fn(prompt)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
-    return run_command(
-        ["claude", "-p", prompt, "--output-format", "json"],
-        timeout=_AGENT_TIMEOUT, check=True,
-    ).stdout
-
-
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```\w*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
-    return text.strip()
-
-
 def _parse_stories(raw: list[object]) -> tuple[UserStory, ...]:
     out: list[UserStory] = []
     for it in raw:
@@ -113,36 +79,25 @@ def _parse_stories(raw: list[object]) -> tuple[UserStory, ...]:
             id=str(it.get("id", f"US-{len(out) + 1}")),
             title=str(it.get("title", "")),
             description=str(it.get("description", "")),
-            acceptance_criteria=_tup(it.get("acceptance_criteria", [])),
+            acceptance_criteria=tup(it.get("acceptance_criteria", [])),
             priority=str(it.get("priority", "medium")),
-            depends_on=_tup(it.get("depends_on", [])),
+            depends_on=tup(it.get("depends_on", [])),
         ))
     return tuple(out)
 
 
-def _parse_result(raw: str, level: DetailLevel) -> PRDResult:
-    text = _strip_fences(raw)
-    m = re.search(r"\{", text)
-    if m:
-        text = text[m.start():]
-    d: dict[str, object] = json.loads(text)
+def _process(raw: str, level: DetailLevel, num: int | str,
+             state_dir: Path | None) -> PRDResult:
+    d = extract_json(raw)
     rs = d.get("user_stories", [])
-    return PRDResult(
+    result = PRDResult(
         title=str(d.get("title", "")), description=str(d.get("description", "")),
         user_stories=_parse_stories(rs if isinstance(rs, list) else []),
-        non_functional_requirements=_tup(d.get("non_functional_requirements", [])),
-        out_of_scope=_tup(d.get("out_of_scope", [])),
+        non_functional_requirements=tup(d.get("non_functional_requirements", [])),
+        out_of_scope=tup(d.get("out_of_scope", [])),
         detail_level=level, raw_output=raw,
     )
-
-
-def _save_prd(
-    result: PRDResult, num: int | str, *, state_dir: Path | None = None,
-) -> Path:
-    sd = (state_dir or _STATE_DIR) / "specs" / str(num)
-    sd.mkdir(parents=True, exist_ok=True)
-    out = sd / "prd.json"
-    payload = {
+    save_artifact(json.dumps({
         "title": result.title, "description": result.description,
         "detail_level": result.detail_level.value,
         "user_stories": [
@@ -152,10 +107,8 @@ def _save_prd(
             for s in result.user_stories],
         "non_functional_requirements": list(result.non_functional_requirements),
         "out_of_scope": list(result.out_of_scope),
-    }
-    out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    logger.info("PRD saved to %s", out)
-    return out
+    }, indent=2, ensure_ascii=False), "prd.json", num, state_dir=state_dir)
+    return result
 
 
 def _err(lv: DetailLevel, raw: str = "", e: str = "") -> PRDResult:
@@ -167,9 +120,7 @@ def _err(lv: DetailLevel, raw: str = "", e: str = "") -> PRDResult:
 
 
 def generate_prd(
-    issue: dict[str, object],
-    arch_guidance: str | None = None,
-    *,
+    issue: dict[str, object], arch_guidance: str | None = None, *,
     detail_level: DetailLevel = DetailLevel.L3,
     invoke_fn: Callable[[str], str] | None = None,
     state_dir: Path | None = None,
@@ -177,16 +128,9 @@ def generate_prd(
     """Generate a PRD from *issue* and optional *arch_guidance*."""
     rn = issue.get("number", 0)
     num = int(rn) if isinstance(rn, (int, float, str)) else 0
-    prompt = _build_prompt(issue, arch_guidance, detail_level)
-    try:
-        raw = _invoke_agent(prompt, invoke_fn=invoke_fn)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("PRD agent failed: %s", exc)
-        return _err(detail_level, e=str(exc))
-    try:
-        result = _parse_result(raw, detail_level)
-    except (json.JSONDecodeError, KeyError, ValueError) as exc:
-        logger.warning("Failed to parse PRD: %s", exc)
-        return _err(detail_level, raw, f"parse: {exc}")
-    _save_prd(result, num, state_dir=state_dir)
-    return result
+    return run_generate(
+        "PRD", _build_prompt(issue, arch_guidance, detail_level),
+        lambda raw: _process(raw, detail_level, num, state_dir),
+        lambda raw, e: _err(detail_level, raw, e),
+        invoke_fn=invoke_fn,
+    )

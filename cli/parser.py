@@ -51,8 +51,7 @@ COMMAND_TABLE: dict[str, str] = {
     "onboard": "Run project onboarding (use --self for factory self-onboarding).",
     "selftest": "Run all built-in validators and report issues.",
     "smoke-test": "Run a trivial Python story through the pipeline end-to-end.",
-    "status": "Show pipeline, epic, or bootstrap status.",
-    "update": "Check for updates, apply, rollback, or toggle auto-update.",
+    "status": "Show pipeline or epic status.",
     "workspace": "Manage workspaces (list, clean, purge, stats).",
 }
 
@@ -69,8 +68,7 @@ def _format_help() -> str:
         "",
         "Options:",
         "  -a, --auto       Start autonomous dispatch mode.",
-        "  -b, --bootstrap  Run bootstrap mode (plan/implement/test only).",
-        "  -d, --dev        Dev mode -- use LocalStack instead of real AWS.",
+        "  -d, --dev        Dev mode -- enable development flags.",
         "  -t, --test <PR>  Re-run Crucible validation for a specific PR.",
         "  --version        Show the version and exit.",
         "  --help           Show this message and exit.",
@@ -113,11 +111,6 @@ def _parse_doctor(argv: list[str]) -> ParsedCommand:
         description="Run system health checks.",
     )
     parser.add_argument(
-        "--migration",
-        action="store_true",
-        help="Show bash\u2192Python migration progress.",
-    )
-    parser.add_argument(
         "--modules",
         action="store_true",
         help="Validate the module manifest.",
@@ -142,7 +135,6 @@ def _parse_doctor(argv: list[str]) -> ParsedCommand:
     return ParsedCommand(
         command="doctor",
         flags={
-            "migration": ns.migration,
             "modules": ns.modules,
             "debug_modules": ns.debug_modules,
             "deps": ns.deps,
@@ -176,22 +168,17 @@ def _parse_status(argv: list[str]) -> ParsedCommand:
     """Parse ``dark-factory status`` arguments."""
     parser = argparse.ArgumentParser(
         prog="dark-factory status",
-        description="Show pipeline, epic, or bootstrap status.",
+        description="Show pipeline or epic status.",
     )
     parser.add_argument(
         "--epics",
         action="store_true",
         help="Show epic-level progress.",
     )
-    parser.add_argument(
-        "--bootstrap",
-        action="store_true",
-        help="Show bootstrap pipeline status.",
-    )
     ns = parser.parse_args(argv)
     return ParsedCommand(
         command="status",
-        flags={"epics": ns.epics, "bootstrap": ns.bootstrap},
+        flags={"epics": ns.epics},
         args=(),
     )
 
@@ -313,30 +300,6 @@ def _parse_dashboard(argv: list[str]) -> ParsedCommand:
     return ParsedCommand(command="dashboard", flags={}, args=())
 
 
-def _parse_update(argv: list[str]) -> ParsedCommand:
-    """Parse ``dark-factory update`` arguments."""
-    parser = argparse.ArgumentParser(
-        prog="dark-factory update",
-        description="Check for updates, apply, rollback, or toggle auto-update.",
-    )
-    parser.add_argument("--check", action="store_true", help="Check for available updates.")
-    parser.add_argument("--apply", default="", help="Apply update for a specific tag.")
-    parser.add_argument("--rollback", action="store_true", help="Rollback to previous version.")
-    parser.add_argument("--enable", action="store_true", help="Enable auto-update checks.")
-    parser.add_argument("--disable", action="store_true", help="Disable auto-update checks.")
-    ns = parser.parse_args(argv)
-    return ParsedCommand(
-        command="update",
-        flags={
-            "check": ns.check,
-            "rollback": ns.rollback,
-            "enable": ns.enable,
-            "disable": ns.disable,
-        },
-        args=(ns.apply,) if ns.apply else (),
-    )
-
-
 def _parse_workspace(argv: list[str]) -> ParsedCommand:
     """Parse ``dark-factory workspace`` arguments."""
     parser = argparse.ArgumentParser(
@@ -366,7 +329,6 @@ _SUBCOMMAND_PARSERS: dict[str, Callable[[list[str]], ParsedCommand]] = {
     "selftest": _parse_selftest,
     "smoke-test": _parse_smoke_test,
     "status": _parse_status,
-    "update": _parse_update,
     "workspace": _parse_workspace,
 }
 
@@ -406,9 +368,8 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
         sys.stdout.write(f"dark-factory, version {__version__}\n")
         raise SystemExit(0)
 
-    # Parse top-level flags (--auto, --bootstrap, --dev, --test) that can be combined
+    # Parse top-level flags (--auto, --dev, --test) that can be combined
     has_auto = False
-    has_bootstrap = False
     has_dev = False
     has_test = False
     test_pr = ""
@@ -418,8 +379,6 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
         token = argv[i]
         if token in ("--auto", "-a"):
             has_auto = True
-        elif token in ("--bootstrap", "-b"):
-            has_bootstrap = True
         elif token in ("--dev", "-d"):
             has_dev = True
         elif token in ("--test", "-t"):
@@ -434,16 +393,12 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
             remaining.append(token)
         i += 1
 
-    if (has_auto or has_dev or has_bootstrap or has_test) and remaining:
-        sys.stderr.write("Error: --auto/--bootstrap/--dev/--test cannot be combined with a subcommand.\n")
+    if (has_auto or has_dev or has_test) and remaining:
+        sys.stderr.write("Error: --auto/--dev/--test cannot be combined with a subcommand.\n")
         raise SystemExit(2)
 
-    if has_auto and has_bootstrap:
-        sys.stderr.write("Error: --auto and --bootstrap cannot be combined.\n")
-        raise SystemExit(2)
-
-    if has_test and (has_auto or has_bootstrap):
-        sys.stderr.write("Error: --test cannot be combined with --auto or --bootstrap.\n")
+    if has_test and has_auto:
+        sys.stderr.write("Error: --test cannot be combined with --auto.\n")
         raise SystemExit(2)
 
     if has_test:
@@ -459,9 +414,6 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
 
     if has_auto:
         return ParsedCommand(command="auto", flags={"dev_mode": has_dev}, args=())
-
-    if has_bootstrap:
-        return ParsedCommand(command="bootstrap", flags={"dev_mode": has_dev}, args=())
 
     if has_dev:
         return ParsedCommand(command="interactive", flags={"dev_mode": True}, args=())

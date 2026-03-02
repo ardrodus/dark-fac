@@ -10,13 +10,11 @@ from __future__ import annotations
 import sys
 
 
-def run_doctor(*, migration: bool, modules: bool, debug_modules: bool, deps: bool = False, lint: bool = False) -> None:
+def run_doctor(*, modules: bool, debug_modules: bool, deps: bool = False, lint: bool = False) -> None:
     """Execute the ``doctor`` command logic.
 
     Parameters
     ----------
-    migration:
-        Show bash→Python migration progress.
     modules:
         Validate the module manifest.
     debug_modules:
@@ -40,35 +38,20 @@ def run_doctor(*, migration: bool, modules: bool, debug_modules: bool, deps: boo
         sys.stdout.write(depgraph.format_report(dep_result) + "\n")
         if not dep_result.passed:
             raise SystemExit(1)
-    elif migration:
-        from factory.core.migration import format_report, migration_report
-
-        report = migration_report()
-        sys.stdout.write(format_report(report) + "\n")
     elif modules:
         from factory.core.module_loader import (
-            ModuleRegistry,
             format_validation_report,
-            load_manifest,
+            validate_manifest,
         )
 
-        registry = ModuleRegistry()
-        load_manifest(registry)
-        mod_result = registry.validate_manifest()
-        sys.stdout.write(format_validation_report(mod_result) + "\n")
-        if not mod_result.passed:
+        passed, issues, count = validate_manifest()
+        sys.stdout.write(format_validation_report(passed, issues, count) + "\n")
+        if not passed:
             raise SystemExit(1)
     elif debug_modules:
-        from factory.core.module_loader import (
-            ModuleRegistry,
-            format_debug_report,
-            load_manifest,
-        )
+        from factory.core.module_loader import format_debug_report
 
-        registry = ModuleRegistry()
-        load_manifest(registry)
-        registry.startup()
-        sys.stdout.write(format_debug_report(registry) + "\n")
+        sys.stdout.write(format_debug_report() + "\n")
     else:
         sys.stdout.write("dark-factory doctor: all checks passed.\n")
 
@@ -143,20 +126,17 @@ def run_selftest() -> None:
     and reports a combined pass/fail status.
     """
     from factory.core.module_loader import (
-        ModuleRegistry,
         format_validation_report,
-        load_manifest,
+        validate_manifest,
     )
     from factory.tools import dependency_graph as depgraph
 
     all_passed = True
 
     # 1) Module manifest validation
-    registry = ModuleRegistry()
-    load_manifest(registry)
-    manifest_result = registry.validate_manifest()
-    sys.stdout.write(format_validation_report(manifest_result) + "\n\n")
-    if not manifest_result.passed:
+    passed, issues, count = validate_manifest()
+    sys.stdout.write(format_validation_report(passed, issues, count) + "\n\n")
+    if not passed:
         all_passed = False
 
     # 2) Dependency graph validation
@@ -172,20 +152,17 @@ def run_selftest() -> None:
         raise SystemExit(1)
 
 
-def run_status(*, epics: bool, bootstrap: bool) -> None:
+def run_status(*, epics: bool) -> None:
     """Execute the ``status`` command logic.
 
     Parameters
     ----------
     epics:
         Show epic-level progress.
-    bootstrap:
-        Show bootstrap pipeline status.
     """
     import os  # noqa: PLC0415
 
     from factory.ui.status_reporter import (
-        show_bootstrap_status,
         show_epic_status,
         show_status,
     )
@@ -202,8 +179,6 @@ def run_status(*, epics: bool, bootstrap: bool) -> None:
             sys.stdout.write(format_epic_summary(statuses) + "\n")
         else:
             sys.stdout.write(show_epic_status() + "\n")
-    elif bootstrap:
-        sys.stdout.write(show_bootstrap_status() + "\n")
     else:
         sys.stdout.write(show_status() + "\n")
 
@@ -220,7 +195,7 @@ def run_gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
     run_name:
         Run a single gate by name.
     """
-    from factory.gates.discovery import (
+    from factory.gates import (
         discover_gates,
         format_gate_list,
         format_unified_report,
@@ -237,7 +212,7 @@ def run_gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
         except KeyError as exc:
             sys.stderr.write(f"Error: {exc}\n")
             raise SystemExit(1) from None
-        from factory.gates.discovery import UnifiedReport
+        from factory.gates import UnifiedReport
 
         unified = UnifiedReport(gate_reports=(report,))
         sys.stdout.write(format_unified_report(unified) + "\n")
@@ -289,55 +264,6 @@ def run_smoke_test(*, title: str) -> None:
     else:
         cprint("\nsmoke-test: FAIL", "error")
         raise SystemExit(1)
-
-
-def run_update(
-    *,
-    check: bool,
-    apply_tag: str,
-    rollback: bool,
-    enable: bool,
-    disable: bool,
-) -> None:
-    """Execute the ``update`` command logic."""
-    from factory.core.auto_update import (
-        apply_update,
-        check_for_update,
-        interactive_update_prompt,
-        is_update_enabled,
-        rollback_update,
-        set_update_enabled,
-    )
-
-    if enable:
-        set_update_enabled(True)
-        sys.stdout.write("Auto-update checks enabled.\n")
-        return
-    if disable:
-        set_update_enabled(False)
-        sys.stdout.write("Auto-update checks disabled.\n")
-        return
-    if rollback:
-        if rollback_update():
-            sys.stdout.write("Rollback successful.\n")
-        else:
-            sys.stdout.write("Rollback failed.\n")
-            raise SystemExit(1)
-        return
-    if apply_tag:
-        if apply_update(apply_tag):
-            sys.stdout.write(f"Update to {apply_tag} applied.\n")
-        else:
-            sys.stdout.write(f"Update to {apply_tag} failed.\n")
-            raise SystemExit(1)
-        return
-    # Default: check for updates
-    sys.stdout.write(f"Auto-update: {'enabled' if is_update_enabled() else 'disabled'}\n")
-    info = check_for_update()
-    if info is None:
-        sys.stdout.write("No update available.\n")
-        return
-    interactive_update_prompt(info)
 
 
 # ── Config helpers ───────────────────────────────────────────────

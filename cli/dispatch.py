@@ -40,7 +40,6 @@ def dispatch_doctor(parsed: ParsedCommand) -> None:
     from factory.cli.handlers import run_doctor
 
     run_doctor(
-        migration=parsed.flags.get("migration", False),
         modules=parsed.flags.get("modules", False),
         debug_modules=parsed.flags.get("debug_modules", False),
         deps=parsed.flags.get("deps", False),
@@ -87,10 +86,7 @@ def dispatch_status(parsed: ParsedCommand) -> None:
     """Dispatch the ``status`` command."""
     from factory.cli.handlers import run_status
 
-    run_status(
-        epics=parsed.flags.get("epics", False),
-        bootstrap=parsed.flags.get("bootstrap", False),
-    )
+    run_status(epics=parsed.flags.get("epics", False))
 
 
 def dispatch_onboard(parsed: ParsedCommand) -> None:
@@ -107,50 +103,12 @@ def dispatch_selftest(parsed: ParsedCommand) -> None:
     run_selftest()
 
 
-def _init_dev_mode() -> bool:
-    """Run LocalStack startup; return ``True`` if healthy."""
-    from factory.setup.localstack import dev_mode_startup
-
-    logger.info("DEV_MODE enabled — initialising LocalStack")
-    if dev_mode_startup():
-        sys.stderr.write("Dev mode: LocalStack ready\n")
-        return True
-    sys.stderr.write("Warning: LocalStack unavailable — continuing without dev services\n")
-    return False
-
-
-def dispatch_bootstrap(parsed: ParsedCommand) -> None:
-    """Dispatch the ``bootstrap`` command (``--bootstrap`` / ``-b`` flag)."""
-    from factory.core.config_manager import load_config  # noqa: PLC0415
-    from factory.pipeline.bootstrap import run_bootstrap  # noqa: PLC0415
-
-    dev = parsed.flags.get("dev_mode", False)
-    if dev:
-        _init_dev_mode()
-
-    config = load_config()
-    result = run_bootstrap(config)
-
-    from factory.ui.cli_colors import cprint, print_stage_result  # noqa: PLC0415
-
-    for outcome in result.outcomes:
-        state = "passed" if outcome.passed else "failed"
-        print_stage_result(outcome.title, state, outcome.detail)
-    if result.success:
-        cprint(f"\nbootstrap: PASS ({result.stories_passed}/{result.stories_attempted})", "success")
-    else:
-        cprint(f"\nbootstrap: FAIL ({result.stories_passed}/{result.stories_attempted})", "error")
-        raise SystemExit(1)
-
-
 def dispatch_auto(parsed: ParsedCommand) -> None:
     """Dispatch the ``auto`` command (``--auto`` / ``-a`` flag)."""
     from factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
     from factory.dispatch.issue_dispatcher import DispatcherState, auto_main_loop  # noqa: PLC0415
 
     dev = parsed.flags.get("dev_mode", False)
-    if dev:
-        _init_dev_mode()
 
     try:
         with instance_lock():
@@ -186,10 +144,6 @@ def dispatch_test(parsed: ParsedCommand) -> None:
         )
         raise SystemExit(1)
 
-    dev = parsed.flags.get("dev_mode", False)
-    if dev:
-        _init_dev_mode()
-
     from factory.core.config_manager import load_config  # noqa: PLC0415
 
     config = load_config()
@@ -217,30 +171,12 @@ def dispatch_interactive(parsed: ParsedCommand) -> None:
     from factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
     from factory.ui.interactive_menu import run_interactive  # noqa: PLC0415
 
-    dev = parsed.flags.get("dev_mode", False)
-    if dev:
-        _init_dev_mode()
-
     try:
         with instance_lock():
             run_interactive()
     except InstanceLockError as exc:
         sys.stderr.write(f"[instance-lock] ERROR: {exc}\n")
         raise SystemExit(1) from None
-
-
-def dispatch_update(parsed: ParsedCommand) -> None:
-    """Dispatch the ``update`` command."""
-    from factory.cli.handlers import run_update
-
-    tag = parsed.args[0] if parsed.args else ""
-    run_update(
-        check=parsed.flags.get("check", False),
-        apply_tag=tag,
-        rollback=parsed.flags.get("rollback", False),
-        enable=parsed.flags.get("enable", False),
-        disable=parsed.flags.get("disable", False),
-    )
 
 
 def dispatch_workspace(parsed: ParsedCommand) -> None:
@@ -254,7 +190,6 @@ def dispatch_workspace(parsed: ParsedCommand) -> None:
 
 DISPATCH_TABLE: dict[str, Callable[[ParsedCommand], None]] = {
     "auto": dispatch_auto,
-    "bootstrap": dispatch_bootstrap,
     "config": dispatch_config,
     "dashboard": dispatch_dashboard,
     "doctor": dispatch_doctor,
@@ -266,7 +201,6 @@ DISPATCH_TABLE: dict[str, Callable[[ParsedCommand], None]] = {
     "smoke-test": dispatch_smoke_test,
     "status": dispatch_status,
     "test": dispatch_test,
-    "update": dispatch_update,
     "workspace": dispatch_workspace,
 }
 

@@ -1,9 +1,4 @@
-"""Container image scan gate — scan built images for OS-level vulnerabilities.
-
-Ported from ``image-scan.sh`` (US-017 / US-604).  Auto-detects trivy, grype,
-or docker scout and normalises findings into a common schema.  Critical CVEs
-(CVSS >= 9.0) block; high CVEs (CVSS >= 7.0) warn.
-"""
+"""Container image scan gate — scan built images for OS-level vulnerabilities."""
 from __future__ import annotations
 
 import json
@@ -13,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from factory.gates.framework import GateRunner
-from factory.integrations.shell import run_command
+from factory.security.scan_runner import run_tool
 
 logger = logging.getLogger(__name__)
 _CRIT, _HIGH, _MED = 9.0, 7.0, 4.0
@@ -48,8 +43,6 @@ class ScanResult:
     def __post_init__(self) -> None:
         object.__setattr__(self, "passed", not any(f.cvss >= _CRIT for f in self.findings))
 
-
-# ── Scanner parsers ──────────────────────────────────────────────
 
 def _parse_trivy(raw: str) -> list[Finding]:
     findings: list[Finding] = []
@@ -88,40 +81,26 @@ def _parse_docker_scout(raw: str) -> list[Finding]:
     return findings
 
 
+_TOOLS: list[tuple[str, list[str]]] = [
+    ("trivy", ["trivy", "image", "--format", "json", "--quiet"]),
+    ("grype", ["grype", "-o", "json"]),
+    ("docker", ["docker", "scout", "cves", "--format", "json"]),
+]
 _PARSERS = {"trivy": _parse_trivy, "grype": _parse_grype, "docker": _parse_docker_scout}
-
-
-def _detect_scanner(image_tag: str) -> tuple[str, list[str]] | None:
-    for tool, cmd in [
-        ("trivy", ["trivy", "image", "--format", "json", "--quiet", image_tag]),
-        ("grype", ["grype", image_tag, "-o", "json"]),
-        ("docker", ["docker", "scout", "cves", image_tag, "--format", "json"]),
-    ]:
-        if shutil.which(tool):
-            return (tool, cmd)
-    return None
 
 
 def run_image_scan(image_tag: str, *, timeout: int = 180) -> ScanResult:
     """Scan a container image for OS-level vulnerabilities."""
-    detected = _detect_scanner(image_tag)
-    if detected is None:
-        logger.warning("No image scanner found (trivy, grype, docker scout)")
-        return ScanResult(findings=(), image_tag=image_tag, scanner_used="none")
-    tool, cmd = detected
-    logger.info("Scanning image %s with %s", image_tag, tool)
-    raw = run_command(cmd, timeout=timeout).stdout.strip()
-    if not raw:
-        return ScanResult(findings=(), image_tag=image_tag, scanner_used=tool)
-    try:
-        findings = _PARSERS[tool](raw)
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-        logger.warning("Failed to parse %s output for image %s", tool, image_tag)
-        findings = []
-    return ScanResult(findings=tuple(findings), image_tag=image_tag, scanner_used=tool)
+    for tool, base_cmd in _TOOLS:
+        if not shutil.which(tool):
+            continue
+        logger.info("Scanning image %s with %s", image_tag, tool)
+        cmd = [*base_cmd, image_tag] if tool != "grype" else [base_cmd[0], image_tag, *base_cmd[1:]]
+        findings = run_tool(tool, cmd, _PARSERS[tool], timeout=timeout)
+        return ScanResult(findings=tuple(findings), image_tag=image_tag, scanner_used=tool)
+    logger.warning("No image scanner found (trivy, grype, docker scout)")
+    return ScanResult(findings=(), image_tag=image_tag, scanner_used="none")
 
-
-# ── Gate discovery interface ─────────────────────────────────────
 
 GATE_NAME = "image-scan"
 
@@ -129,6 +108,7 @@ GATE_NAME = "image-scan"
 def create_runner(image_tag: str, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured image-scan gate runner."""
     runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
+
     def _check_image() -> bool | str:
         sr = run_image_scan(image_tag)
         crit = sum(1 for f in sr.findings if f.severity == "critical")
@@ -136,5 +116,6 @@ def create_runner(image_tag: str, *, metrics_dir: str | Path | None = None) -> G
             raise RuntimeError(f"Critical image vulnerabilities: {crit} blocking")
         warns = sum(1 for f in sr.findings if f.severity == "high")
         return f"image scan OK ({len(sr.findings)} finding(s), {warns} high, {crit} critical)"
+
     runner.register_check("image-vuln-scan", _check_image)
     return runner

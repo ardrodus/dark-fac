@@ -23,7 +23,6 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Label, ProgressBar, RichLog, Static
 
-from factory.security.dashboard import SecurityPanel, SecurityPosture
 from factory.ui.notifications import Notification, NotificationPanel, get_store
 from factory.ui.theme import PILLARS, THEME, build_css, stage_icon
 
@@ -81,7 +80,6 @@ class DashboardState:
     agents: list[AgentInfo] = field(default_factory=list)
     health: list[HealthStatus] = field(default_factory=list)
     gate_summaries: list[GateSummary] = field(default_factory=list)
-    security_posture: SecurityPosture | None = None
     notifications: tuple[Notification, ...] = ()
     queue_depth: int = 0
     refresh_interval: float = 2.0
@@ -274,7 +272,6 @@ class DashboardApp(App[None]):
                 HealthPanel(id="health-panel"),
             ),
             GatePanel(id="gate-panel"),
-            SecurityPanel(id="security-panel"),
             NotificationPanel(id="notification-panel"),
             LogPanel(id="log-panel"),
         )
@@ -337,10 +334,6 @@ class DashboardApp(App[None]):
             self.query_one("#gate-panel", GatePanel).refresh_gates(
                 self._state.gate_summaries,
             )
-            if self._state.security_posture is not None:
-                self.query_one("#security-panel", SecurityPanel).refresh_posture(
-                    self._state.security_posture,
-                )
             notifs = self._state.notifications or get_store().items
             self.query_one("#notification-panel", NotificationPanel).refresh_notifications(
                 notifs,

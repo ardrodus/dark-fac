@@ -2,8 +2,8 @@
 
 Orchestrates the selection, labelling, and dispatching of GitHub issues
 through the Dark Factory pipeline.  Interacts with the GitHub CLI via
-:mod:`factory.integrations.gh_safe` and routes failures through the
-recovery dispatcher via :mod:`factory.recovery.dispatcher`.
+:mod:`factory.integrations.gh_safe` and labels failed issues as
+``factory:failed``.
 """
 
 from __future__ import annotations
@@ -15,11 +15,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from factory.integrations.gh_safe import GhSafeError, IssueInfo, add_label, list_issues, remove_label
-from factory.recovery.dispatcher import ErrorType, handle_failure
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +142,6 @@ def dispatch_issue(
     state: DispatcherState | None = None,
     repo: str | None = None,
     cwd: str | None = None,
-    dlq_dir: Path | None = None,
 ) -> DispatchResult:
     """Dispatch a single issue through the pipeline.
 
@@ -162,8 +159,6 @@ def dispatch_issue(
         GitHub repository slug (``owner/repo``).
     cwd:
         Working directory for ``gh`` calls.
-    dlq_dir:
-        Override directory for dead-letter queue writes.
     """
     ds = state or DispatcherState()
 
@@ -188,13 +183,7 @@ def dispatch_issue(
         _apply_label_transition(
             issue.number, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, repo=repo, cwd=cwd
         )
-        handle_failure(
-            context=f"dispatch:#{issue.number}",
-            error_type=ErrorType.LOGIC,
-            details={"issue_number": issue.number, "reason": "handler returned failure"},
-            dlq_dir=dlq_dir,
-            cwd=cwd,
-        )
+        logger.warning("Dispatch handler returned failure for #%d", issue.number)
         return DispatchResult(issue_number=issue.number, success=False, message="handler returned failure")
 
     except Exception:
@@ -205,13 +194,7 @@ def dispatch_issue(
             )
         except GhSafeError:
             logger.warning("Could not apply failure label to #%d", issue.number)
-        handle_failure(
-            context=f"dispatch:#{issue.number}",
-            error_type=ErrorType.INFRASTRUCTURE,
-            details={"issue_number": issue.number, "reason": "unhandled exception"},
-            dlq_dir=dlq_dir,
-            cwd=cwd,
-        )
+        logger.warning("Unhandled exception dispatching #%d, labeled as failed", issue.number)
         return DispatchResult(issue_number=issue.number, success=False, message="unhandled exception")
     finally:
         _release_slot(issue.number, ds)
@@ -234,7 +217,6 @@ def auto_main_loop(
     state: DispatcherState | None = None,
     repo: str | None = None,
     cwd: str | None = None,
-    dlq_dir: Path | None = None,
     poll_interval: float = _DEFAULT_POLL_INTERVAL,
     max_iterations: int | None = None,
     sleep_fn: Callable[[float], None] | None = None,
@@ -262,7 +244,7 @@ def auto_main_loop(
             _sleep(poll_interval)
             continue
 
-        result = dispatch_issue(issue, handler=handler, state=ds, repo=repo, cwd=cwd, dlq_dir=dlq_dir)
+        result = dispatch_issue(issue, handler=handler, state=ds, repo=repo, cwd=cwd)
         results.append(result)
 
         if not result.success:

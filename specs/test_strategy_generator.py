@@ -1,22 +1,20 @@
 """Test strategy generator — port of generate-test-strategy.sh."""
 from __future__ import annotations
 
-import json
-import logging
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
+from factory.specs.base import (
+    extract_json, format_analysis, run_generate, save_artifact, tup,
+)
 from factory.specs.design_generator import DesignResult
 from factory.specs.prd_generator import PRDResult
 
-logger = logging.getLogger(__name__)
-_AGENT_TIMEOUT = 300
-_STATE_DIR = Path(".dark-factory")
 _DEF_COV: dict[str, float] = {"unit": 80.0, "integration": 60.0, "e2e": 40.0, "overall": 70.0}
 
 
@@ -32,31 +30,6 @@ class TestStrategyResult:
     affected_tests: tuple[str, ...] = field(default_factory=tuple)
     raw_output: str = ""
     errors: tuple[str, ...] = field(default_factory=tuple)
-
-
-def _tup(raw: object) -> tuple[str, ...]:
-    if isinstance(raw, list):
-        return tuple(str(x) for x in raw)
-    return (str(raw),) if raw else ()
-
-
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```\w*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
-    return text.strip()
-
-
-def _fmt_analysis(analysis: object) -> str:
-    parts: list[str] = []
-    for attr, lbl in (("language", "Language"), ("framework", "Framework"),
-                      ("test_cmd", "Test cmd"), ("test_dirs", "Test dirs"),
-                      ("source_dirs", "Source dirs")):
-        val = getattr(analysis, attr, None)
-        if val:
-            parts.append(f"- **{lbl}:** {val}")
-    return "\n".join(parts) or "No analysis available."
 
 
 def _build_prompt(prd: PRDResult, design: DesignResult, asummary: str) -> str:
@@ -88,15 +61,6 @@ def _build_prompt(prd: PRDResult, design: DesignResult, asummary: str) -> str:
         '"affected_tests":["path/to/test.py"]}')
 
 
-def _invoke_agent(prompt: str, *, invoke_fn: Callable[[str], str] | None = None) -> str:
-    if invoke_fn is not None:
-        return invoke_fn(prompt)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
-    return run_command(
-        ["claude", "-p", prompt, "--output-format", "json"],
-        timeout=_AGENT_TIMEOUT, check=True).stdout
-
-
 def _parse_cov(raw: object) -> dict[str, float]:
     if not isinstance(raw, dict):
         return dict(_DEF_COV)
@@ -109,24 +73,7 @@ def _parse_cov(raw: object) -> dict[str, float]:
     return out or dict(_DEF_COV)
 
 
-def _parse_result(raw: str) -> TestStrategyResult:
-    text = _strip_fences(raw)
-    m = re.search(r"\{", text)
-    if m:
-        text = text[m.start():]
-    d: dict[str, object] = json.loads(text)
-    return TestStrategyResult(
-        unit_tests=_tup(d.get("unit_tests", [])),
-        integration_tests=_tup(d.get("integration_tests", [])),
-        e2e_tests=_tup(d.get("e2e_tests", [])),
-        fixtures=_tup(d.get("fixtures", [])),
-        mocks=_tup(d.get("mocks", [])),
-        coverage_targets=_parse_cov(d.get("coverage_targets")),
-        affected_tests=_tup(d.get("affected_tests", [])),
-        raw_output=raw)
-
-
-_SECTIONS: tuple[tuple[str, str, str], ...] = (
+_MD_SECTIONS: tuple[tuple[str, str, str], ...] = (
     ("unit_tests", "Unit Tests", "- {}\n"),
     ("integration_tests", "Integration Tests", "- {}\n"),
     ("e2e_tests", "E2E Tests", "- {}\n"),
@@ -136,14 +83,19 @@ _SECTIONS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def _save_strategy(
-    result: TestStrategyResult, num: int | str, *, state_dir: Path | None = None,
-) -> Path:
-    sd = (state_dir or _STATE_DIR) / "specs" / str(num)
-    sd.mkdir(parents=True, exist_ok=True)
-    out = sd / "test-strategy.md"
+def _process(raw: str, num: int | str, state_dir: Path | None) -> TestStrategyResult:
+    d = extract_json(raw)
+    result = TestStrategyResult(
+        unit_tests=tup(d.get("unit_tests", [])),
+        integration_tests=tup(d.get("integration_tests", [])),
+        e2e_tests=tup(d.get("e2e_tests", [])),
+        fixtures=tup(d.get("fixtures", [])),
+        mocks=tup(d.get("mocks", [])),
+        coverage_targets=_parse_cov(d.get("coverage_targets")),
+        affected_tests=tup(d.get("affected_tests", [])), raw_output=raw,
+    )
     lines = ["# Test Strategy\n\n"]
-    for attr, heading, fmt in _SECTIONS:
+    for attr, heading, fmt in _MD_SECTIONS:
         items = getattr(result, attr, ())
         if items:
             lines.append(f"## {heading}\n\n")
@@ -153,9 +105,8 @@ def _save_strategy(
         lines.append("## Coverage Targets\n\n")
         lines.extend(f"- **{k}:** {v}%\n" for k, v in result.coverage_targets.items())
         lines.append("\n")
-    out.write_text("".join(lines), encoding="utf-8")
-    logger.info("Test strategy saved to %s", out)
-    return out
+    save_artifact("".join(lines), "test-strategy.md", num, state_dir=state_dir)
+    return result
 
 
 def _err(raw: str = "", e: str = "") -> TestStrategyResult:
@@ -165,32 +116,16 @@ def _err(raw: str = "", e: str = "") -> TestStrategyResult:
         raw_output=raw, errors=(e,) if e else ())
 
 
-def _extract_inum(prd: PRDResult) -> int | str:
-    m = re.search(r"#(\d+)", prd.title)
-    return int(m.group(1)) if m else 0
-
-
 def generate_test_strategy(
-    prd: PRDResult,
-    design: DesignResult,
-    analysis: object,
-    *,
+    prd: PRDResult, design: DesignResult, analysis: object, *,
     invoke_fn: Callable[[str], str] | None = None,
-    state_dir: Path | None = None,
-    issue_number: int | str = 0,
+    state_dir: Path | None = None, issue_number: int | str = 0,
 ) -> TestStrategyResult:
     """Generate a test strategy from *prd*, *design*, and *analysis*."""
-    prompt = _build_prompt(prd, design, _fmt_analysis(analysis))
-    try:
-        raw = _invoke_agent(prompt, invoke_fn=invoke_fn)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Test strategy agent failed: %s", exc)
-        return _err(e=str(exc))
-    try:
-        result = _parse_result(raw)
-    except (json.JSONDecodeError, KeyError, ValueError) as exc:
-        logger.warning("Failed to parse test strategy: %s", exc)
-        return _err(raw, f"parse: {exc}")
-    num = issue_number or _extract_inum(prd)
-    _save_strategy(result, num, state_dir=state_dir)
-    return result
+    m = re.search(r"#(\d+)", prd.title)
+    num = issue_number or (int(m.group(1)) if m else 0)
+    return run_generate(
+        "Test strategy", _build_prompt(prd, design, format_analysis(analysis)),
+        lambda raw: _process(raw, num, state_dir),
+        _err, invoke_fn=invoke_fn,
+    )

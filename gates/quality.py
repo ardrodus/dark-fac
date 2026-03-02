@@ -111,31 +111,12 @@ def gate_pytest(test_dir: str = "tests/", *, cwd: str | None = None) -> GateResu
 GATE_NAME = "quality"
 
 
-def _quality_ruff(cwd: str) -> bool | str:
-    """Check wrapper for ruff in GateRunner context."""
-    result = run_command(["ruff", "check", "factory/"], timeout=120, cwd=cwd)
+def _tool_check(cmd: list[str], label: str, *, timeout: float = 120, cwd: str | None = None) -> bool | str:
+    """Run *cmd* and return a pass message or raise on failure."""
+    result = run_command(cmd, timeout=timeout, cwd=cwd)
     if result.returncode != 0:
-        output = (result.stdout + result.stderr).strip()
-        raise RuntimeError(f"ruff check failed: {output[:200]}")
-    return "ruff check passed"
-
-
-def _quality_mypy(cwd: str) -> bool | str:
-    """Check wrapper for mypy in GateRunner context."""
-    result = run_command(["mypy", "--strict", "factory/"], timeout=120, cwd=cwd)
-    if result.returncode != 0:
-        output = (result.stdout + result.stderr).strip()
-        raise RuntimeError(f"mypy failed: {output[:200]}")
-    return "mypy --strict passed"
-
-
-def _quality_pytest(cwd: str) -> bool | str:
-    """Check wrapper for pytest in GateRunner context."""
-    result = run_command(["pytest", "tests/", "-v", "--tb=short"], timeout=300, cwd=cwd)
-    if result.returncode != 0:
-        output = (result.stdout + result.stderr).strip()
-        raise RuntimeError(f"pytest failed: {output[:200]}")
-    return "pytest passed"
+        raise RuntimeError(f"{label} failed: {(result.stdout + result.stderr).strip()[:200]}")
+    return f"{label} passed"
 
 
 def create_runner(
@@ -144,9 +125,9 @@ def create_runner(
     """Create a configured (but not executed) quality gate runner."""
     cwd = str(workspace)
     runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
-    runner.register_check("ruff-check", lambda: _quality_ruff(cwd))
-    runner.register_check("mypy-strict", lambda: _quality_mypy(cwd))
-    runner.register_check("pytest", lambda: _quality_pytest(cwd))
+    runner.register_check("ruff-check", lambda: _tool_check(["ruff", "check", "factory/"], "ruff check", cwd=cwd))
+    runner.register_check("mypy-strict", lambda: _tool_check(["mypy", "--strict", "factory/"], "mypy --strict", cwd=cwd))
+    runner.register_check("pytest", lambda: _tool_check(["pytest", "tests/", "-v", "--tb=short"], "pytest", timeout=300, cwd=cwd))
     return runner
 
 

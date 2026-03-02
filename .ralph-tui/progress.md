@@ -16,6 +16,7 @@
 - **Agent protocol prompt assembly**: `build_agent_prompt(agent_type, task_context, config)` in `factory/agents/protocol.py` assembles preamble + role prompt + epilogue for every agent invocation. Uses `get_context_profile(agent_type) -> ContextProfile` for role-based L1/L2/L3 zoom levels. Agent type aliases (e.g. `sa-compute` → `sa-specialist`) map many agent names to a few canonical profiles. Degraded mode (`_mem_available() -> False`) substitutes static strings that tell agents to skip memory operations.
 - **TUI panel integration pattern**: Adding a new panel to `DashboardApp` requires 4 touch-points in `factory/ui/dashboard.py`: (1) import the panel class + its state type, (2) add an optional state field to `DashboardState`, (3) compose the panel widget in `DashboardApp.compose()`, (4) call the panel's refresh method in `_repaint()` (guarded by `is not None` check for optional state). Panel widgets follow `Static` base class with `compose()` → `on_mount()` → `refresh_X()` lifecycle.
 - **UI colour consistency pattern**: All CLI output uses `factory.ui.cli_colors` for semantic colours (`cprint(text, "success"/"error"/"warning"/"info")`). Dashboard panels use `PILLARS` from `factory.ui.theme` for subsystem-specific border and label colours. Stage transitions use `stage_icon(state)` for consistent ✔/✘/▶ icons. `print_error(msg, hint=...)` provides human-friendly error messages with next-step hints across all CLI commands.
+- **Gate consolidation pattern**: When multiple gates share helpers (file reading, spec discovery, extension constants), extract shared code to `framework.py` and merge gate check implementations into a single `spec_gates.py`. Original gate modules become thin re-export wrappers (~8 lines each) that maintain the discovery protocol (`GATE_NAME` + `create_runner`). Use `_register_*_checks()` helpers to eliminate duplication between `create_runner` and `run_*` entry points. Orchestration (GATE_REGISTRY, discover_gates, run_all_gates, formatting) belongs in `framework.py`.
 
 ---
 
@@ -575,4 +576,24 @@
 - **Learnings:**
   - The test files (test_archaeologist.py, test_writer.py, test_strategy_generator.py) contain dataclass result types prefixed with "Test" — pytest warns about them but they aren't actual test functions
   - US-999 is the final gate story — it validates all prior stories pass before committing
+---
+
+## 2026-03-01 - US-016
+- Consolidated gates/design_review.py, gates/contract_validation.py, and gates/integration_test.py to share code through the GateRunner framework
+- Files changed:
+  - `factory/gates/framework.py` — Added shared helpers (`read_file`, `find_spec`, `find_typed_spec`, extension constants `API_EXTS`/`SCHEMA_EXTS`/`IFACE_EXTS`). Moved orchestration from `__init__.py` (GATE_REGISTRY, GateInfo, UnifiedReport, discover_gates, run_all_gates, run_gate_by_name, write/load/format functions)
+  - `factory/gates/spec_gates.py` — NEW consolidated file merging all check logic from design_review, contract_validation, and integration_test into one module. Shared regex patterns, helpers, and `_register_*_checks()` functions eliminate duplication
+  - `factory/gates/design_review.py` — Reduced from 245 lines to 8-line thin wrapper re-exporting from spec_gates
+  - `factory/gates/contract_validation.py` — Reduced from 213 lines to 8-line thin wrapper re-exporting from spec_gates
+  - `factory/gates/integration_test.py` — Reduced from 192 lines to 18-line thin wrapper re-exporting from spec_gates (includes collect_story_artifacts/collect_existing_tests)
+  - `factory/gates/__init__.py` — Reduced from 259 lines to 48-line pure re-export module (all logic moved to framework.py)
+  - `factory/gates/startup_health.py` — Reduced from 169 to 164 lines: extracted `_make_runner()` to eliminate check registration duplication between `create_runner` and `run_startup_health`
+  - `factory/gates/quality.py` — Reduced from 202 to 183 lines: replaced three `_quality_*` wrapper functions with single `_tool_check()` helper
+- **Learnings:**
+  - The three spec-validation gates shared identical `_read()`, `_find_spec()`/`_find_first()` helpers and extension constants — merging into one file eliminated triple definitions
+  - Each gate had both `create_runner()` (for discovery) and `run_*()` (public API) that duplicated check registration. Extracting `_register_*_checks()` helpers eliminated this
+  - The `__init__.py` file was doing double duty as both re-export surface and orchestration logic — splitting these concerns made it much cleaner
+  - GATE_REGISTRY and orchestration functions belong in `framework.py` since they're core infrastructure, not package-level re-exports
+  - The pre-existing mypy error in `factory/agents/protocol.py:163` (`factory.integrations.health` missing) is unrelated — confirmed no new mypy errors introduced
+  - Total gates module: 1,548 → 1,449 lines (7% reduction). The three target files went from 650 → 34 lines (95% reduction), with shared logic consolidated in spec_gates.py (543 lines)
 ---

@@ -1,16 +1,10 @@
-"""Agent Protocol — prompt assembly for every agent invocation.
-
-Ports agent-protocol.sh: preamble/epilogue generation, role-based context
-profiles (L1/L2/L3), cross-project pattern search, degraded mode fallbacks.
-"""
+"""Agent Protocol — prompt assembly for every agent invocation."""
 
 from __future__ import annotations
 
 import logging
 import os
 import re
-from dataclasses import dataclass
-from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -18,76 +12,37 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ── Role-to-context-level mapping ────────────────────────────────
+# Each role gets one level: "full", "summary", or "minimal".
+# Flat dict replaces the former L1/L2/L3 zoom system + alias indirection.
 
-class ZoomLevel(Enum):
-    """Context detail level: tagline, paragraph, or full."""
-
-    L1 = "L1"
-    L2 = "L2"
-    L3 = "L3"
-
-
-_LEVEL_DESC = {
-    ZoomLevel.L1: "tagline only (<20 words)",
-    ZoomLevel.L2: "paragraph summary (<100 words)",
-    ZoomLevel.L3: "full detail",
-}
-
-
-@dataclass(frozen=True, slots=True)
-class ContextProfile:
-    """Per-agent zoom levels for each context category."""
-
-    own_domain: ZoomLevel = ZoomLevel.L3
-    other_domains: ZoomLevel = ZoomLevel.L3
-    task: ZoomLevel = ZoomLevel.L3
-    history: ZoomLevel = ZoomLevel.L3
-
-
-_DEFAULT = ContextProfile()
-
-_PROFILES: dict[str, ContextProfile] = {
-    "sa-specialist": ContextProfile(
-        ZoomLevel.L3, ZoomLevel.L2, ZoomLevel.L3, ZoomLevel.L1),
-    "sa-lead": ContextProfile(
-        ZoomLevel.L2, ZoomLevel.L2, ZoomLevel.L3, ZoomLevel.L2),
-    "test-writer": ContextProfile(
-        ZoomLevel.L3, ZoomLevel.L2, ZoomLevel.L3, ZoomLevel.L1),
-    "feature-writer": ContextProfile(
-        ZoomLevel.L3, ZoomLevel.L1, ZoomLevel.L3, ZoomLevel.L1),
-    "crucible": ContextProfile(
-        ZoomLevel.L3, ZoomLevel.L2, ZoomLevel.L3, ZoomLevel.L1),
-    "learning": ContextProfile(
-        ZoomLevel.L3, ZoomLevel.L1, ZoomLevel.L1, ZoomLevel.L1),
-}
-
-_ALIASES: dict[str, str] = {
-    "sa-compute": "sa-specialist", "sa-storage": "sa-specialist",
-    "sa-database": "sa-specialist", "sa-network": "sa-specialist",
-    "sa-analytics": "sa-specialist", "sa-mlai": "sa-specialist",
-    "sa-devops": "sa-specialist", "sa-monitoring": "sa-specialist",
-    "sa-integration": "sa-specialist", "sa-security": "sa-specialist",
-    "sa-code-quality": "sa-specialist", "sa-performance": "sa-specialist",
-    "sa-testing": "sa-specialist", "sa-dependencies": "sa-specialist",
-    "sa-api-design": "sa-specialist", "sa-ux": "sa-specialist",
-    "eng-test-writer": "test-writer", "eng-feature-writer": "feature-writer",
-    "eng-crucible": "crucible", "code-review": "crucible",
+ROLE_CONTEXT: dict[str, str] = {
+    "sa-specialist": "summary", "sa-compute": "summary",
+    "sa-storage": "summary", "sa-database": "summary",
+    "sa-network": "summary", "sa-analytics": "summary",
+    "sa-mlai": "summary", "sa-devops": "summary",
+    "sa-monitoring": "summary", "sa-integration": "summary",
+    "sa-security": "summary", "sa-code-quality": "summary",
+    "sa-performance": "summary", "sa-testing": "summary",
+    "sa-dependencies": "summary", "sa-api-design": "summary",
+    "sa-ux": "summary", "sa-lead": "summary",
+    "test-writer": "full", "eng-test-writer": "full",
+    "feature-writer": "full", "eng-feature-writer": "full",
+    "crucible": "full", "eng-crucible": "full", "code-review": "full",
+    "learning": "minimal",
 }
 
 _LEARNING_RE = re.compile(r"^learning(?:-.+)?$")
+_LEVEL_HINT = {"full": "full detail", "summary": "concise summaries", "minimal": "taglines only"}
 
 
-def get_context_profile(agent_type: str) -> ContextProfile:
-    """Return the L1/L2/L3 context profile for *agent_type*."""
-    if not agent_type:
-        return _DEFAULT
-    if agent_type in _PROFILES:
-        return _PROFILES[agent_type]
-    if agent_type in _ALIASES:
-        return _PROFILES[_ALIASES[agent_type]]
-    if _LEARNING_RE.match(agent_type):
-        return _PROFILES["learning"]
-    return _DEFAULT
+def get_context_level(agent_type: str) -> str:
+    """Return the context level for *agent_type*."""
+    if agent_type in ROLE_CONTEXT:
+        return ROLE_CONTEXT[agent_type]
+    if agent_type and _LEARNING_RE.match(agent_type):
+        return "minimal"
+    return "full"
 
 
 def _project_key(config: ConfigData | None) -> str:
@@ -103,9 +58,6 @@ def _project_key(config: ConfigData | None) -> str:
         base = repo.rsplit("/", 1)[-1].lower()
         return re.sub(r"[^a-z0-9-]", "", base) or "dark-factory"
     return "dark-factory"
-
-
-_XP_CAP = 5
 
 
 def _shared_keys(current: str) -> list[str]:
@@ -135,10 +87,9 @@ def _cross_project_section(task_desc: str, current: str) -> str:
     )
     return (
         "\n### 5. Cross-Project Transferable Patterns (US-048)\n\n"
-        "Search for transferable patterns from other repos.\n\n"
         f"**Search each project**:\n{searches}\n\n"
-        f"**Ranking**: relevance -> confidence -> recency.\n"
-        f"**Cap**: At most **{_XP_CAP} cross-project patterns**.\n"
+        "**Ranking**: relevance -> confidence -> recency. "
+        "**Cap**: 5 cross-project patterns max.\n"
         "**Degradation**: If search fails, fall back to project-only.\n"
     )
 
@@ -146,43 +97,22 @@ def _cross_project_section(task_desc: str, current: str) -> str:
 def generate_preamble(agent_type: str, task_context: dict[str, Any] | None = None,
                       config: ConfigData | None = None) -> str:
     """Generate pre-work context loading instructions."""
-    profile = get_context_profile(agent_type)
+    level = get_context_level(agent_type)
     proj = _project_key(config)
     label = agent_type or "default"
     td = (task_context or {}).get("task_description", "current task")
+    hint = _LEVEL_HINT[level]
     lines = [
         "## Agent Protocol -- Pre-Work Context Loading\n",
-        "Before starting, search claude-mem for existing knowledge. Run FIRST.\n",
-        f"**Context Profile: {label}** -- each search specifies a zoom level.",
-        'Append level tag (e.g. "[L2]") to queries. If L1/L2 returns nothing,',
-        "retry with [L3] -- verbose but correct.\n",
+        f"Search claude-mem FIRST. **Context Level: {label}** -- retrieve {hint}.\n",
         "### Required Searches\n",
+        f'1. **Own Domain**: Search for "app overview architecture" with project="{proj}"',
+        f'2. **Other Domains**: Search for "cross-domain patterns" with project="{proj}"',
+        f'3. **Task Context**: Search for "{td}" with project="{proj}"',
+        f'4. **Work History**: Search for "session history decisions" with project="{proj}"\n',
+        "If a search returns empty, proceed without it. If results seem stale,",
+        "request full detail. Review all results before starting work.\n",
     ]
-    cats = [
-        ("Own Domain", profile.own_domain, "app overview architecture",
-         "Your primary domain knowledge"),
-        ("Other Domains", profile.other_domains, "cross-domain patterns",
-         "Knowledge from other domains"),
-        ("Task Context", profile.task, td,
-         "Context for your current task"),
-        ("Work History", profile.history, "session history decisions",
-         "Prior session history and decisions"),
-    ]
-    for i, (heading, level, query, desc) in enumerate(cats, 1):
-        ld = _LEVEL_DESC[level]
-        lines.append(
-            f'{i}. **{heading}** ({ld}): Search for '
-            f'"{query} [{level.value}]" with project="{proj}"'
-        )
-        lines.append(f"   -- {desc}. Retrieve at {level.value} for {ld}.\n")
-    lines.extend([
-        "### Degradation Policy\n",
-        "- **No caps, no truncation** -- receive everything your profile specifies.",
-        "- If L1/L2 returns empty, fall back to L3.",
-        "- Never serve stale summaries -- if L1/L2 seems outdated, request L3.\n",
-        "Review all results. Use to understand architecture, avoid prior mistakes,",
-        "and follow established patterns. If no results, proceed normally.\n",
-    ])
     result = "\n".join(lines)
     try:
         xp = _cross_project_section(td, proj)
@@ -197,51 +127,34 @@ def generate_preamble(agent_type: str, task_context: dict[str, Any] | None = Non
 def generate_epilogue(agent_type: str, config: ConfigData | None = None) -> str:
     """Generate post-work knowledge capture instructions."""
     proj = _project_key(config)
-    _ = agent_type  # reserved for future per-type epilogue variation
-    return f"""\
-
----
-
-## Agent Protocol -- Post-Work Knowledge Capture
-
-After completing your task, save non-obvious discoveries to claude-mem
-using save_memory with project="{proj}". Save memories for:
-
-1. **Non-obvious root causes**: Why something was broken and the fix.
-2. **Architectural decisions**: Why approach A was chosen over B.
-3. **Gotchas and pitfalls**: Hidden dependencies, edge cases, naming quirks.
-4. **Cross-layer findings**: Non-obvious inter-layer dependencies.
-5. **Codebase patterns**: Recurring patterns future agents should follow.
-
-Keep memories concise. Include file paths and line numbers.
-Do NOT save trivial findings easily discoverable via grep/search.
-
-### Three-Level Memory Protocol (US-035)
-
-Write FULL DETAIL (L3) only. The system auto-generates L1 (<20 words) and
-L2 (<100 words) from your L3 content post-save. Include file paths, line
-numbers, and reasoning. Summarisation happens automatically."""
+    _ = agent_type
+    return (
+        "\n---\n\n## Agent Protocol -- Post-Work Knowledge Capture\n\n"
+        f'Save non-obvious discoveries to claude-mem (project="{proj}"):\n\n'
+        "1. **Non-obvious root causes**: Why something was broken and the fix.\n"
+        "2. **Architectural decisions**: Why approach A was chosen over B.\n"
+        "3. **Gotchas and pitfalls**: Hidden dependencies, edge cases.\n"
+        "4. **Cross-layer findings**: Non-obvious inter-layer dependencies.\n"
+        "5. **Codebase patterns**: Recurring patterns future agents should follow.\n\n"
+        "Keep memories concise with file paths and line numbers.\n\n"
+        "### Three-Level Memory Protocol (US-035)\n\n"
+        "Write FULL DETAIL only. The system auto-generates summaries and\n"
+        "taglines post-save. Include file paths, line numbers, and reasoning."
+    )
 
 
-_DEGRADED_PREAMBLE = """\
-## Agent Protocol -- Memory Unavailable (Degraded Mode)
+_DEGRADED_PREAMBLE = (
+    "## Agent Protocol -- Memory Unavailable (Degraded Mode)\n\n"
+    "claude-mem is unavailable. Proceed without loading prior knowledge.\n"
+    "Do NOT call claude-mem search or save_memory tools -- they will fail.\n\n---\n"
+)
 
-The claude-mem plugin is unavailable. Proceed without loading prior
-knowledge. Rely on the codebase itself for context.
-Do NOT call claude-mem search or save_memory tools -- they will fail.
-
----
-"""
-
-_DEGRADED_EPILOGUE = """\
-
----
-
-## Agent Protocol -- Memory Unavailable (Degraded Mode)
-
-claude-mem is unavailable. Skip post-work knowledge capture.
-Do NOT call save_memory -- it will fail. Include important discoveries
-in your final output so the calling system can capture them."""
+_DEGRADED_EPILOGUE = (
+    "\n---\n\n## Agent Protocol -- Memory Unavailable (Degraded Mode)\n\n"
+    "claude-mem is unavailable. Skip post-work knowledge capture.\n"
+    "Do NOT call save_memory -- it will fail. Include important discoveries\n"
+    "in your final output so the calling system can capture them."
+)
 
 
 def _mem_available() -> bool:
@@ -260,13 +173,7 @@ def build_agent_prompt(
     *,
     role_prompt: str = "",
 ) -> str:
-    """Assemble full prompt: preamble + role prompt + epilogue.
-
-    *agent_type*: key like "test-writer", "sa-compute", "crucible".
-    *task_context*: dict with ``task_description`` (str) and optional
-    ``role_prompt`` override. *config*: optional ConfigData for project key.
-    *role_prompt*: core agent instructions inserted between preamble/epilogue.
-    """
+    """Assemble full prompt: preamble + role prompt + epilogue."""
     if _mem_available():
         preamble = generate_preamble(agent_type, task_context, config)
         epilogue = generate_epilogue(agent_type, config)

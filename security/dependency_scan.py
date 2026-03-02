@@ -3,16 +3,14 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.gates.framework import GateRunner
-from factory.integrations.shell import run_command
+from factory.security.scan_runner import create_scan_gate, run_tool
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from factory.gates.framework import GateRunner
     from factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
@@ -63,19 +61,6 @@ def _detect_languages(ws: Path) -> list[str]:
     return found
 
 
-def _scan(tool: str, cmd: list[str], ws: str, parse: Callable[[str], list[Finding]], *, timeout: int = 120) -> list[Finding]:  # noqa: E501
-    if not shutil.which(tool):
-        return []
-    raw = run_command(cmd, cwd=ws, timeout=timeout).stdout.strip()
-    if not raw:
-        return []
-    try:
-        return parse(raw)
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
-        logger.warning("Failed to parse %s output", tool)
-        return []
-
-
 def _parse_nodejs(raw: str) -> list[Finding]:
     fs: list[Finding] = []
     for name, v in (json.loads(raw).get("vulnerabilities") or {}).items():
@@ -120,6 +105,8 @@ def _parse_java(raw: str) -> list[Finding]:
 
 
 def _scan_java(ws: str) -> list[Finding]:
+    import shutil  # noqa: PLC0415
+    from factory.integrations.shell import run_command  # noqa: PLC0415
     if not shutil.which("dependency-check"):
         return []
     rpt = Path(ws) / ".dark-factory" / "security" / "owasp-dc-raw.json"
@@ -154,14 +141,16 @@ def _parse_ruby(raw: str) -> list[Finding]:
     return fs
 
 
-_SCANNERS: dict[str, Callable[[str], list[Finding]]] = {
-    "nodejs": lambda w: _scan("npm", ["npm", "audit", "--json"], w, _parse_nodejs),
-    "python": lambda w: _scan("pip-audit", ["pip-audit", "--format=json"], w, _parse_python),
-    "rust": lambda w: _scan("cargo", ["cargo", "audit", "--json"], w, _parse_rust),
-    "go": lambda w: _scan("govulncheck", ["govulncheck", "-json", "./..."], w, _parse_go),
+_SCANNERS: dict[str, object] = {
+    "nodejs": lambda w: run_tool("npm", ["npm", "audit", "--json"], _parse_nodejs, cwd=w),
+    "python": lambda w: run_tool("pip-audit", ["pip-audit", "--format=json"], _parse_python, cwd=w),
+    "rust": lambda w: run_tool("cargo", ["cargo", "audit", "--json"], _parse_rust, cwd=w),
+    "go": lambda w: run_tool("govulncheck", ["govulncheck", "-json", "./..."], _parse_go, cwd=w),
     "java": _scan_java,
-    "dotnet": lambda w: _scan("dotnet", ["dotnet", "list", "package", "--vulnerable", "--format", "json"], w, _parse_dotnet),  # noqa: E501
-    "ruby": lambda w: _scan("bundle-audit", ["bundle-audit", "check", "--format", "json"], w, _parse_ruby),
+    "dotnet": lambda w: run_tool("dotnet", ["dotnet", "list", "package", "--vulnerable", "--format", "json"],
+                                 _parse_dotnet, cwd=w),
+    "ruby": lambda w: run_tool("bundle-audit", ["bundle-audit", "check", "--format", "json"],
+                               _parse_ruby, cwd=w),
 }
 
 
@@ -173,7 +162,7 @@ def run_dependency_scan(workspace: Workspace) -> ScanResult:
     findings: list[Finding] = []
     for lang in languages:
         if scanner := _SCANNERS.get(lang):
-            findings.extend(scanner(workspace.path))
+            findings.extend(scanner(workspace.path))  # type: ignore[operator]
     return ScanResult(findings=tuple(findings))
 
 
@@ -182,14 +171,10 @@ GATE_NAME = "dependency-scan"
 
 def create_runner(workspace: str | Path, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured dependency-scan gate runner."""
-    ws = str(workspace)
-    runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
-    def _check_deps() -> bool | str:
+    def _check(ws: str) -> tuple[bool, str]:
         from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = run_dependency_scan(Ws(name="scan", path=ws, repo_url="", branch=""))
         if result.blocked_count > 0:
-            msg = f"Critical vulnerabilities: {result.blocked_count} blocking"
-            raise RuntimeError(msg)
-        return f"dep scan OK ({len(result.findings)} finding(s), {result.blocked_count} blocking)"
-    runner.register_check("dep-vuln-scan", _check_deps)
-    return runner
+            return False, f"Critical vulnerabilities: {result.blocked_count} blocking"
+        return True, f"dep scan OK ({len(result.findings)} finding(s), {result.blocked_count} blocking)"
+    return create_scan_gate(GATE_NAME, "dep-vuln-scan", _check, workspace, metrics_dir=metrics_dir)

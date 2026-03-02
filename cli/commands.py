@@ -19,16 +19,15 @@ def cli() -> None:
 
 
 @cli.command()
-@click.option("--migration", is_flag=True, help="Show bash\u2192Python migration progress.")
 @click.option("--modules", is_flag=True, help="Validate the module manifest.")
 @click.option("--debug-modules", is_flag=True, help="Show which modules loaded and when.")
 @click.option("--deps", is_flag=True, help="Validate the module dependency graph.")
 @click.option("--lint", is_flag=True, help="Run file size compliance check.")
-def doctor(*, migration: bool, modules: bool, debug_modules: bool, deps: bool, lint: bool) -> None:
+def doctor(*, modules: bool, debug_modules: bool, deps: bool, lint: bool) -> None:
     """Run system health checks."""
     from factory.cli.handlers import run_doctor
 
-    run_doctor(migration=migration, modules=modules, debug_modules=debug_modules, deps=deps, lint=lint)
+    run_doctor(modules=modules, debug_modules=debug_modules, deps=deps, lint=lint)
 
 
 @cli.command("smoke-test")
@@ -61,9 +60,8 @@ def selftest() -> None:
 
 @cli.command()
 @click.option("--epics", is_flag=True, help="Show epic-level progress.")
-@click.option("--bootstrap", is_flag=True, help="Show bootstrap pipeline status.")
-def status(*, epics: bool, bootstrap: bool) -> None:
-    """Show pipeline, epic, or bootstrap status."""
+def status(*, epics: bool) -> None:
+    """Show pipeline or epic status."""
     from factory.cli.handlers import run_status
 
-    run_status(epics=epics, bootstrap=bootstrap)
+    run_status(epics=epics)

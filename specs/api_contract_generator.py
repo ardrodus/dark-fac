@@ -1,8 +1,6 @@
 """API contract generator — port of generate-api-contract.sh."""
 from __future__ import annotations
 
-import logging
-import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -12,11 +10,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from factory.setup.project_analyzer import AnalysisResult
 
+from factory.specs.base import (
+    run_generate, save_artifact, strip_fences, validate_checks,
+)
 from factory.specs.design_generator import DesignResult
 
-logger = logging.getLogger(__name__)
-_AGENT_TIMEOUT = 300
-_STATE_DIR = Path(".dark-factory")
 _SKIP = frozenset(("node_modules", ".git", "vendor", "__pycache__"))
 _PY = ("requirements.txt", "setup.py", "setup.cfg", "pyproject.toml")
 _GQL_JS = ("apollo-server", "@apollo/server", "graphql-yoga", "express-graphql", "@nestjs/graphql", "type-graphql")
@@ -82,7 +80,7 @@ def _kw(text: str, kws: tuple[str, ...]) -> bool:
     return any(k.lower() in low for k in kws)
 
 
-def _detect_contract_type(ws: Path) -> ContractType:  # noqa: PLR0911
+def _detect(ws: Path) -> ContractType:  # noqa: PLR0911
     if not ws.is_dir():
         return ContractType.NONE
     ok = lambda f: not any(p in _SKIP for p in f.parts)  # noqa: E731
@@ -119,13 +117,6 @@ def _detect_contract_type(ws: Path) -> ContractType:  # noqa: PLR0911
     return ContractType.NONE
 
 
-def _validate(content: str, ct: ContractType) -> tuple[bool, list[str]]:
-    if not content.strip():
-        return False, ["Contract content is empty"]
-    msgs = [f"FAIL: {msg}" for pat, msg in _CHECKS.get(ct, []) if not re.search(pat, content)]
-    return len(msgs) == 0, msgs
-
-
 def _build_prompt(design: DesignResult, ct: ContractType, issue: int | str) -> str:
     fmt = _META.get(ct, ("OpenAPI 3.1 YAML", ""))[0]
     parts = (["## Architecture"] + [f"- {d}" for d in design.architecture_decisions]
@@ -143,34 +134,27 @@ def _build_prompt(design: DesignResult, ct: ContractType, issue: int | str) -> s
         "6. Output ONLY the raw spec — no markdown fences, no preamble.\n")
 
 
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```\w*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
-    return text.strip()
-
-
-def _invoke_agent(prompt: str, *, invoke_fn: Callable[[str], str] | None = None) -> str:
-    if invoke_fn is not None:
-        return invoke_fn(prompt)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
-    return run_command(["claude", "-p", prompt, "--output-format", "json"],
-                       timeout=_AGENT_TIMEOUT, check=True).stdout
-
-
-def _save(content: str, ct: ContractType, num: int | str, *, state_dir: Path | None = None) -> Path:
-    sd = (state_dir or _STATE_DIR) / "specs" / str(num)
-    sd.mkdir(parents=True, exist_ok=True)
-    out = sd / f"api-contract{_META.get(ct, ('', '.yaml'))[1]}"
-    out.write_text(content, encoding="utf-8")
-    logger.info("API contract saved to %s", out)
-    return out
+def _process(raw: str, ct: ContractType, issue_number: int | str,
+             state_dir: Path | None) -> ContractResult:
+    content = strip_fences(raw)
+    if not content.strip():
+        return ContractResult(contract_type=ct, spec_content="",
+                              validation_passed=False, raw_output=raw,
+                              validation_messages=("Contract content is empty",))
+    passed, msgs = validate_checks(content, _CHECKS.get(ct, []))
+    ext = _META.get(ct, ("", ".yaml"))[1]
+    out = save_artifact(content, f"api-contract{ext}", issue_number,
+                        state_dir=state_dir)
+    return ContractResult(contract_type=ct, spec_content=content,
+                          validation_passed=passed,
+                          validation_messages=tuple(msgs),
+                          output_path=str(out), raw_output=raw)
 
 
 def _err(ct: ContractType, raw: str = "", e: str = "") -> ContractResult:
-    return ContractResult(contract_type=ct, spec_content="", validation_passed=False,
-                          raw_output=raw, errors=(e,) if e else ())
+    return ContractResult(contract_type=ct, spec_content="",
+                          validation_passed=False, raw_output=raw,
+                          errors=(e,) if e else ())
 
 
 def generate_api_contract(  # noqa: PLR0913
@@ -181,19 +165,16 @@ def generate_api_contract(  # noqa: PLR0913
 ) -> ContractResult:
     """Generate an API contract spec from *design* and *analysis*."""
     ws = Path(workspace) if workspace else Path(".")
-    ct = _detect_contract_type(ws)
+    ct = _detect(ws)
     if ct == ContractType.NONE:
         ct = ContractType.OPENAPI if design.api_changes else ContractType.NONE
     if ct == ContractType.NONE:
-        return ContractResult(contract_type=ct, spec_content="", validation_passed=True,
+        return ContractResult(contract_type=ct, spec_content="",
+                              validation_passed=True,
                               validation_messages=("No API detected — skipped",))
-    try:
-        raw = _invoke_agent(_build_prompt(design, ct, issue_number), invoke_fn=invoke_fn)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Contract agent failed: %s", exc)
-        return _err(ct, e=str(exc))
-    content = _strip_fences(raw)
-    passed, msgs = _validate(content, ct)
-    out = _save(content, ct, issue_number, state_dir=state_dir)
-    return ContractResult(contract_type=ct, spec_content=content, validation_passed=passed,
-                          validation_messages=tuple(msgs), output_path=str(out), raw_output=raw)
+    return run_generate(
+        "Contract", _build_prompt(design, ct, issue_number),
+        lambda raw: _process(raw, ct, issue_number, state_dir),
+        lambda raw, e: _err(ct, raw, e),
+        invoke_fn=invoke_fn,
+    )

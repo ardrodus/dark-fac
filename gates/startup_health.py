@@ -118,18 +118,14 @@ def _check_secrets(secrets_dir: Path) -> bool | str:
     return f"secrets directory exists at {secrets_dir}"
 
 
-# ── Discovery interface ───────────────────────────────────────────
+# ── Discovery & public API ────────────────────────────────────────
 
 GATE_NAME = "startup-health"
 
 
-def create_runner(
-    workspace: str | Path, *, metrics_dir: str | Path | None = None,
+def _make_runner(
+    cfg: Path, sec: Path, *, metrics_dir: str | Path | None = None,
 ) -> GateRunner:
-    """Create a configured (but not executed) startup-health gate runner."""
-    root = Path(workspace)
-    cfg = root / ".dark-factory" / "config.json"
-    sec = root / ".dark-factory" / ".secrets"
     runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
     runner.register_check("github-api", _check_github_api, timeout=30.0)
     runner.register_check("claude-cli", _check_claude_cli, timeout=30.0)
@@ -140,7 +136,16 @@ def create_runner(
     return runner
 
 
-# ── Public API ───────────────────────────────────────────────────
+def create_runner(
+    workspace: str | Path, *, metrics_dir: str | Path | None = None,
+) -> GateRunner:
+    """Create a configured (but not executed) startup-health gate runner."""
+    root = Path(workspace)
+    return _make_runner(
+        root / ".dark-factory" / "config.json",
+        root / ".dark-factory" / ".secrets",
+        metrics_dir=metrics_dir,
+    )
 
 
 def run_startup_health(
@@ -150,20 +155,10 @@ def run_startup_health(
     secrets_dir: str | Path | None = None,
     metrics_dir: str | Path | None = None,
 ) -> GateReport:
-    """Run the startup health gate.
-
-    Registers six checks (GitHub API, Claude CLI, Docker, claude-mem,
-    config.json, secrets) and delegates to :class:`GateRunner`.
-    """
+    """Run the startup health gate."""
     root = Path(repo_root)
-    cfg = Path(config_path) if config_path else root / ".dark-factory" / "config.json"
-    sec = Path(secrets_dir) if secrets_dir else root / ".dark-factory" / ".secrets"
-
-    runner = GateRunner("startup-health", metrics_dir=metrics_dir)
-    runner.register_check("github-api", _check_github_api, timeout=30.0)
-    runner.register_check("claude-cli", _check_claude_cli, timeout=30.0)
-    runner.register_check("docker", _check_docker, timeout=30.0)
-    runner.register_check("claude-mem", _check_claude_mem)
-    runner.register_check("config-json", lambda: _check_config(cfg))
-    runner.register_check("secrets-dir", lambda: _check_secrets(sec))
-    return runner.run()
+    return _make_runner(
+        Path(config_path) if config_path else root / ".dark-factory" / "config.json",
+        Path(secrets_dir) if secrets_dir else root / ".dark-factory" / ".secrets",
+        metrics_dir=metrics_dir,
+    ).run()

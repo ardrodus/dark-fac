@@ -16,16 +16,6 @@ modules:
     dependencies: []
     load: core
 
-  factory.core.migration:
-    path: factory.core.migration
-    dependencies: []
-    load: core
-
-  factory.core.module_loader:
-    path: factory.core.module_loader
-    dependencies: []
-    load: core
-
   factory.core.config_manager:
     path: factory.core.config_manager
     dependencies: []
@@ -90,12 +80,6 @@ modules:
     dependencies: []
     load: deferred
 
-  factory.agents.template_engine:
-    path: factory.agents.template_engine
-    dependencies:
-      - factory.agents
-    load: deferred
-
   # ── Dispatch ──────────────────────────────────────────────────────
   factory.dispatch:
     path: factory.dispatch
@@ -106,7 +90,6 @@ modules:
     path: factory.dispatch.issue_dispatcher
     dependencies:
       - factory.integrations.gh_safe
-      - factory.recovery.dlq
     load: deferred
 
   # ── Workspace ─────────────────────────────────────────────────────
@@ -118,30 +101,6 @@ modules:
 
   factory.workspace.manager:
     path: factory.workspace.manager
-    dependencies:
-      - factory.integrations.shell
-    load: deferred
-
-  # ── Recovery ──────────────────────────────────────────────────────
-  factory.recovery:
-    path: factory.recovery
-    dependencies: []
-    load: deferred
-
-  factory.recovery.dlq:
-    path: factory.recovery.dlq
-    dependencies: []
-    load: deferred
-
-  # ── Obelisk ───────────────────────────────────────────────────────
-  factory.obelisk:
-    path: factory.obelisk
-    dependencies:
-      - factory.obelisk.triage
-    load: deferred
-
-  factory.obelisk.triage:
-    path: factory.obelisk.triage
     dependencies:
       - factory.integrations.shell
     load: deferred

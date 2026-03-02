@@ -33,7 +33,6 @@ _FACTORY_MARKERS: tuple[tuple[str, ...], ...] = (
 _LAYER_LINT = "lint"
 _LAYER_TESTS = "tests"
 _LAYER_PIPELINE_SIM = "pipeline_simulation"
-_LAYER_OBELISK = "obelisk_check"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,21 +74,19 @@ def is_self_repo(config: ConfigData) -> bool:
 
 
 def run_self_validation(workspace: Workspace) -> SelfValidationResult:
-    """Run the 4-layer self-crucible validation suite on *workspace*.
+    """Run the 3-layer self-crucible validation suite on *workspace*.
 
     Layers
     ------
     1. **Lint** — ``ruff check factory/``
     2. **Tests** — ``pytest tests/ -v --tb=short``
     3. **Pipeline simulation** — gate discovery (all gates loadable)
-    4. **Obelisk check** — daemon health snapshot
     """
     cwd = workspace.path
     layers: list[LayerResult] = [
         _layer_lint(cwd),
         _layer_tests(cwd),
         _layer_pipeline_sim(cwd),
-        _layer_obelisk_check(),
     ]
     result = SelfValidationResult(layers=tuple(layers))
     logger.info("Self-validation %s (%d/%d layers passed)",
@@ -118,7 +115,7 @@ def _layer_tests(cwd: str) -> LayerResult:
 def _layer_pipeline_sim(cwd: str) -> LayerResult:
     """Verify all registered gates are discoverable and loadable."""
     try:
-        from factory.gates.discovery import discover_gates  # noqa: PLC0415
+        from factory.gates import discover_gates  # noqa: PLC0415
         gates = discover_gates()
         return LayerResult(
             name=_LAYER_PIPELINE_SIM, passed=len(gates) > 0,
@@ -128,18 +125,3 @@ def _layer_pipeline_sim(cwd: str) -> LayerResult:
         return LayerResult(name=_LAYER_PIPELINE_SIM, passed=False, detail=str(exc))
 
 
-def _layer_obelisk_check() -> LayerResult:
-    """Snapshot Obelisk daemon health if available."""
-    try:
-        from factory.obelisk.daemon import _read_status  # noqa: PLC0415
-        status = _read_status()
-        if status is None:
-            return LayerResult(name=_LAYER_OBELISK, passed=True,
-                               detail="skipped (no daemon status)")
-        healthy = status.system_status != "critical"
-        return LayerResult(name=_LAYER_OBELISK, passed=healthy,
-                           detail=f"system={status.system_status}")
-    except Exception as exc:
-        logger.debug("Obelisk check skipped: %s", exc)
-        return LayerResult(name=_LAYER_OBELISK, passed=True,
-                           detail=f"skipped ({exc})")

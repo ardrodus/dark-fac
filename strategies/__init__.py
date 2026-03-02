@@ -1,50 +1,18 @@
-"""Deployment strategies -- abstract interface and concrete implementations.
+"""Deployment strategies -- config-driven defaults.
 
-Re-exports the strategy ABC, value objects, result types, and all
-concrete strategy classes for convenient access::
+Strategy is a simple config value (``"console"`` or ``"web"``), not a class
+hierarchy.  Use :func:`resolve_strategy` to look up defaults::
 
-    from factory.strategies import StrategyInterface, AwsStrategy
+    from factory.strategies import resolve_strategy
+    cfg = resolve_strategy("console")
 """
 
-from factory.strategies.aws import AwsStrategy
-from factory.strategies.base import (
-    DeployResult,
-    PipelineFlags,
-    ProvisionResult,
-    ReleaseResult,
-    StrategyInterface,
-    ValidationResult,
-    WriteBoundaries,
-)
-from factory.strategies.console import ConsoleStrategy
-from factory.strategies.on_prem import OnPremStrategy
+from factory.strategies.config import DEFAULTS, StrategyConfig, get_config
 
-_STRATEGY_MAP: dict[str, type[StrategyInterface]] = {
-    "aws": AwsStrategy,
-    "on-prem": OnPremStrategy,
-    "console": ConsoleStrategy,
-}
-
-
-def resolve_strategy(name: str) -> StrategyInterface:
-    """Instantiate a strategy by its config name (``aws``, ``on-prem``, ``console``)."""
-    cls = _STRATEGY_MAP.get(name)
-    if cls is None:
-        msg = f"Unknown strategy: {name!r}. Valid: {', '.join(_STRATEGY_MAP)}"
-        raise ValueError(msg)
-    return cls()
-
+resolve_strategy = get_config
 
 __all__ = [
-    "AwsStrategy",
-    "ConsoleStrategy",
-    "DeployResult",
-    "OnPremStrategy",
-    "PipelineFlags",
-    "ProvisionResult",
-    "ReleaseResult",
-    "StrategyInterface",
-    "ValidationResult",
-    "WriteBoundaries",
+    "DEFAULTS",
+    "StrategyConfig",
     "resolve_strategy",
 ]

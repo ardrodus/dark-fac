@@ -4,15 +4,15 @@ from __future__ import annotations
 import json
 import logging
 import re
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from factory.gates.framework import GateRunner
+from factory.security.scan_runner import create_scan_gate, run_tool
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from factory.gates.framework import GateRunner
     from factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
@@ -78,14 +78,39 @@ def _detect_langs(ws_path: str) -> list[str]:
             seen.add(lang)
     return sorted(seen)
 
+
 def _esc(sev: str, cwe: str) -> str:
     return "critical" if cwe in _CRIT_CWES and sev == "high" else sev
 
-def _run_semgrep(ws_path: str, langs: list[str]) -> list[SastFinding]:  # noqa: PLR0912
-    if not shutil.which("semgrep"):
-        logger.warning("semgrep not found — skipping")
-        return []
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+
+def _sg_finding(r: dict[str, Any]) -> SastFinding:
+    ex: dict[str, Any] = r.get("extra", {}) or {}
+    meta: dict[str, Any] = ex.get("metadata", {}) or {}
+    sev = _SG_SEV.get((ex.get("severity") or "info").lower(), "low")
+    cwe_r = meta.get("cwe", [])
+    cwe = cwe_r[0] if isinstance(cwe_r, list) and cwe_r else (str(cwe_r) if cwe_r else "")
+    return SastFinding(
+        rule_id=r.get("check_id", "unknown"), description=ex.get("message", ""),
+        severity=_esc(sev, cwe), file=r.get("path", "unknown"),
+        line=r.get("start", {}).get("line", 0), cwe=cwe,
+        snippet=(ex.get("lines") or "")[:120], source="semgrep",
+        confidence=(meta.get("confidence") or "medium").lower(),
+    )
+
+
+def _bd_finding(r: dict[str, Any]) -> SastFinding:
+    sev = _BD_SEV.get((r.get("issue_severity") or "low").lower(), "low")
+    conf = (r.get("issue_confidence") or "medium").lower()
+    cwe_r: dict[str, Any] = r.get("issue_cwe", {})
+    cwe = f"CWE-{cwe_r['id']}" if isinstance(cwe_r, dict) and cwe_r.get("id") else ""
+    return SastFinding(
+        rule_id=r.get("test_id", "unknown"), description=r.get("issue_text", ""),
+        severity=_esc(sev, cwe), file=r.get("filename", "unknown"), line=r.get("line_number", 0),
+        cwe=cwe, snippet=(r.get("code") or "")[:120], source="bandit", confidence=conf,
+    )
+
+
+def _run_semgrep(ws_path: str, langs: list[str]) -> list[SastFinding]:
     cfgs: set[str] = set()
     for lang in langs:
         cfgs.update(_RULESETS.get(lang, []))
@@ -95,57 +120,16 @@ def _run_semgrep(ws_path: str, langs: list[str]) -> list[SastFinding]:  # noqa: 
     for c in sorted(cfgs):
         cmd.extend(["--config", c])
     cmd.append(ws_path)
-    res = run_command(cmd, timeout=120)
-    if not res.stdout.strip():
-        return []
-    try:
-        data = json.loads(res.stdout)
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse semgrep output")
-        return []
-    out: list[SastFinding] = []
-    for r in data.get("results", []):
-        ex, meta = r.get("extra", {}), r.get("extra", {}).get("metadata", {})
-        sev = _SG_SEV.get((ex.get("severity") or "info").lower(), "low")
-        cwe_r = meta.get("cwe", [])
-        cwe = cwe_r[0] if isinstance(cwe_r, list) and cwe_r else (str(cwe_r) if cwe_r else "")
-        sev = _esc(sev, cwe)
-        out.append(SastFinding(
-            rule_id=r.get("check_id", "unknown"), description=ex.get("message", ""),
-            severity=sev, file=r.get("path", "unknown"),
-            line=r.get("start", {}).get("line", 0), cwe=cwe,
-            snippet=(ex.get("lines") or "")[:120], source="semgrep",
-            confidence=(meta.get("confidence") or "medium").lower(),
-        ))
-    return out
+    return run_tool("semgrep", cmd,
+                    lambda raw: [_sg_finding(r) for r in json.loads(raw).get("results", [])],
+                    timeout=120)
+
 
 def _run_bandit(ws_path: str) -> list[SastFinding]:
-    if not shutil.which("bandit"):
-        logger.warning("bandit not found — skipping")
-        return []
-    from factory.integrations.shell import run_command  # noqa: PLC0415
-    res = run_command(["bandit", "-r", ws_path, "-f", "json", "--quiet"], timeout=120)
-    raw = res.stdout.strip()
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse bandit output")
-        return []
-    out: list[SastFinding] = []
-    for r in data.get("results", []):
-        sev = _BD_SEV.get((r.get("issue_severity") or "low").lower(), "low")
-        conf = (r.get("issue_confidence") or "medium").lower()
-        cwe_r = r.get("issue_cwe", {})
-        cwe = f"CWE-{cwe_r['id']}" if isinstance(cwe_r, dict) and cwe_r.get("id") else ""
-        sev = _esc(sev, cwe)
-        out.append(SastFinding(
-            rule_id=r.get("test_id", "unknown"), description=r.get("issue_text", ""),
-            severity=sev, file=r.get("filename", "unknown"), line=r.get("line_number", 0),
-            cwe=cwe, snippet=(r.get("code") or "")[:120], source="bandit", confidence=conf,
-        ))
-    return out
+    return run_tool("bandit", ["bandit", "-r", ws_path, "-f", "json", "--quiet"],
+                    lambda raw: [_bd_finding(r) for r in json.loads(raw).get("results", [])],
+                    timeout=120)
+
 
 def _build_l2_prompt(findings: list[SastFinding], diff: str) -> str:
     fj = json.dumps([
@@ -160,19 +144,19 @@ def _build_l2_prompt(findings: list[SastFinding], diff: str) -> str:
         "\n## Layer 1 Findings\n", f"```json\n{fj}\n```",
         "\n## Code Diff\n", f"```diff\n{diff}\n```",
         "\n## Output Format\n",
-        'Output JSON: {"findings": [{"rule_id": "...", "file": "...", "line": 0,',
+        '{"findings": [{"rule_id": "...", "file": "...", "line": 0,',
         '  "severity": "critical|high|medium|low", "false_positive": true|false,',
         '  "reasoning": "..."}], "summary": "..."}',
     ])
+
 
 def _invoke_l2(prompt: str, ws_path: str, *, invoke_fn: Callable[[str], str] | None = None) -> str:
     if invoke_fn is not None:
         return invoke_fn(prompt)
     from factory.integrations.shell import run_command  # noqa: PLC0415
-    return run_command(
-        ["claude", "-p", prompt, "--output-format", "json"],
-        timeout=_AGENT_TIMEOUT, cwd=ws_path,
-    ).stdout
+    return run_command(["claude", "-p", prompt, "--output-format", "json"],
+                       timeout=_AGENT_TIMEOUT, cwd=ws_path).stdout
+
 
 def _parse_l2(raw: str, layer1: list[SastFinding]) -> tuple[list[SastFinding], int]:
     text = raw.strip()
@@ -204,6 +188,7 @@ def _parse_l2(raw: str, layer1: list[SastFinding]) -> tuple[list[SastFinding], i
         ))
     return result, fp
 
+
 def run_sast_scan(
     workspace: Workspace, diff: str, *, mode: str = "standard",
     invoke_fn: Callable[[str], str] | None = None,
@@ -228,23 +213,19 @@ def run_sast_scan(
             logger.warning("Layer 2 AI review failed — using Layer 1 only")
     if mode not in _MODE_THR:
         mode = "standard"
-    return ScanResult(
-        layer1_findings=tuple(l1), layer2_findings=tuple(l2),
-        false_positives_removed=fp_removed, mode=mode,
-    )
+    return ScanResult(layer1_findings=tuple(l1), layer2_findings=tuple(l2),
+                      false_positives_removed=fp_removed, mode=mode)
+
 
 GATE_NAME = "sast-scan"
 
+
 def create_runner(workspace: str | Path, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured SAST gate runner."""
-    ws = str(workspace)
-    runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
-    def _check_sast() -> bool | str:
+    def _check(ws: str) -> tuple[bool, str]:
         from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = run_sast_scan(Ws(name="scan", path=ws, repo_url="", branch=""), "")
         if not result.passed:
-            msg = f"SAST blocked: {len(result.layer1_findings)} L1, {len(result.layer2_findings)} L2"
-            raise RuntimeError(msg)
-        return f"SAST OK ({len(result.layer1_findings)} L1, {result.false_positives_removed} FPs removed)"
-    runner.register_check("sast-analysis", _check_sast)
-    return runner
+            return False, f"SAST blocked: {len(result.layer1_findings)} L1, {len(result.layer2_findings)} L2"
+        return True, f"SAST OK ({len(result.layer1_findings)} L1, {result.false_positives_removed} FPs removed)"
+    return create_scan_gate(GATE_NAME, "sast-analysis", _check, workspace, metrics_dir=metrics_dir)

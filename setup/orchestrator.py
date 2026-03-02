@@ -178,17 +178,9 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
 
         with _phase(dl, "strategy-bootstrap"):
             from factory.strategies import resolve_strategy  # noqa: PLC0415
-            strat_obj = resolve_strategy(strategy)
-            strat_deps = strat_obj.bootstrap_deps()
-            dl.info(f"strategy-deps={', '.join(strat_deps)}")
-            w(f"  Strategy deps: {', '.join(strat_deps)}\n")
-
-        with _phase(dl, "provision"):
-            prov = strat_obj.provision(dry_run=auto_mode)
-            dl.info(f"provision={'OK' if prov.success else 'FAILED'} resources={len(prov.resources)}")
-            for detail in prov.details:
-                dl.info(detail)
-            w(f"  Provisioning: {'ready' if prov.success else 'partial'} ({len(prov.resources)} resources)\n")
+            cfg = resolve_strategy(strategy)
+            dl.info(f"strategy-deps={', '.join(cfg.bootstrap_deps)}")
+            w(f"  Strategy deps: {', '.join(cfg.bootstrap_deps)}\n")
 
         dl.flush()
         w("\n  Onboarding complete!\n")

@@ -5,7 +5,7 @@ primary entry points.  Internally delegates to :mod:`factory.pipeline.runner`
 for stage execution, adding:
 
 * **State machine** — tracks IDLE → RUNNING → COMPLETED / FAILED transitions.
-* **Recovery delegation** — failure handling routes through the recovery dispatcher.
+* **Inline retry** — simple retry-once logic on failure.
 * **Stage filtering** — bootstrap pipeline runs only plan / implement / test.
 * **Attempt history** — records every attempt for diagnostics.
 """
@@ -23,7 +23,6 @@ from factory.pipeline.runner import (
     StoryContext,
     run_pipeline,
 )
-from factory.recovery.dispatcher import ErrorType, handle_failure
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +149,7 @@ def _execute_with_retry(
     config: PipelineConfig,
     allowed_stages: tuple[Stage, ...] | None,
 ) -> OrchestratorResult:
-    """Run the pipeline, delegating failure recovery to the recovery dispatcher.
+    """Run the pipeline with simple inline retry logic.
 
     Parameters
     ----------
@@ -165,66 +164,31 @@ def _execute_with_retry(
     """
     sm = PipelineStateMachine()
     history: list[PipelineResult] = []
+    max_attempts = 1 + config.max_retries
 
-    # ── Initial run ──────────────────────────────────────────────────
-    sm.transition(PipelineState.RUNNING)
-    logger.info("Pipeline attempt 1 for %r", story.title)
+    for attempt in range(1, max_attempts + 1):
+        if attempt > 1:
+            sm.reset()
+            if config.retry_delay_seconds > 0:
+                time.sleep(config.retry_delay_seconds)
 
-    raw = run_pipeline(story, cwd=config.cwd)
-    result = _filter_stages(raw, allowed_stages) if allowed_stages is not None else raw
-    history.append(result)
-
-    if result.passed:
-        sm.transition(PipelineState.COMPLETED)
-        return OrchestratorResult(
-            pipeline_result=result,
-            state=sm.state,
-            attempts=1,
-            history=tuple(history),
-        )
-
-    # ── Failure — delegate to recovery dispatcher ────────────────────
-    sm.transition(PipelineState.FAILED)
-    last_result = result
-
-    def _retry_fn(_ctx: str, _details: dict[str, object]) -> bool:
-        nonlocal last_result
-        sm.reset()
         sm.transition(PipelineState.RUNNING)
-        logger.info(
-            "Pipeline retry attempt %d for %r",
-            len(history) + 1,
-            story.title,
-        )
-        raw_retry = run_pipeline(story, cwd=config.cwd)
-        r = _filter_stages(raw_retry, allowed_stages) if allowed_stages is not None else raw_retry
-        history.append(r)
-        last_result = r
-        if r.passed:
+        logger.info("Pipeline attempt %d/%d for %r", attempt, max_attempts, story.title)
+
+        raw = run_pipeline(story, cwd=config.cwd)
+        result = _filter_stages(raw, allowed_stages) if allowed_stages is not None else raw
+        history.append(result)
+
+        if result.passed:
             sm.transition(PipelineState.COMPLETED)
-            return True
+            break
+
+        failed_stages = [s.stage.value for s in result.stages if not s.passed]
+        logger.warning("Pipeline attempt %d failed (stages: %s)", attempt, failed_stages)
         sm.transition(PipelineState.FAILED)
-        return False
-
-    failed_stages = [s for s in result.stages if not s.passed]
-    details: dict[str, object] = {
-        "story": story.title,
-        "failed_stages": [s.stage.value for s in failed_stages],
-    }
-    sleep_fn = (lambda _: None) if config.retry_delay_seconds == 0.0 else time.sleep
-
-    handle_failure(
-        context=f"pipeline:{story.title}",
-        error_type=ErrorType.TRANSIENT,
-        details=details,
-        retry_fn=_retry_fn if config.max_retries > 0 else None,
-        max_retries=config.max_retries,
-        sleep_fn=sleep_fn,
-        cwd=config.cwd,
-    )
 
     return OrchestratorResult(
-        pipeline_result=last_result,
+        pipeline_result=history[-1],
         state=sm.state,
         attempts=len(history),
         history=tuple(history),

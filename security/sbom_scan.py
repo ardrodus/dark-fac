@@ -1,21 +1,21 @@
-"""SBOM generation and diff tracking gate — ported from sbom-scan.sh (US-605)."""
+"""SBOM generation and diff tracking gate."""
 from __future__ import annotations
 
 import json
 import logging
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.gates.framework import GateRunner
-from factory.integrations.shell import run_command
+from factory.security.scan_runner import create_scan_gate, run_tool
 
 if TYPE_CHECKING:
+    from factory.gates.framework import GateRunner
     from factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _SPDX, _CDX = "spdx-json", "cyclonedx-json"
+
 
 @dataclass(frozen=True, slots=True)
 class Component:
@@ -26,11 +26,13 @@ class Component:
     purl: str = ""
     source: str = "syft"
 
+
 @dataclass(frozen=True, slots=True)
 class SBOM:
     """Complete Software Bill of Materials."""
     components: tuple[Component, ...]
     format: str = _SPDX
+
 
 @dataclass(frozen=True, slots=True)
 class ChangedComponent:
@@ -39,12 +41,14 @@ class ChangedComponent:
     old_version: str
     new_version: str
 
+
 @dataclass(frozen=True, slots=True)
 class SBOMDiff:
     """Diff between two SBOMs: added, removed, and changed components."""
     added: tuple[Component, ...]
     removed: tuple[Component, ...]
     changed: tuple[ChangedComponent, ...]
+
 
 @dataclass(frozen=True, slots=True)
 class SBOMResult:
@@ -55,6 +59,8 @@ class SBOMResult:
     passed: bool = field(init=False)
     def __post_init__(self) -> None:
         object.__setattr__(self, "passed", len(self.vulnerable_new_deps) == 0)
+
+
 def _parse_spdx(raw: str) -> list[Component]:
     out: list[Component] = []
     for pkg in json.loads(raw).get("packages", []):
@@ -63,22 +69,17 @@ def _parse_spdx(raw: str) -> list[Component]:
         out.append(Component(pkg.get("name", "unknown"), pkg.get("versionInfo", "unknown"),
                              pkg.get("supplier", "library"), purl, "syft-spdx"))
     return out
+
+
 def _parse_cdx(raw: str) -> list[Component]:
     return [Component(c.get("name", "unknown"), c.get("version", "unknown"), c.get("type", "library"),
                       c.get("purl", ""), "syft-cyclonedx") for c in json.loads(raw).get("components", [])]
 
+
 def _run_syft(ws_path: str, fmt: str) -> list[Component]:
-    if not shutil.which("syft"):
-        logger.warning("syft not found -- skipping SBOM generation")
-        return []
-    res = run_command(["syft", "scan", f"dir:{ws_path}", "-o", fmt, "-q"], cwd=ws_path, timeout=120)
-    if not (raw := res.stdout.strip()):
-        return []
-    try:
-        return _parse_cdx(raw) if fmt == _CDX else _parse_spdx(raw)
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-        logger.warning("Failed to parse syft output")
-        return []
+    parse = _parse_cdx if fmt == _CDX else _parse_spdx
+    return run_tool("syft", ["syft", "scan", f"dir:{ws_path}", "-o", fmt, "-q"], parse, cwd=ws_path, timeout=120)
+
 
 def _check_vulns(components: tuple[Component, ...], ws_path: str) -> tuple[str, ...]:
     try:
@@ -90,6 +91,7 @@ def _check_vulns(components: tuple[Component, ...], ws_path: str) -> tuple[str, 
     except Exception:  # noqa: BLE001
         return ()
 
+
 def _save_sbom(sbom: SBOM, ws_path: str, issue_number: str) -> Path:
     out_dir = Path(ws_path) / ".dark-factory" / "sbom" / issue_number
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -98,6 +100,7 @@ def _save_sbom(sbom: SBOM, ws_path: str, issue_number: str) -> Path:
                 "type": c.type, "purl": c.purl, "source": c.source} for c in sbom.components]}
     out_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return out_file
+
 
 def _load_sbom(path: Path) -> SBOM | None:
     if not path.is_file():
@@ -108,6 +111,7 @@ def _load_sbom(path: Path) -> SBOM | None:
     except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
         return None
 
+
 def diff_sbom(old: SBOM, new: SBOM) -> SBOMDiff:
     """Compare two SBOMs and return added / removed / changed components."""
     old_map = {c.name: c for c in old.components}
@@ -117,6 +121,7 @@ def diff_sbom(old: SBOM, new: SBOM) -> SBOMDiff:
         changed=tuple(ChangedComponent(c.name, old_map[c.name].version, c.version)
                       for c in new.components if c.name in old_map and c.version != old_map[c.name].version),
     )
+
 
 def generate_sbom(workspace: Workspace, *, fmt: str = _SPDX) -> SBOMResult:
     """Generate SBOM for *workspace*, diff against previous, flag vulnerable new deps."""
@@ -134,16 +139,16 @@ def generate_sbom(workspace: Workspace, *, fmt: str = _SPDX) -> SBOMResult:
             vuln_new = _check_vulns(diff.added, workspace.path)
     return SBOMResult(sbom=sbom, diff=diff, vulnerable_new_deps=vuln_new)
 
+
 GATE_NAME = "sbom-scan"
+
+
 def create_runner(workspace: str | Path, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured SBOM gate runner."""
-    ws = str(workspace)
-    runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
-    def _check_sbom() -> bool | str:
+    def _check(ws: str) -> tuple[bool, str]:
         from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = generate_sbom(Ws(name="scan", path=ws, repo_url="", branch=""))
         if not result.passed:
-            raise RuntimeError(f"New vulnerable dependencies: {', '.join(result.vulnerable_new_deps)}")
-        return f"SBOM OK ({len(result.sbom.components)} components)"
-    runner.register_check("sbom-generation", _check_sbom)
-    return runner
+            return False, f"New vulnerable dependencies: {', '.join(result.vulnerable_new_deps)}"
+        return True, f"SBOM OK ({len(result.sbom.components)} components)"
+    return create_scan_gate(GATE_NAME, "sbom-generation", _check, workspace, metrics_dir=metrics_dir)
