@@ -82,13 +82,16 @@ def _timed(phase: str, fn: Callable[[], bool], timeout: int) -> PhaseMetrics:
     return PhaseMetrics(phase=phase, duration_s=el, passed=ok)
 
 def _cf(ws: Workspace, cfg: CrucibleConfig) -> str:
+    """Return compose file path relative to ws.path (Docker runs with cwd=ws.path)."""
     if cfg.compose_file:
         return cfg.compose_file
-    d = Path(ws.path) / ".dark-factory" / "generated"
+    # Check absolute path for existence, but return relative for Docker -f
+    abs_d = Path(ws.path) / ".dark-factory" / "generated"
+    rel_d = Path(".dark-factory") / "generated"
     for n in ("docker-compose.crucible.yml", "docker-compose.yml"):
-        if (d / n).is_file():
-            return str(d / n)
-    return str(d / "docker-compose.yml")
+        if (abs_d / n).is_file():
+            return str(rel_d / n)
+    return str(rel_d / "docker-compose.yml")
 
 def _dc(cfg: CrucibleConfig, ws: Workspace | None = None) -> list[str]:
     b = ["compose", "-p", cfg.project_name]
