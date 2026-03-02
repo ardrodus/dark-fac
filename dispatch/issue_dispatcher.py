@@ -3,7 +3,7 @@
 Orchestrates the selection, labelling, and dispatching of GitHub issues
 through the Dark Factory pipeline.  Interacts with the GitHub CLI via
 :mod:`factory.integrations.gh_safe` and labels failed issues as
-``factory:failed``.
+``human-review``.
 """
 
 from __future__ import annotations
@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 
 # ── Label constants ───────────────────────────────────────────────────
 
-LABEL_QUEUED = "factory:queued"
-LABEL_IN_PROGRESS = "factory:in-progress"
-LABEL_DONE = "factory:done"
-LABEL_FAILED = "factory:failed"
+LABEL_QUEUED = "factory-task"
+LABEL_IN_PROGRESS = "in-progress"
+LABEL_DONE = "done"
+LABEL_FAILED = "human-review"
 
 # ── Timing ────────────────────────────────────────────────────────────
 

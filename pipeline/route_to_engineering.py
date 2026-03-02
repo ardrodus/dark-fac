@@ -40,7 +40,7 @@ _VERDICT_NEEDS_LIVE = "needs_live"
 
 # ── Labels ──────────────────────────────────────────────────────────
 
-LABEL_NEEDS_LIVE = "factory:needs-live"
+LABEL_NEEDS_LIVE = "needs-live-env"
 
 
 # ── Value types ─────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ def _label_done(num: int, repo: str) -> None:
     try:
         from dark_factory.integrations.gh_safe import add_label  # noqa: PLC0415
 
-        add_label(num, "factory:done", repo=repo)
+        add_label(num, "done", repo=repo)
     except Exception:  # noqa: BLE001
         logger.warning("Failed to label issue #%d as done", num)
 

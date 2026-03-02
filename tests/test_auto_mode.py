@@ -23,7 +23,7 @@ from dark_factory.workspace.manager import Workspace
 
 
 def _issue(number: int = 42, title: str = "Test issue") -> IssueInfo:
-    return IssueInfo(number=number, title=title, labels=("factory:queued",), state="OPEN")
+    return IssueInfo(number=number, title=title, labels=("factory-task",), state="OPEN")
 
 
 def _workspace(path: str = "/tmp/ws", branch: str = "dark-factory/issue-42") -> Workspace:

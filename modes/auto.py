@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 # ── Labels ────────────────────────────────────────────────────────────
 
-LABEL_NEEDS_LIVE = "factory:needs-live"
+LABEL_NEEDS_LIVE = "needs-live-env"
 
 # ── Defaults ──────────────────────────────────────────────────────────
 

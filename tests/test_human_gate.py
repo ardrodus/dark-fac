@@ -198,13 +198,13 @@ class TestBuildGateComment:
 
 class TestLabels:
     def test_needs_human_label(self) -> None:
-        assert LABEL_NEEDS_HUMAN == "factory:needs-human"
+        assert LABEL_NEEDS_HUMAN == "human-review"
 
     def test_needs_live_label(self) -> None:
-        assert LABEL_NEEDS_LIVE == "factory:needs-live"
+        assert LABEL_NEEDS_LIVE == "needs-live-env"
 
     def test_escalation_label(self) -> None:
-        assert LABEL_ESCALATION == "factory:escalation"
+        assert LABEL_ESCALATION == "human-review"
 
 
 # ── HumanGateQueue ──────────────────────────────────────────────────
@@ -401,7 +401,7 @@ class TestAutoModeInterviewer:
             body = args[1]
             assert "NEEDS_HUMAN" in body
             assert "Use REST" in body
-            assert args[2] == "factory:needs-human"  # label
+            assert args[2] == "human-review"  # label
             assert kwargs["repo"] == "test/repo"
 
     @pytest.mark.asyncio()
@@ -422,7 +422,7 @@ class TestAutoModeInterviewer:
             body = args[1]
             assert "ESCALATION" in body
             assert "Round 1" in body
-            assert args[2] == "factory:escalation"
+            assert args[2] == "human-review"
 
     @pytest.mark.asyncio()
     async def test_ask_question_delegates(self) -> None:
@@ -464,7 +464,7 @@ class TestNeedsLiveHelpers:
             body = args[1]
             assert "NEEDS_LIVE" in body
             assert "3 pass, 1 skip" in body
-            assert args[2] == "factory:needs-live"
+            assert args[2] == "needs-live-env"
             assert kwargs["repo"] == "test/repo"
 
 

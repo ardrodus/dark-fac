@@ -68,9 +68,9 @@ class HumanGateResponse:
 
 # ── Labels ──────────────────────────────────────────────────────────
 
-LABEL_NEEDS_HUMAN = "factory:needs-human"
-LABEL_NEEDS_LIVE = "factory:needs-live"
-LABEL_ESCALATION = "factory:escalation"
+LABEL_NEEDS_HUMAN = "human-review"
+LABEL_NEEDS_LIVE = "needs-live-env"
+LABEL_ESCALATION = "human-review"
 
 _GATE_LABELS: dict[HumanGateType, str] = {
     HumanGateType.NEEDS_HUMAN: LABEL_NEEDS_HUMAN,

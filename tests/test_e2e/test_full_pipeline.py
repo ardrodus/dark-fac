@@ -219,7 +219,7 @@ class TestFullPipelineE2E:
 
     @patch("dark_factory.pipeline.route_to_engineering._label_done")
     def test_issue_labelled_done_after_deploy(self, mock_label: MagicMock) -> None:
-        """Issue is labelled 'factory:done' after successful deploy."""
+        """Issue is labelled 'done' after successful deploy."""
         engine = FullPipelineEngine()
         cfg = _make_config(engine)
         asyncio.run(route_to_engineering(_mock_issue(number=100), cfg))
