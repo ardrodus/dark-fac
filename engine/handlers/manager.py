@@ -124,12 +124,19 @@ class ManagerHandler:
                 child_logs = logs_root / f"manager_{node.id}" / f"iter_{iteration}"
                 child_logs.mkdir(parents=True, exist_ok=True)
 
-            # Run child pipeline
+            # Run child pipeline.
+            # Filter out _artifact_prompt.* keys before deep-copying to
+            # reduce copy size -- these are only needed for artifact writing
+            # and accumulate across iterations.
+            slim_context = {
+                k: v for k, v in context.items()
+                if not k.startswith("_artifact_prompt.")
+            }
             start_time = time.monotonic()
             child_result = await run_pipeline(
                 child_graph,
                 self._child_handlers,
-                context=copy.deepcopy(context),
+                context=copy.deepcopy(slim_context),
                 abort_signal=abort_signal,
                 logs_root=child_logs,
             )

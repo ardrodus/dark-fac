@@ -58,13 +58,18 @@ class FactoryPipelineEngine:
             ClaudeCodeConfig,
         )
         from dark_factory.engine.config import load_engine_config  # noqa: PLC0415
+        from dark_factory.engine.resource_limiter import ResourceLimiter  # noqa: PLC0415
 
         self._engine_cfg = load_engine_config(config_start)
+        self._resource_limiter = ResourceLimiter(
+            limit=self._engine_cfg.max_concurrent_subprocesses,
+        )
         self._backend = ClaudeCodeBackend(
             ClaudeCodeConfig(
                 model=self._engine_cfg.model,
                 claude_path=self._engine_cfg.claude_path,
-            )
+            ),
+            resource_limiter=self._resource_limiter,
         )
         self._config_start = config_start
         self._on_event = on_event

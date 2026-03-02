@@ -290,9 +290,9 @@ class ParallelHandler:
         if emitter:
             emitter.emit(ParallelBranchStarted(branch=branch_id, index=index))
 
-        # Deep-clone context for isolation -- prevents concurrent
-        # branches from sharing mutable nested structures (lists, dicts)
-        branch_context = copy.deepcopy(parent_context)
+        # Each branch already receives its own exclusive pre-cloned snapshot
+        # from the branch_snapshots array in execute(). No second deep-copy needed.
+        branch_context = parent_context
         branch_context["_branch_id"] = branch_id
 
         # Set up branch-specific logs directory (inside try/except

@@ -156,14 +156,19 @@ def _default_sentinel(workspace_path: str, phase: str) -> bool:
     return report.passed
 
 
-def _default_forge(issue: IssueInfo, workspace_path: str) -> bool:
+def _default_forge(
+    issue: IssueInfo,
+    workspace_path: str,
+    *,
+    on_event: Callable[[object], None] | None = None,
+) -> bool:
     """Run the Dark Forge pipeline for an issue via the DOT engine."""
     import asyncio  # noqa: PLC0415
 
     from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
     from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
 
-    engine = FactoryPipelineEngine()
+    engine = FactoryPipelineEngine(on_event=on_event)
     issue_data = {"number": issue.number, "title": issue.title}
     result = asyncio.run(engine.run_forge(issue_data, workspace_path))
     return result.status == PipelineStatus.COMPLETED
@@ -175,6 +180,7 @@ def run_dark_forge(
     *,
     forge_fn: Callable[[IssueInfo, str], bool] | None = None,
     sentinel_fn: Callable[[str, str], bool] | None = None,
+    on_event: Callable[[object], None] | None = None,
 ) -> bool:
     """Execute Dark Forge with Sentinel gates at lifecycle points."""
     # Pre-forge Sentinel gate
@@ -183,8 +189,10 @@ def run_dark_forge(
         return False
 
     # Run the forge pipeline
-    fn = forge_fn or _default_forge
-    passed = fn(issue, workspace_path)
+    if forge_fn is not None:
+        passed = forge_fn(issue, workspace_path)
+    else:
+        passed = _default_forge(issue, workspace_path, on_event=on_event)
 
     # Post-forge Sentinel gate
     if passed and not _run_sentinel_gate(workspace_path, "forge-post", sentinel_fn=sentinel_fn):
@@ -338,7 +346,12 @@ def _acquire_workspace(repo: str, issue_number: int, *, config: AutoModeConfig) 
     return acquire_workspace(repo, issue_number)
 
 
-def run_cycle(issue: IssueInfo, *, config: AutoModeConfig) -> CycleResult:
+def run_cycle(
+    issue: IssueInfo,
+    *,
+    config: AutoModeConfig,
+    on_event: Callable[[object], None] | None = None,
+) -> CycleResult:
     """Process a single issue through the full Dark Forge → Crucible → Deploy → Ouroboros cycle."""
     t0 = time.monotonic()
     issue_num = issue.number
@@ -371,6 +384,7 @@ def run_cycle(issue: IssueInfo, *, config: AutoModeConfig) -> CycleResult:
 
         forge_passed = run_dark_forge(
             issue, workspace.path, forge_fn=config.forge_fn, sentinel_fn=config.sentinel_fn,
+            on_event=on_event,
         )
         if forge_passed:
             break
@@ -403,6 +417,7 @@ def run_cycle(issue: IssueInfo, *, config: AutoModeConfig) -> CycleResult:
         # One more forge attempt with crucible failure context
         forge_passed = run_dark_forge(
             issue, workspace.path, forge_fn=config.forge_fn, sentinel_fn=config.sentinel_fn,
+            on_event=on_event,
         )
         forge_attempts += 1
 

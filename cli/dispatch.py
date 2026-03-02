@@ -241,6 +241,40 @@ def _run_subsystem(key: str) -> None:
         run_settings_tui()
 
 
+def _forge_event_printer(event: object) -> None:
+    """Print pipeline events to stdout for interactive progress."""
+    from dark_factory.engine.events import (  # noqa: PLC0415
+        ParallelCompleted,
+        ParallelStarted,
+        PipelineCompleted,
+        PipelineStarted,
+        StageCompleted,
+        StageFailed,
+        StageRetrying,
+        StageStarted,
+    )
+
+    if isinstance(event, StageStarted):
+        sys.stdout.write(f"  [{event.index}] {event.name} ... ")
+        sys.stdout.flush()
+    elif isinstance(event, StageCompleted):
+        sys.stdout.write(f"done ({event.duration:.1f}s)\n")
+    elif isinstance(event, StageFailed):
+        retry = " (retrying)" if event.will_retry else ""
+        sys.stdout.write(f"FAILED{retry}\n")
+    elif isinstance(event, StageRetrying):
+        sys.stdout.write(f"  [{event.index}] {event.name} retry #{event.attempt}... ")
+        sys.stdout.flush()
+    elif isinstance(event, ParallelStarted):
+        sys.stdout.write(f"  parallel ({event.branch_count} branches)...\n")
+    elif isinstance(event, ParallelCompleted):
+        sys.stdout.write(f"  parallel done ({event.duration:.1f}s)\n")
+    elif isinstance(event, PipelineStarted):
+        sys.stdout.write(f"\n  Pipeline '{event.name}' started\n")
+    elif isinstance(event, PipelineCompleted):
+        sys.stdout.write(f"  Pipeline completed ({event.duration:.1f}s)\n\n")
+
+
 def _run_forge_interactive() -> None:
     """Pick the next queued issue and run it through the full pipeline."""
     import os  # noqa: PLC0415
@@ -267,7 +301,11 @@ def _run_forge_interactive() -> None:
         return
 
     sys.stdout.write(f"  Processing #{issue.number}: {issue.title}\n")
-    result = run_cycle(issue, config=AutoModeConfig(repo=repo, max_forge_retries=2))
+    result = run_cycle(
+        issue,
+        config=AutoModeConfig(repo=repo, max_forge_retries=2),
+        on_event=_forge_event_printer,
+    )
     sys.stdout.write(
         f"  Result: {result.outcome.value} ({result.duration_s:.1f}s, "
         f"{result.forge_attempts} forge attempt(s))\n"

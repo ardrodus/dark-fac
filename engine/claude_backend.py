@@ -37,8 +37,13 @@ class ClaudeCodeBackend:
         handler = CodergenHandler(backend=backend)
     """
 
-    def __init__(self, config: ClaudeCodeConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: ClaudeCodeConfig | None = None,
+        resource_limiter: Any | None = None,
+    ) -> None:
         self._config = config or ClaudeCodeConfig()
+        self._limiter = resource_limiter
 
     async def run(
         self,
@@ -67,16 +72,23 @@ class ClaudeCodeBackend:
         if system_prompt:
             cmd.extend(["--system-prompt", system_prompt])
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        sem = self._limiter.get_async_semaphore() if self._limiter else None
+        if sem is not None:
+            await sem.acquire()
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-        stdout_bytes, stderr_bytes = await proc.communicate(
-            input=prompt.encode("utf-8"),
-        )
+            stdout_bytes, stderr_bytes = await proc.communicate(
+                input=prompt.encode("utf-8"),
+            )
+        finally:
+            if sem is not None:
+                sem.release()
 
         if proc.returncode != 0:
             stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()

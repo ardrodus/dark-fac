@@ -103,6 +103,10 @@ class SessionConfig:
     environment: str = "local"
     docker_image: str = "python:3.12-slim"
 
+    # History windowing: 0 = unlimited (current behavior).
+    # When > 0, keeps first message + trim notice + last N-2 messages.
+    max_history_messages: int = 0
+
 
 @dataclass
 class _LoopDetector:
@@ -327,6 +331,35 @@ class Session:
         GIL-atomic append in CPython; needs threading.Lock under no-GIL mode.
         """
         self._tracked_processes.append(proc)
+        # Periodically prune completed processes to prevent GC retention.
+        if len(self._tracked_processes) > 10:
+            self._cleanup_completed_processes()
+
+    def _cleanup_completed_processes(self) -> None:
+        """Remove completed subprocess entries to allow GC."""
+        self._tracked_processes = [
+            p for p in self._tracked_processes if p.returncode is None
+        ]
+
+    def _trim_history(self) -> None:
+        """Apply history windowing if configured.
+
+        Keeps the first message (original prompt) + a trim notice +
+        the last N-2 messages, where N = max_history_messages.
+        """
+        limit = self._config.max_history_messages
+        if limit <= 0 or len(self._history) <= limit:
+            return
+        keep_tail = limit - 2  # first message + trim notice = 2 slots
+        if keep_tail < 1:
+            keep_tail = 1
+        first = self._history[0]
+        tail = self._history[-keep_tail:]
+        trimmed_count = len(self._history) - 1 - keep_tail
+        notice = SteeringTurn(
+            content=f"[{trimmed_count} earlier messages trimmed for context window management]"
+        )
+        self._history = [first, notice, *tail]
 
     @property
     def reasoning_effort(self) -> str | None:
@@ -534,6 +567,9 @@ class Session:
                     )
                 )
                 return "[Tool round limit reached]"
+
+            # Apply history windowing before LLM call to keep context bounded.
+            self._trim_history()
 
             # §9.11.5: Wrap the LLM call in a tracked task so that
             # _cleanup_on_abort() can cancel in-flight requests when the

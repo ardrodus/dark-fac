@@ -44,6 +44,7 @@ class EngineConfig:
     deploy_strategy: str = "console"
     sentinel_scan_mode: str = "standard"
     pipeline_timeout: int = 600
+    max_concurrent_subprocesses: int = 3
     model_stylesheet: str = ""
 
 
@@ -91,6 +92,12 @@ def load_engine_config(start: Path | None = None) -> EngineConfig:
     else:
         pipeline_timeout = 600
 
+    raw_max_sub = get_config_value(cfg, "engine.max_concurrent_subprocesses")
+    if isinstance(raw_max_sub, (int, float)) and raw_max_sub > 0:
+        max_concurrent_subprocesses = int(raw_max_sub)
+    else:
+        max_concurrent_subprocesses = 3
+
     config_dir = resolve_config_dir(start)
     stylesheet = _load_stylesheet(config_dir)
 
@@ -100,5 +107,6 @@ def load_engine_config(start: Path | None = None) -> EngineConfig:
         deploy_strategy=str(deploy_strategy),
         sentinel_scan_mode=str(sentinel_scan_mode),
         pipeline_timeout=pipeline_timeout,
+        max_concurrent_subprocesses=max_concurrent_subprocesses,
         model_stylesheet=stylesheet,
     )

@@ -93,10 +93,14 @@ class CodergenHandler:
                 failure_reason=f"{type(exc).__name__}: {exc}",
             )
 
-        # Normalize result to HandlerResult
+        # Normalize result to HandlerResult.
+        # Truncate outputs stored in context to reduce deep-copy overhead
+        # at parallel forks and manager iterations. Full output is still
+        # available in HandlerResult.output for artifact writing.
+        max_ctx_output = int(node.attrs.get("max_context_output", "2000"))
         if isinstance(result, str):
             # Plain string -> wrap as SUCCESS
-            context[f"codergen.{node.id}.output"] = result
+            context[f"codergen.{node.id}.output"] = result[:max_ctx_output]
             handler_result = HandlerResult(
                 status=Outcome.SUCCESS,
                 output=result,
@@ -105,13 +109,11 @@ class CodergenHandler:
         else:
             # Already a HandlerResult
             if result.output:
-                context[f"codergen.{node.id}.output"] = result.output
+                context[f"codergen.{node.id}.output"] = result.output[:max_ctx_output]
             handler_result = result
 
-        # Store expanded prompt for engine-level artifact writing (Spec §5.6).
-        # The engine writes artifacts for ALL nodes; we just stash the
-        # LLM-expanded prompt here so the engine can include it.
-        context[f"_artifact_prompt.{node.id}"] = prompt
+        # Store truncated prompt for engine-level artifact writing (Spec §5.6).
+        context[f"_artifact_prompt.{node.id}"] = prompt[:1000]
 
         return handler_result
 

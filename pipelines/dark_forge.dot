@@ -89,49 +89,15 @@ digraph dark_forge {
         prompt="Parse the PRD into ordered user stories ready for implementation.\n\nPRD:\n$gen_prd\n\nFor each story:\n- Validate required fields (id, title, description, acceptance_criteria)\n- Warn if acceptance criteria > 10 items (suggest split)\n- Order by dependency chain\n\nOutput as JSON array with fields: id, title, description, acceptance_criteria, depends_on.\nCreate GitHub Issues with factory labels (queued, priority) if configured."
     ]
 
-    // --- Per-Story TDD Loop (supervisor retries whole block) ---
+    // --- Per-Story TDD Loop (manager runs child pipeline per story) ---
     story_loop [
         shape=hexagon,
         label="For Each Story",
+        child_graph="dark_factory/pipelines/story_tdd.dot",
         max_iterations=5
     ]
 
-    // --- Stage 1: Test Writer (isolated to tests/) ---
-    test_writer [
-        shape=box,
-        prompt="You are the Test Writer. You have access ONLY to the tests/ directory.\n\nWrite failing tests for this user story:\n$current_story\n\nDesign contract:\n$gen_prd\n\nRules:\n- Write pytest tests that clearly express the acceptance criteria\n- Tests MUST fail (the feature doesn't exist yet)\n- Include edge cases and error scenarios\n- Do NOT implement any production code\n- Output test files only"
-    ]
-
-    // --- Stage 2: Feature Writer (isolated to src/, blind to tests) ---
-    feature_writer [
-        shape=box,
-        prompt="You are the Feature Writer. You have access to src/ and lib/ ONLY.\nYou CANNOT see the test source code.\n\nImplement the feature for this user story:\n$current_story\n\nDesign artifacts:\n$gen_prd\n\nRules:\n- Implement against the design spec, NOT by reverse-engineering tests\n- Run pytest to validate (black-box, you see pass/fail only)\n- Production-quality code with proper error handling\n- Follow existing code conventions"
-    ]
-
-    // --- Run Tests ---
-    run_tests [
-        shape=parallelogram,
-        label="pytest $test_files"
-    ]
-    tests_pass [shape=diamond, label="Tests Pass?"]
-
-    // --- Stage 3: Code Reviewer (read-only) ---
-    code_reviewer [
-        shape=box,
-        prompt="You are the Code Reviewer. You have READ-ONLY access to the entire repository.\n\nReview the implementation for:\n- Correctness against design spec\n- Code quality and conventions\n- Security vulnerabilities (OWASP top 10)\n- Error handling completeness\n- Test coverage adequacy\n\nProvide verdict: approved | changes_requested | human_review_required\nIf changes_requested, provide specific actionable feedback."
-    ]
-    review_verdict [shape=diamond, label="Review\nVerdict?"]
-
-    // --- Feedback Loop ---
-    feedback_check [shape=diamond, label="Rounds < 3?"]
-
-    // --- Outputs ---
-    create_pr [
-        shape=parallelogram,
-        label="gh pr create --title '$current_story.title' --body '$review_summary'"
-    ]
-    escalate [shape=house, label="Human Review Required"]
-    done [shape=Msquare, label="PR Created"]
+    done [shape=Msquare, label="All Stories Complete"]
 
     // --- Flow ---
     start -> arch_review
@@ -144,19 +110,6 @@ digraph dark_forge {
     // Spec generation pipeline (US-301 -> US-307)
     gen_prd -> gen_design -> gen_api_contract -> gen_schema -> gen_interfaces -> gen_test_strategy -> schedule_stories
 
-    // Stories -> TDD
-    schedule_stories -> story_loop
-    story_loop -> test_writer -> feature_writer -> run_tests -> tests_pass
-
-    tests_pass -> code_reviewer [label="pass"]
-    tests_pass -> feature_writer [label="fail (retry)"]
-
-    code_reviewer -> review_verdict
-    review_verdict -> create_pr [label="approved"]
-    review_verdict -> feedback_check [label="changes_requested"]
-
-    feedback_check -> feature_writer [label="yes"]
-    feedback_check -> escalate [label="no (>=3 rounds)"]
-
-    create_pr -> done
+    // Stories -> TDD manager loop
+    schedule_stories -> story_loop -> done
 }

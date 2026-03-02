@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
@@ -123,13 +124,19 @@ def _error_result(name: str, error: str) -> SpecialistResult:
 def _run_one(
     agent: Specialist, issue: dict[str, object], ctx: dict[str, object],
     *, invoke_fn: Callable[[str], str] | None = None,
+    thread_semaphore: threading.Semaphore | None = None,
 ) -> SpecialistResult:
     """Run a single specialist, catching all errors."""
+    if thread_semaphore is not None:
+        thread_semaphore.acquire()
     try:
         return run_specialist(agent, issue, ctx, invoke_fn=invoke_fn)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Specialist %s failed: %s", agent.name, exc)
         return _error_result(agent.name, f"error:{exc}")
+    finally:
+        if thread_semaphore is not None:
+            thread_semaphore.release()
 
 
 def _run_parallel(
@@ -139,13 +146,17 @@ def _run_parallel(
     config: ArchReviewConfig,
     *,
     invoke_fn: Callable[[str], str] | None = None,
+    thread_semaphore: threading.Semaphore | None = None,
 ) -> list[SpecialistResult]:
     """Run all specialists in parallel with configurable timeout."""
     results: list[SpecialistResult] = []
     fmap: dict[Future[SpecialistResult], Specialist] = {}
     with ThreadPoolExecutor(max_workers=config.max_workers) as pool:
         for agent in specialists:
-            f = pool.submit(_run_one, agent, issue, ctx, invoke_fn=invoke_fn)
+            f = pool.submit(
+                _run_one, agent, issue, ctx,
+                invoke_fn=invoke_fn, thread_semaphore=thread_semaphore,
+            )
             fmap[f] = agent
         done, not_done = wait(fmap, timeout=config.specialist_timeout)
     for f in done:

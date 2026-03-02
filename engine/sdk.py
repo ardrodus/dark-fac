@@ -131,10 +131,13 @@ async def execute(
 
     # --- Set up Backend (ClaudeCodeBackend) ---
     # Priority: explicit model arg > config model
+    from dark_factory.engine.resource_limiter import ResourceLimiter  # noqa: PLC0415
+
     resolved_model = model or engine_cfg.model
     resolved_claude_path = engine_cfg.claude_path
     cfg = ClaudeCodeConfig(model=resolved_model, claude_path=resolved_claude_path)
-    backend = ClaudeCodeBackend(cfg)
+    limiter = ResourceLimiter(limit=engine_cfg.max_concurrent_subprocesses)
+    backend = ClaudeCodeBackend(cfg, resource_limiter=limiter)
 
     # --- Set up Handlers ---
     registry = HandlerRegistry()
