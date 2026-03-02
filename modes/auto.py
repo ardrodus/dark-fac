@@ -146,20 +146,48 @@ def _run_sentinel_gate(workspace_path: str, phase: str, *, sentinel_fn: Callable
 
 
 def _default_sentinel(workspace_path: str, phase: str) -> bool:
-    """Run default Sentinel gate checks using the real gate framework."""
+    """Run default Sentinel gate checks using the real gate framework.
+
+    Only runs security-relevant gates (secret-scan, dependency-scan) —
+    not quality, startup-health, or other gates that assume the workspace
+    is the factory itself.
+    """
     from pathlib import Path  # noqa: PLC0415
 
-    from dark_factory.gates.framework import run_all_gates  # noqa: PLC0415
+    from dark_factory.gates.framework import (  # noqa: PLC0415
+        GateReport,
+        UnifiedReport,
+        run_gate_by_name,
+        write_gate_report,
+    )
 
+    _SECURITY_GATES = ("secret-scan", "dependency-scan")
     metrics_dir = Path(workspace_path) / ".dark-factory"
     logger.info("Running sentinel-%s gates on %s", phase, workspace_path)
-    report = run_all_gates(workspace=workspace_path, metrics_dir=metrics_dir)
+
+    reports: list[GateReport] = []
+    for gate_name in _SECURITY_GATES:
+        try:
+            report = run_gate_by_name(gate_name, workspace=workspace_path, metrics_dir=metrics_dir)
+            reports.append(report)
+            logger.info("  Gate %s: %s", gate_name, "PASSED" if report.passed else "FAILED")
+        except KeyError:
+            logger.debug("Gate %s not registered — skipping", gate_name)
+        except Exception:  # noqa: BLE001
+            logger.warning("Gate %s failed to run", gate_name, exc_info=True)
+
+    if not reports:
+        logger.info("Sentinel %s: no security gates ran (all skipped)", phase)
+        return True
+
+    unified = UnifiedReport(gate_reports=tuple(reports))
+    write_gate_report(unified, report_dir=metrics_dir)
     logger.info(
         "Sentinel %s: %s (%d gate(s))",
-        phase, "PASSED" if report.overall_passed else "FAILED",
-        len(report.gate_reports),
+        phase, "PASSED" if unified.overall_passed else "FAILED",
+        len(reports),
     )
-    return report.overall_passed
+    return unified.overall_passed
 
 
 def _default_forge(
