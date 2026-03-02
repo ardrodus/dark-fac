@@ -117,8 +117,10 @@ digraph dark_forge {
     done [shape=Msquare, label="PR Created"]
 
     // --- Flow ---
-    // NOTE: arch review bypassed for dev testing
-    start -> gen_design
+    // Architecture review first, then spec generation, then TDD execution
+    start -> arch_review -> arch_verdict
+    arch_verdict -> gen_design [label="APPROVED"]
+    arch_verdict -> arch_needs_human [label="NEEDS_HUMAN"]
 
     // Spec generation
     gen_design -> gen_api_contract -> gen_schema -> gen_interfaces -> gen_test_strategy -> gen_prd
