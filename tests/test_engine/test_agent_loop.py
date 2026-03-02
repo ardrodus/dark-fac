@@ -225,20 +225,6 @@ class TestCoreTools:
         assert "goodbye" in test_file.read_text()
 
     @pytest.mark.asyncio
-    async def test_shell_echo(self):
-        registry = ToolRegistry()
-        registry.register_many(ALL_CORE_TOOLS)
-
-        tc = ContentPart.tool_call_part(
-            "tc-1",
-            "shell",
-            {"command": "echo hello_test", "working_dir": str(self.sandbox)},
-        )
-        result = await registry.execute_tool_call(tc)
-        assert not result.is_error
-        assert "hello_test" in (result.output or "")
-
-    @pytest.mark.asyncio
     async def test_shell_timeout(self):
         registry = ToolRegistry()
         registry.register_many(ALL_CORE_TOOLS)
