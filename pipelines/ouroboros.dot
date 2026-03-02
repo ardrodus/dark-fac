@@ -43,45 +43,49 @@ digraph ouroboros {
     // --- Step 1: Detect version ---
     detect_version [
         shape=box,
-        prompt="Check the current factory version against the upstream release.\n\nSteps:\n1. Read the local version from factory/__init__.py or pyproject.toml\n2. Query the upstream release (GitHub releases API or git ls-remote --tags)\n3. Compare semantic versions\n\nOutput:\n- current_version\n- latest_version\n- update_available (bool)\n- changelog_summary (if update available)"
+        prompt="Check the current factory version against the upstream release.\n\nWorkspace: $workspace\n\nSteps:\n1. Read the local version from $workspace/pyproject.toml or $workspace/dark_factory/__init__.py\n2. Query the upstream release (GitHub releases API or git ls-remote --tags)\n3. Compare semantic versions\n\nOutput:\n- current_version\n- latest_version\n- update_available (bool)\n- changelog_summary (if update available)\n\nWrite results to: $workspace/.dark-factory/ouroboros/version-check.json"
     ]
     version_check [shape=diamond, label="Update\nAvailable?"]
 
     // --- Step 2: Staging deployment ---
     staging_deploy [
         shape=parallelogram,
-        label="Clone upstream release\ninto staging directory\n(.dark-factory/staging/)"
+        label="Clone upstream release\ninto staging directory",
+        prompt="cd $workspace && mkdir -p .dark-factory/staging && git clone --depth 1 $upstream_repo .dark-factory/staging/ 2>&1"
     ]
 
     // --- Step 3: Smoke test the staged version ---
     smoke_test [
         shape=box,
-        prompt="Run a smoke test against the staged factory copy.\n\nExecute in the staging directory:\n1. python -m factory selftest   (core self-test)\n2. python -m factory doctor     (dependency check)\n3. Verify all pipeline DOT files parse without error\n4. Verify config migration (old config still loads)\n\nVerdict: PASS (all checks green) | FAIL (any check failed, with details)"
+        prompt="Run a smoke test against the staged factory copy.\n\nWorkspace: $workspace\nStaging directory: $workspace/.dark-factory/staging/\n\nExecute in the staging directory:\n1. python -m pytest $workspace/.dark-factory/staging/tests/ -x --tb=short\n2. Verify all pipeline DOT files in $workspace/.dark-factory/staging/pipelines/ parse without error\n3. Verify config migration (old config still loads)\n\nVerdict: PASS (all checks green) | FAIL (any check failed, with details)\n\nWrite results to: $workspace/.dark-factory/ouroboros/smoke-test.json"
     ]
     smoke_verdict [shape=diamond, label="Smoke\nTest?"]
 
     // --- Step 4a: Swap — replace live with staging ---
     swap_live [
         shape=parallelogram,
-        label="Swap live ↔ staging\n(atomic rename:\n live → .backup, staging → live)"
+        label="Swap live ↔ staging\n(atomic rename)",
+        prompt="cd $workspace && cp -r dark_factory dark_factory.backup && rm -rf dark_factory && cp -r .dark-factory/staging/dark_factory dark_factory 2>&1"
     ]
 
     // --- Step 4b: Rollback — staging failed, discard ---
     rollback [
         shape=parallelogram,
-        label="Rollback\n(remove staging, keep live)"
+        label="Rollback\n(remove staging, keep live)",
+        prompt="cd $workspace && rm -rf .dark-factory/staging/ 2>&1"
     ]
 
     // --- Step 5: Post-update diagnostic ---
     post_update_diag [
         shape=box,
-        prompt="Run a post-update diagnostic on the now-live updated factory.\n\n1. python -m factory selftest\n2. python -m factory doctor\n3. Verify the auto-mode loop can start and poll for issues\n4. Verify the dashboard renders without errors\n5. Compare config state before and after update\n\nIf ANY check fails, trigger automatic rollback to .backup.\n\nOutput:\n- all_checks_passed (bool)\n- failed_checks[] (name, error)\n- rollback_triggered (bool)"
+        prompt="Run a post-update diagnostic on the now-live updated factory.\n\nWorkspace: $workspace\n\n1. python -m pytest $workspace/tests/ -x --tb=short\n2. Import every factory subpackage — no import errors\n3. Verify all pipeline DOT files in $workspace/pipelines/ parse without error\n4. Compare config state before and after update\n\nIf ANY check fails, recommend automatic rollback to .backup.\n\nOutput:\n- all_checks_passed (bool)\n- failed_checks[] (name, error)\n- rollback_recommended (bool)\n\nWrite results to: $workspace/.dark-factory/ouroboros/post-update-diag.json"
     ]
     post_diag_verdict [shape=diamond, label="Post-Update\nHealthy?"]
 
     auto_rollback [
         shape=parallelogram,
-        label="Auto-Rollback\n(.backup → live)"
+        label="Auto-Rollback\n(.backup → live)",
+        prompt="cd $workspace && rm -rf dark_factory && mv dark_factory.backup dark_factory 2>&1"
     ]
 
     update_done [shape=Msquare, label="Auto-Update\nComplete"]
@@ -113,7 +117,7 @@ digraph ouroboros {
     // --- Step 1: Guardrail check ---
     guardrail_check [
         shape=box,
-        prompt="You are the Ouroboros guardrail agent.\n\nBefore allowing self-modification, verify:\n1. The proposed change is within allowed scope (bug fix, performance,\n   code quality, test coverage — NOT security policy, gate logic,\n   or merge policy changes)\n2. No circular dependency risk (change won't break the self-forge\n   pipeline itself)\n3. Change complexity is bounded (< 500 lines diff, < 10 files)\n4. The change has a clear motivation (issue, metric, or pattern)\n\nVerdict: ALLOW (proceed) | DENY (too risky, log reason and skip)"
+        prompt="You are the Ouroboros guardrail agent.\n\nWorkspace: $workspace\nIssue: $issue\n\nBefore allowing self-modification, verify:\n1. The proposed change is within allowed scope (bug fix, performance,\n   code quality, test coverage — NOT security policy, gate logic,\n   or merge policy changes)\n2. No circular dependency risk (change won't break the self-forge\n   pipeline itself)\n3. Change complexity is bounded (< 500 lines diff, < 10 files)\n4. The change has a clear motivation (issue, metric, or pattern)\n\nRead relevant files in $workspace to understand the proposed change scope.\n\nVerdict: ALLOW (proceed) | DENY (too risky, log reason and skip)\n\nWrite results to: $workspace/.dark-factory/ouroboros/guardrail.json"
     ]
     guardrail_verdict [shape=diamond, label="Guardrail?"]
     guardrail_denied [shape=house, label="Self-Forge DENIED\n(logged, skipped)"]
@@ -132,7 +136,8 @@ digraph ouroboros {
     // Layer 1: Syntax — ruff + mypy
     self_crucible_syntax [
         shape=parallelogram,
-        label="Layer 1: Syntax\nruff check . && mypy ."
+        label="Layer 1: Syntax\nruff check . && mypy .",
+        prompt="cd $workspace && python -m ruff check . && python -m mypy . 2>&1"
     ]
     syntax_verdict [shape=diamond, label="Syntax\nClean?"]
     syntax_failed [shape=house, label="Syntax FAILED\n(ruff/mypy errors)\n→ Self-Forge retry"]
@@ -140,7 +145,8 @@ digraph ouroboros {
     // Layer 2: Unit tests — pytest
     self_crucible_tests [
         shape=parallelogram,
-        label="Layer 2: Unit Tests\npytest tests/ -x"
+        label="Layer 2: Unit Tests\npytest tests/ -x",
+        prompt="cd $workspace && python -m pytest tests/ -x --tb=short 2>&1"
     ]
     tests_verdict [shape=diamond, label="Tests\nPass?"]
     tests_failed [shape=house, label="Tests FAILED\n→ Self-Forge retry"]
@@ -148,7 +154,7 @@ digraph ouroboros {
     // Layer 3: Pipeline simulation
     self_crucible_pipeline [
         shape=box,
-        prompt="You are the Ouroboros pipeline simulation agent.\n\nLayer 3 of the self-crucible. Validate that all factory pipelines\nstill function correctly after self-modification:\n\n1. Parse every DOT file in factory/pipelines/ — verify valid digraph syntax\n2. Trace each pipeline end-to-end: entry → all terminal nodes reachable\n3. Verify node attribute contracts (shape, prompt, label, pipeline refs)\n4. Check that pipeline references (e.g. pipeline=\"dark_forge.dot\") resolve\n5. Dry-run the dispatch table — every registered command has a handler\n\nVerdict: PASS | FAIL (with broken pipeline name and failure detail)"
+        prompt="You are the Ouroboros pipeline simulation agent.\n\nWorkspace: $workspace\n\nLayer 3 of the self-crucible. Validate that all factory pipelines\nstill function correctly after self-modification:\n\n1. Read every DOT file in $workspace/pipelines/ — verify valid digraph syntax\n2. Trace each pipeline end-to-end: entry → all terminal nodes reachable\n3. Verify node attribute contracts (shape, prompt, label, pipeline refs)\n4. Check that pipeline references (e.g. child_graph) resolve to existing files\n5. Dry-run import of $workspace/dark_factory/ — no import errors\n\nVerdict: PASS | FAIL (with broken pipeline name and failure detail)\n\nWrite results to: $workspace/.dark-factory/ouroboros/pipeline-sim.json"
     ]
     pipeline_verdict [shape=diamond, label="Pipelines\nValid?"]
     pipeline_failed [shape=house, label="Pipeline Sim FAILED\n→ Self-Forge retry"]
@@ -156,7 +162,7 @@ digraph ouroboros {
     // Layer 4: Health check
     self_crucible_health [
         shape=box,
-        prompt="You are the Ouroboros health check agent.\n\nLayer 4 of the self-crucible. Run a full factory health check\nafter self-modification:\n\n1. python -m factory selftest (core self-test passes)\n2. python -m factory doctor   (all dependencies present)\n3. Import every factory subpackage — no import errors\n4. Verify config load/save round-trip\n5. Verify the dashboard app can be instantiated\n\nThis is the final gate before creating a PR.\n\nVerdict: HEALTHY | UNHEALTHY (with failing component and error)"
+        prompt="You are the Ouroboros health check agent.\n\nWorkspace: $workspace\n\nLayer 4 of the self-crucible. Run a full factory health check\nafter self-modification:\n\n1. python -m pytest $workspace/tests/ --tb=short (full test suite passes)\n2. Import every $workspace/dark_factory/ subpackage — no import errors\n3. Verify config load/save round-trip\n4. Verify all pipeline DOT files in $workspace/pipelines/ parse without error\n\nThis is the final gate before creating a PR.\n\nVerdict: HEALTHY | UNHEALTHY (with failing component and error)\n\nWrite results to: $workspace/.dark-factory/ouroboros/health-check.json"
     ]
     health_verdict [shape=diamond, label="Factory\nHealthy?"]
     health_failed [shape=house, label="Health Check FAILED\n→ Self-Forge retry"]
@@ -164,7 +170,7 @@ digraph ouroboros {
     // --- Step 4: PR with merge policy ---
     self_forge_pr [
         shape=box,
-        prompt="Create a pull request for the self-forge changes.\n\nMerge policy (enforced, not user-customisable):\n- Title: 'ouroboros: <concise description>'\n- Label: ouroboros-self-forge\n- Require ALL 4 self-crucible layers to have passed\n- Auto-merge ONLY if:\n  1. Diff < 200 lines\n  2. No security policy files modified\n  3. No gate logic files modified\n  4. All 4 crucible layers passed\n- Otherwise: require human approval (add needs-human-review label)\n\nOutput:\n- pr_url\n- auto_merge_eligible (bool)\n- merge_policy_reason"
+        prompt="Create a pull request for the self-forge changes.\n\nWorkspace: $workspace\n\nMerge policy (enforced, not user-customisable):\n- Title: 'ouroboros: <concise description>'\n- Label: ouroboros-self-forge\n- Require ALL 4 self-crucible layers to have passed\n- Auto-merge ONLY if:\n  1. Diff < 200 lines\n  2. No security policy files modified\n  3. No gate logic files modified\n  4. All 4 crucible layers passed\n- Otherwise: require human approval (add needs-human-review label)\n\nRun in $workspace:\n  git add -A && git commit -m 'ouroboros: <description>'\n  gh pr create --title 'ouroboros: <description>' --label ouroboros-self-forge\n\nOutput:\n- pr_url\n- auto_merge_eligible (bool)\n- merge_policy_reason"
     ]
     self_forge_done [shape=Msquare, label="Self-Forge PR\nCreated"]
 
@@ -200,13 +206,13 @@ digraph ouroboros {
     // --- Step 1: Learn from self-modifications ---
     learn_modifications [
         shape=box,
-        prompt="You are the Ouroboros feedback learning agent.\n\nAnalyze the completed self-modification:\n- Diff summary: $diff_summary\n- Crucible results: $crucible_results\n- Cycle outcome: $cycle_outcome\n\nExtract learnings:\n1. What pattern was applied? (refactor, optimisation, bug fix, new feature)\n2. Which files/modules were most affected?\n3. Did the change pass all crucible layers on first attempt?\n4. What retry iterations were needed (if any)?\n5. What code patterns emerged that could be reused?\n\nOutput:\n- pattern_name\n- pattern_description\n- affected_modules[]\n- first_attempt_success (bool)\n- retry_count\n- reusable_patterns[]"
+        prompt="You are the Ouroboros feedback learning agent.\n\nWorkspace: $workspace\n\nAnalyze the completed self-modification.\nRead the results from previous pipeline stages in $workspace/.dark-factory/ouroboros/.\n\nExtract learnings:\n1. What pattern was applied? (refactor, optimisation, bug fix, new feature)\n2. Which files/modules were most affected?\n3. Did the change pass all crucible layers on first attempt?\n4. What retry iterations were needed (if any)?\n5. What code patterns emerged that could be reused?\n\nOutput:\n- pattern_name\n- pattern_description\n- affected_modules[]\n- first_attempt_success (bool)\n- retry_count\n- reusable_patterns[]\n\nWrite results to: $workspace/.dark-factory/ouroboros/learnings.json"
     ]
 
     // --- Step 2: Pattern confidence scoring ---
     pattern_confidence [
         shape=box,
-        prompt="You are the Ouroboros pattern confidence scorer.\n\nUpdate the pattern knowledge store with confidence scores.\n\nFor each pattern from the current and historical modifications:\n1. Calculate success_rate = successful_applications / total_applications\n2. Recency weight: recent successes count more than old ones\n3. Complexity weight: patterns that work on complex changes score higher\n4. Scope weight: patterns used across multiple modules score higher\n\nConfidence tiers:\n- HIGH (>= 0.85): Auto-apply in future self-forge cycles\n- MEDIUM (0.5 - 0.84): Suggest but require guardrail approval\n- LOW (< 0.5): Log only, do not suggest\n\nPrune patterns with LOW confidence and zero applications in 30 days.\n\nOutput:\n- updated_patterns[] with name, confidence, tier, last_applied, apply_count\n- pruned_patterns[] (removed due to staleness)"
+        prompt="You are the Ouroboros pattern confidence scorer.\n\nWorkspace: $workspace\n\nUpdate the pattern knowledge store at $workspace/.dark-factory/ouroboros/patterns.json\nwith confidence scores.\n\nFor each pattern from the current and historical modifications:\n1. Calculate success_rate = successful_applications / total_applications\n2. Recency weight: recent successes count more than old ones\n3. Complexity weight: patterns that work on complex changes score higher\n4. Scope weight: patterns used across multiple modules score higher\n\nConfidence tiers:\n- HIGH (>= 0.85): Auto-apply in future self-forge cycles\n- MEDIUM (0.5 - 0.84): Suggest but require guardrail approval\n- LOW (< 0.5): Log only, do not suggest\n\nPrune patterns with LOW confidence and zero applications in 30 days.\n\nOutput:\n- updated_patterns[] with name, confidence, tier, last_applied, apply_count\n- pruned_patterns[] (removed due to staleness)\n\nWrite results to: $workspace/.dark-factory/ouroboros/patterns.json"
     ]
 
     feedback_done [shape=Msquare, label="Feedback\nRecorded"]

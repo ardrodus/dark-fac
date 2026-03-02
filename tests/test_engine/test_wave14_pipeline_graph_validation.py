@@ -50,23 +50,18 @@ class TestGraphLabelProperty:
     """P24: Graph must expose a typed `label` property backed by attrs."""
 
     def test_graph_label_property(self) -> None:
-        """label property returns the value stored in attrs['label']."""
+        """label property returns the value stored in attrs['label'] and updates live."""
         graph = _minimal_graph()
         graph.attrs["label"] = "My Pipeline"
         assert graph.label == "My Pipeline"
+        # Mutation is immediately visible
+        graph.attrs["label"] = "Updated"
+        assert graph.label == "Updated"
 
     def test_graph_label_empty_default(self) -> None:
         """label returns '' when attrs does not contain 'label'."""
         graph = _minimal_graph()
         assert graph.label == ""
-
-    def test_graph_label_updates_with_attrs(self) -> None:
-        """Mutating attrs['label'] is immediately visible via the property."""
-        graph = _minimal_graph()
-        graph.attrs["label"] = "First"
-        assert graph.label == "First"
-        graph.attrs["label"] = "Second"
-        assert graph.label == "Second"
 
     def test_graph_label_independent_of_name(self) -> None:
         """label and name are independent: setting one does not affect the other."""

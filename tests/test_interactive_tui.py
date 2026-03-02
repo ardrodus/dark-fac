@@ -15,35 +15,22 @@ from dark_factory.modes.interactive import (
 # ── Menu item data tests ─────────────────────────────────────────
 
 
-def test_menu_has_five_items() -> None:
+def test_menu_items_structure() -> None:
+    """MENU_ITEMS has 5 frozen items with correct keys, titles, and descriptions."""
     assert len(MENU_ITEMS) == 5
-
-
-def test_menu_keys_are_1_through_5() -> None:
-    keys = [item.key for item in MENU_ITEMS]
-    assert keys == ["1", "2", "3", "4", "5"]
-
-
-def test_menu_titles() -> None:
-    titles = [item.title for item in MENU_ITEMS]
-    assert titles == ["Dark Forge", "Crucible", "Ouroboros", "Foundry", "Settings"]
-
-
-def test_menu_descriptions() -> None:
-    descriptions = [item.description for item in MENU_ITEMS]
-    assert descriptions == [
+    assert [item.key for item in MENU_ITEMS] == ["1", "2", "3", "4", "5"]
+    assert [item.title for item in MENU_ITEMS] == [
+        "Dark Forge", "Crucible", "Ouroboros", "Foundry", "Settings",
+    ]
+    assert [item.description for item in MENU_ITEMS] == [
         "Build an issue",
         "Validate a build",
         "Self-improve / update",
         "Manage workspaces",
         "Configure factory",
     ]
-
-
-def test_menu_item_is_frozen() -> None:
-    item = MENU_ITEMS[0]
     with pytest.raises(AttributeError):
-        item.title = "changed"  # type: ignore[misc]
+        MENU_ITEMS[0].title = "changed"  # type: ignore[misc]
 
 
 # ── App composition tests (Textual pilot) ────────────────────────
@@ -58,43 +45,13 @@ async def test_app_renders_menu_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_keyboard_1_selects_dark_forge() -> None:
-    app = InteractiveApp()
-    async with app.run_test() as pilot:
-        await pilot.press("1")
-        assert app.return_value == "1"
-
-
-@pytest.mark.asyncio
-async def test_keyboard_2_selects_crucible() -> None:
-    app = InteractiveApp()
-    async with app.run_test() as pilot:
-        await pilot.press("2")
-        assert app.return_value == "2"
-
-
-@pytest.mark.asyncio
-async def test_keyboard_3_selects_ouroboros() -> None:
-    app = InteractiveApp()
-    async with app.run_test() as pilot:
-        await pilot.press("3")
-        assert app.return_value == "3"
-
-
-@pytest.mark.asyncio
-async def test_keyboard_4_selects_foundry() -> None:
-    app = InteractiveApp()
-    async with app.run_test() as pilot:
-        await pilot.press("4")
-        assert app.return_value == "4"
-
-
-@pytest.mark.asyncio
-async def test_keyboard_5_selects_settings() -> None:
-    app = InteractiveApp()
-    async with app.run_test() as pilot:
-        await pilot.press("5")
-        assert app.return_value == "5"
+async def test_keyboard_1_through_5_selects_menu_items() -> None:
+    """Keys 1-5 each return their key string as the selection."""
+    for key in ("1", "2", "3", "4", "5"):
+        app = InteractiveApp()
+        async with app.run_test() as pilot:
+            await pilot.press(key)
+            assert app.return_value == key, f"Key '{key}' expected return_value '{key}'"
 
 
 @pytest.mark.asyncio

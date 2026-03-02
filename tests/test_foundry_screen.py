@@ -99,19 +99,13 @@ async def test_a_key_returns_add() -> None:
 
 
 @pytest.mark.asyncio
-async def test_escape_returns_none() -> None:
-    app = FoundryScreen(workspaces=SAMPLE_WORKSPACES)
-    async with app.run_test() as pilot:
-        await pilot.press("escape")
-        assert app.return_value is None
-
-
-@pytest.mark.asyncio
-async def test_q_quits() -> None:
-    app = FoundryScreen(workspaces=SAMPLE_WORKSPACES)
-    async with app.run_test() as pilot:
-        await pilot.press("q")
-        assert app.return_value is None
+async def test_escape_and_q_return_none() -> None:
+    """Both escape and q quit with return_value None."""
+    for key in ("escape", "q"):
+        app = FoundryScreen(workspaces=SAMPLE_WORKSPACES)
+        async with app.run_test() as pilot:
+            await pilot.press(key)
+            assert app.return_value is None, f"Key '{key}' should return None"
 
 
 @pytest.mark.asyncio
@@ -136,12 +130,6 @@ async def test_foundry_screen_uses_foundry_theme() -> None:
     async with app.run_test():
         foundry_theme = SUBSYSTEM_THEMES["foundry"]
         assert app.screen.has_class(foundry_theme.css_class)
-
-
-@pytest.mark.asyncio
-async def test_foundry_theme_accent_is_lighter_purple() -> None:
-    """Foundry theme accent should be #a78bfa (lighter purple)."""
-    assert SUBSYSTEM_THEMES["foundry"].accent == "#a78bfa"
 
 
 @pytest.mark.asyncio

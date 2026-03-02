@@ -180,76 +180,27 @@ async def test_config_screen_uses_foundry_theme() -> None:
 # ── Keyboard action tests ────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_s_key_returns_change_strategy() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("s")
-        assert app.return_value == "change_strategy"
+_KEY_BINDINGS = {
+    "s": "change_strategy",
+    "m": "change_scan_mode",
+    "b": "change_branch",
+    "w": "configure_webhooks",
+    "p": "configure_pipeline",
+    "d": "remove",
+    "r": "rescan_baseline",
+    "escape": None,
+    "q": None,
+}
 
 
 @pytest.mark.asyncio
-async def test_m_key_returns_change_scan_mode() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("m")
-        assert app.return_value == "change_scan_mode"
-
-
-@pytest.mark.asyncio
-async def test_b_key_returns_change_branch() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("b")
-        assert app.return_value == "change_branch"
-
-
-@pytest.mark.asyncio
-async def test_w_key_returns_configure_webhooks() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("w")
-        assert app.return_value == "configure_webhooks"
-
-
-@pytest.mark.asyncio
-async def test_p_key_returns_configure_pipeline() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("p")
-        assert app.return_value == "configure_pipeline"
-
-
-@pytest.mark.asyncio
-async def test_d_key_returns_remove() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("d")
-        assert app.return_value == "remove"
-
-
-@pytest.mark.asyncio
-async def test_r_key_returns_rescan_baseline() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("r")
-        assert app.return_value == "rescan_baseline"
-
-
-@pytest.mark.asyncio
-async def test_escape_returns_none() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("escape")
-        assert app.return_value is None
-
-
-@pytest.mark.asyncio
-async def test_q_quits() -> None:
-    app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
-    async with app.run_test() as pilot:
-        await pilot.press("q")
-        assert app.return_value is None
+async def test_keyboard_actions() -> None:
+    """All keyboard bindings return their expected action values."""
+    for key, expected in _KEY_BINDINGS.items():
+        app = WorkspaceConfigScreen(config=SAMPLE_CONFIG)
+        async with app.run_test() as pilot:
+            await pilot.press(key)
+            assert app.return_value == expected, f"Key '{key}' expected {expected!r}, got {app.return_value!r}"
 
 
 # ── Unconfigured workspace display ───────────────────────────────

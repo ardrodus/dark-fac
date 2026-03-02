@@ -10,6 +10,7 @@ Spec reference: attractor-spec §4.5.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -17,6 +18,20 @@ from dark_factory.engine.agent.abort import AbortSignal
 from dark_factory.engine.graph import Graph, Node
 from dark_factory.engine.runner import HandlerResult, Outcome
 from dark_factory.engine.variable_expansion import expand_node_prompt
+
+logger = logging.getLogger(__name__)
+
+# Node ID -> filename for disk artifacts.  Nodes not listed here
+# still get written as {node_id}.md.
+_ARTIFACT_FILENAMES: dict[str, str] = {
+    "gen_design": "design.md",
+    "gen_prd": "prd.json",
+    "gen_api_contract": "api-contract.yaml",
+    "gen_schema": "schema.sql",
+    "gen_interfaces": "interfaces.txt",
+    "gen_test_strategy": "test-strategy.md",
+    "arch_review": "engineering-brief.md",
+}
 
 
 class CodergenBackend(Protocol):
@@ -112,10 +127,69 @@ class CodergenHandler:
                 context[f"codergen.{node.id}.output"] = result.output[:max_ctx_output]
             handler_result = result
 
+        # Write output to disk and store path reference (arch flow pattern)
+        self._write_stage_artifact(node, context, handler_result)
+
         # Store truncated prompt for engine-level artifact writing (Spec §5.6).
         context[f"_artifact_prompt.{node.id}"] = prompt[:1000]
 
         return handler_result
+
+    @staticmethod
+    def _write_stage_artifact(
+        node: Node, context: dict[str, Any], result: HandlerResult,
+    ) -> None:
+        """Write stage output to disk and store file path in context.
+
+        Follows the bash architecture flow pattern: each stage writes its
+        output to .dark-factory/specs/{issue}/ and downstream stages get
+        a file path reference via $gen_design_path, $gen_prd_path, etc.
+        """
+        output = result.output
+        if not output:
+            return
+
+        workspace = context.get("workspace", "")
+        if not workspace:
+            return
+
+        issue = context.get("issue", {})
+        issue_num = issue.get("number", 0) if isinstance(issue, dict) else 0
+        if not issue_num:
+            return
+
+        filename = _ARTIFACT_FILENAMES.get(node.id, f"{node.id}.md")
+        spec_dir = Path(workspace) / ".dark-factory" / "specs" / str(issue_num)
+
+        try:
+            spec_dir.mkdir(parents=True, exist_ok=True)
+
+            # Handle ---SPLIT--- marker: gen_prd outputs test-spec + feature-spec
+            if "---SPLIT---" in output:
+                parts = output.split("---SPLIT---", 1)
+                test_spec = parts[0].strip()
+                feature_spec = parts[1].strip() if len(parts) > 1 else ""
+
+                test_path = spec_dir / "test-spec.md"
+                feature_path = spec_dir / "feature-spec.md"
+                test_path.write_text(test_spec, encoding="utf-8")
+                feature_path.write_text(feature_spec, encoding="utf-8")
+
+                context[f"{node.id}_test_path"] = str(test_path)
+                context[f"{node.id}_feature_path"] = str(feature_path)
+                # Also store issue_number for shell node variable expansion
+                context["issue_number"] = str(issue_num)
+                logger.info("Split %s into test-spec.md (%d bytes) + feature-spec.md (%d bytes)",
+                            node.id, len(test_spec), len(feature_spec))
+            else:
+                artifact_path = spec_dir / filename
+                artifact_path.write_text(output, encoding="utf-8")
+                logger.info("Wrote %s (%d bytes)", artifact_path, len(output))
+
+            # Store path reference so downstream prompts can use $gen_design_path etc.
+            context[f"{node.id}_path"] = str(spec_dir / filename)
+        except OSError:
+            logger.warning("Failed to write artifact for node %s", node.id, exc_info=True)
 
     def _expand_prompt(self, node: Node, context: dict[str, Any], graph: Graph) -> str:
         """Expand template variables in the node's prompt.
@@ -132,20 +206,24 @@ class CodergenHandler:
 
         expanded = expand_node_prompt(prompt, expand_ctx)
 
-        # Inject workflow log instructions (parity with bash agent-protocol.sh)
-        wf_log = context.get("_workflow_log", "")
-        if wf_log:
-            expanded += (
-                "\n\n## Workflow Log\n\n"
-                "IMPORTANT: Log your progress to this file AS YOU WORK (not at the end):\n"
-                f"**{wf_log}**\n\n"
-                "Append one line per action using this format:\n"
-                "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] STAGE_NAME | ACTION | detail\n\n"
-                "Actions: START (your plan), READ (file path), ANALYZE (finding), "
-                "DECISION (choice made), ISSUE (problem), DONE (summary).\n\n"
-                "CRITICAL: Your FINAL output must be your stage review/deliverable "
-                "per your Output Format.\n"
-                "NEVER end your session with a log write -- always end by outputting your review.\n"
+        # Inject per-node progress log + shared workflow log instructions.
+        workspace = context.get("workspace", "")
+        if workspace:
+            node_log = str(Path(workspace) / ".dark-factory" / "logs" / f"{node.id}.log")
+            wf_log = context.get("_workflow_log", "")
+
+            log_section = (
+                "\n\n## Progress Log\n\n"
+                f"Log progress to: **{node_log}**\n"
             )
+            if wf_log:
+                log_section += (
+                    f"Also log key milestones to: **{wf_log}**\n"
+                )
+            log_section += (
+                "Log at major milestones (START, DONE, and key decisions). "
+                "Your FINAL output must be your deliverable, not a log entry.\n"
+            )
+            expanded += log_section
 
         return expanded

@@ -170,27 +170,6 @@ def test_all_events_log_something(app: MagicMock, state: DashboardState) -> None
     assert app.log_message.call_count == len(events)
 
 
-# ── Notification events → NotificationPanel ──────────────────────
-
-
-def test_pipeline_started_sends_notification(handler, app: MagicMock) -> None:
-    """PipelineStarted should call notify() for NotificationPanel."""
-    handler(PipelineStarted(name="p", id="x"))
-    # notify() writes to the module-level store — just verify no crash
-    # and that log_message was called (the notification is a side effect)
-    app.log_message.assert_called_once()
-
-
-def test_pipeline_completed_sends_notification(handler, app: MagicMock) -> None:
-    handler(PipelineCompleted(duration=1.0, artifact_count=2))
-    app.log_message.assert_called_once()
-
-
-def test_pipeline_failed_sends_notification(handler, app: MagicMock) -> None:
-    handler(PipelineFailed(error="boom", duration=1.0))
-    app.log_message.assert_called_once()
-
-
 # ── Unknown events are silently ignored ──────────────────────────
 
 

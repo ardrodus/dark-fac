@@ -239,6 +239,7 @@ class FactoryPipelineEngine:
         workspace: str,
         *,
         strategy: str | None = None,
+        skip_arch_review: bool = False,
         context: dict[str, Any] | None = None,
     ) -> Any:
         """Run Dark Forge with issue JSON, workspace, and strategy.
@@ -248,6 +249,8 @@ class FactoryPipelineEngine:
             workspace: Path to the workspace directory.
             strategy: Deploy strategy override (``"web"`` or ``"console"``).
                 Defaults to ``EngineConfig.deploy_strategy``.
+            skip_arch_review: If True, skip the arch review + verdict nodes
+                and jump straight to spec generation.
             context: Extra context variables.
 
         Returns:
@@ -260,8 +263,16 @@ class FactoryPipelineEngine:
         }
         ctx["strategy"] = strategy or self._engine_cfg.deploy_strategy
 
-        # Create workflow log for agent visibility
+        # Skip arch review nodes when configured
+        if skip_arch_review:
+            ctx["_skip_nodes"] = ["arch_review", "arch_verdict"]
+
+        # Derive issue number and expose for shell node variable expansion
         issue_num = issue.get("number", 0) if isinstance(issue, dict) else 0
+        if issue_num:
+            ctx["issue_number"] = str(issue_num)
+
+        # Create workflow log for agent visibility
         if workspace and issue_num:
             from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
 
@@ -286,6 +297,7 @@ class FactoryPipelineEngine:
         base_sha: str,
         head_sha: str,
         *,
+        issue_number: int = 0,
         context: dict[str, Any] | None = None,
     ) -> Any:
         """Run Crucible with the given SHAs.
@@ -294,6 +306,7 @@ class FactoryPipelineEngine:
             workspace: Path to the workspace directory.
             base_sha: Base commit SHA for diff comparison.
             head_sha: Head commit SHA for diff comparison.
+            issue_number: Optional issue number for log naming.
             context: Extra context variables.
 
         Returns:
@@ -305,6 +318,21 @@ class FactoryPipelineEngine:
             "head_sha": head_sha,
             **(context or {}),
         }
+
+        if issue_number:
+            ctx["issue_number"] = str(issue_number)
+
+        # Create workflow log for agent visibility
+        if workspace:
+            from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
+
+            log_name = f"crucible-{issue_number}" if issue_number else "crucible"
+            wf_log = WorkflowLog(
+                Path(workspace) / ".dark-factory" / "logs" / f"workflow-{log_name}.log",
+                issue_number=issue_number,
+            )
+            ctx["_workflow_log"] = str(wf_log.path)
+
         return await self.run_pipeline("crucible", ctx)
 
     # ── Ouroboros ─────────────────────────────────────────────────
@@ -313,6 +341,7 @@ class FactoryPipelineEngine:
         self,
         trigger: str,
         *,
+        workspace: str = "",
         context: dict[str, Any] | None = None,
     ) -> Any:
         """Run Ouroboros with the given trigger type.
@@ -320,6 +349,7 @@ class FactoryPipelineEngine:
         Args:
             trigger: Trigger type (``"scheduled"``, ``"post_cycle"``,
                 ``"manual"``, ``"auto_update"``, ``"self_forge"``).
+            workspace: Path to the factory workspace directory.
             context: Extra context variables.
 
         Returns:
@@ -329,4 +359,17 @@ class FactoryPipelineEngine:
             "trigger": trigger,
             **(context or {}),
         }
+
+        if workspace:
+            ctx["workspace"] = workspace
+
+        # Create workflow log for agent visibility
+        if workspace:
+            from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
+
+            wf_log = WorkflowLog(
+                Path(workspace) / ".dark-factory" / "logs" / "workflow-ouroboros.log",
+            )
+            ctx["_workflow_log"] = str(wf_log.path)
+
         return await self.run_pipeline("ouroboros", ctx)

@@ -1,0 +1,47 @@
+// Feature TDD: Targeted fix iteration
+//
+// Child pipeline for feature_fix_loop manager in dark_forge.dot.
+//
+// Each iteration:
+//   1. Agent runs pytest, analyzes failures
+//   2. If all tests pass → ALL_PASS → done (loop exits)
+//   3. If failures exist → creates a small targeted fix-prd.json
+//      focused ONLY on the failing tests
+//   4. ralph-tui implements the targeted fixes
+//
+// Key constraints:
+//   - Tests are NEVER modified — only feature/implementation code
+//   - Each iteration's fix PRD is smaller than the last
+//   - Agent provides root-cause guidance so ralph-tui doesn't guess
+
+digraph feature_tdd {
+    graph [
+        goal="Analyze test failures and create targeted fixes until all tests pass"
+    ]
+
+    start [shape=Mdiamond, label="Fix Iteration"]
+
+    // --- Step 1: Analyze test failures ---
+    analyze_failures [
+        shape=box,
+        prompt="You are the failure analysis agent.\n\nWorkspace: $workspace\n\n## Step 1: Run tests\n\nRun the full test suite:\n  cd $workspace && python -m pytest tests/ -x --tb=long 2>&1\n\nCapture the full output.\n\n## Step 2: Evaluate results\n\nIf ALL tests pass, output exactly: ALL_PASS\nDo NOT create any files. Just output ALL_PASS and stop.\n\n## Step 3: Analyze failures (only if tests failed)\n\nFor each failing test:\n1. Read the test file to understand what it expects\n2. Read the implementation code it's testing\n3. Identify the root cause (missing function, wrong return value, unhandled edge case, etc.)\n4. Determine the minimal code change needed to fix it\n\n## Step 4: Create targeted fix PRD\n\nWrite a small, focused PRD to: $workspace/.dark-factory/specs/$issue_number/tasks/fix-prd.json\n\nEach story should:\n- Reference the specific failing test(s)\n- Describe the root cause\n- Specify exactly which file(s) to modify\n- Describe the expected fix (NOT the test — the implementation)\n- NEVER modify files under tests/ — only fix implementation code\n\nPRD JSON format:\n{\n  \"stories\": [\n    {\n      \"title\": \"Fix <function/module> for <test_name>\",\n      \"description\": \"Test expects X but implementation does Y. Root cause: Z.\",\n      \"acceptance_criteria\": [\"test_name passes\", \"no regressions in related tests\"],\n      \"files_to_modify\": [\"path/to/file.py\"],\n      \"guidance\": \"Change the return value of foo() from None to the computed result\",\n      \"do_not_modify\": [\"tests/*\"]\n    }\n  ]\n}\n\nOutput: FIXES_NEEDED"
+    ]
+
+    // --- Step 2: Route based on test results ---
+    fix_verdict [shape=diamond, label="Tests\nPass?"]
+
+    // --- Step 3: Apply targeted fixes ---
+    run_fixes [
+        shape=parallelogram,
+        label="Targeted Fixes\n(ralph-tui --headless)",
+        prompt="cd $workspace && ralph-tui run --prd .dark-factory/specs/$issue_number/tasks/fix-prd.json --headless"
+    ]
+
+    done [shape=Msquare, label="All Tests Pass"]
+
+    // --- Flow ---
+    start -> analyze_failures -> fix_verdict
+    fix_verdict -> done [label="ALL_PASS"]
+    fix_verdict -> run_fixes [label="FIXES_NEEDED"]
+    run_fixes -> done
+}

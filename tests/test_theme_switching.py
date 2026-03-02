@@ -24,32 +24,19 @@ def test_subsystem_themes_has_all_required_keys() -> None:
     assert set(SUBSYSTEM_THEMES.keys()) == required
 
 
-def test_default_theme_accent_is_neutral_dim_white() -> None:
-    assert SUBSYSTEM_THEMES["default"].accent == "#e2e8f0"
-
-
-def test_sentinel_theme_accent_is_blue() -> None:
-    assert SUBSYSTEM_THEMES["sentinel"].accent == "#3b82f6"
-
-
-def test_dark_forge_theme_accent_is_orange() -> None:
-    assert SUBSYSTEM_THEMES["dark_forge"].accent == "#f97316"
-
-
-def test_crucible_theme_accent_is_amber() -> None:
-    assert SUBSYSTEM_THEMES["crucible"].accent == "#f59e0b"
-
-
-def test_ouroboros_theme_accent_is_purple() -> None:
-    assert SUBSYSTEM_THEMES["ouroboros"].accent == "#7c3aed"
-
-
-def test_foundry_theme_accent_is_lighter_purple() -> None:
-    assert SUBSYSTEM_THEMES["foundry"].accent == "#a78bfa"
-
-
-def test_settings_theme_accent_is_gray() -> None:
-    assert SUBSYSTEM_THEMES["settings"].accent == "#94a3b8"
+def test_all_theme_accent_colors() -> None:
+    """Each subsystem has its correct accent color."""
+    expected = {
+        "default": "#e2e8f0",
+        "sentinel": "#3b82f6",
+        "dark_forge": "#f97316",
+        "crucible": "#f59e0b",
+        "ouroboros": "#7c3aed",
+        "foundry": "#a78bfa",
+        "settings": "#94a3b8",
+    }
+    for name, color in expected.items():
+        assert SUBSYSTEM_THEMES[name].accent == color, f"Wrong accent for {name}"
 
 
 def test_all_theme_classes_is_frozenset() -> None:

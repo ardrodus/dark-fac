@@ -184,6 +184,22 @@ def load_workspace_configs(
     return entries
 
 
+def load_workspace_settings(workspace_path: str | Path) -> dict[str, object]:
+    """Load per-workspace settings from ``{workspace}/.dark-factory/config.json``.
+
+    Returns an empty dict if the file doesn't exist or is malformed.
+    Settings include ``skip_arch_review``, ``strategy``, etc.
+    """
+    path = Path(workspace_path) / _CONFIG_DIR / _CONFIG_FILE
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def save_workspace_config(
     entry: WorkspaceEntry,
     *,

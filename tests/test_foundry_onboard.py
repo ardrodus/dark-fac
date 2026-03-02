@@ -32,31 +32,24 @@ from dark_factory.modes.foundry_onboard import (
 
 
 class TestParseRepoFromUrl:
-    def test_https_url(self) -> None:
-        assert parse_repo_from_url("https://github.com/acme/web-app") == "acme/web-app"
+    def test_valid_url_formats(self) -> None:
+        """All valid URL formats parse correctly to owner/repo."""
+        cases = {
+            "https://github.com/acme/web-app": "acme/web-app",
+            "https://github.com/acme/web-app.git": "acme/web-app",
+            "git@github.com:acme/web-app.git": "acme/web-app",
+            "acme/web-app": "acme/web-app",
+            "  acme/repo  ": "acme/repo",
+            "https://github.com/acme/web-app/": "acme/web-app",
+        }
+        for url, expected in cases.items():
+            assert parse_repo_from_url(url) == expected, f"Failed for URL: {url!r}"
 
-    def test_https_url_with_git_suffix(self) -> None:
-        assert parse_repo_from_url("https://github.com/acme/web-app.git") == "acme/web-app"
-
-    def test_ssh_url(self) -> None:
-        assert parse_repo_from_url("git@github.com:acme/web-app.git") == "acme/web-app"
-
-    def test_owner_repo_passthrough(self) -> None:
-        assert parse_repo_from_url("acme/web-app") == "acme/web-app"
-
-    def test_whitespace_stripped(self) -> None:
-        assert parse_repo_from_url("  acme/repo  ") == "acme/repo"
-
-    def test_invalid_url_raises(self) -> None:
-        with pytest.raises(ValueError, match="Cannot parse repo"):
-            parse_repo_from_url("not-a-url")
-
-    def test_empty_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="Cannot parse repo"):
-            parse_repo_from_url("")
-
-    def test_https_trailing_slash(self) -> None:
-        assert parse_repo_from_url("https://github.com/acme/web-app/") == "acme/web-app"
+    def test_invalid_urls_raise(self) -> None:
+        """Invalid and empty URLs raise ValueError."""
+        for url in ("not-a-url", ""):
+            with pytest.raises(ValueError, match="Cannot parse repo"):
+                parse_repo_from_url(url)
 
 
 def test_build_clone_url() -> None:

@@ -201,12 +201,3 @@ class TestDefaultMaxSubagentDepth:
         sig = inspect.signature(spawn_subagent)
         assert sig.parameters["max_depth"].default == 1
 
-    @pytest.mark.skip(reason="SubagentManager.spawn not ported to factory")
-    def test_manager_spawn_default_max_depth(self) -> None:
-        """SubagentManager.spawn() default max_depth is 1."""
-        import inspect
-
-        from dark_factory.engine.agent.subagent_manager import SubagentManager
-
-        sig = inspect.signature(SubagentManager.spawn)  # type: ignore[attr-defined]
-        assert sig.parameters["max_depth"].default == 1

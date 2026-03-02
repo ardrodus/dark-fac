@@ -151,8 +151,6 @@ class TestQuestionType:
         assert QuestionType.MULTI_SELECT == "multi_select"
         assert QuestionType.FREE_TEXT == "free_text"
         assert QuestionType.CONFIRM == "confirm"
-
-    def test_exactly_four_members(self) -> None:
         assert len(QuestionType) == 4
 
     def test_is_str_enum(self) -> None:

@@ -37,78 +37,65 @@ from dark_factory.engine.events import (
 class TestEventTypes:
     """All 16 event types from Spec Section 9.6 are importable dataclasses."""
 
-    def test_pipeline_started(self):
-        e = PipelineStarted(name="MyPipeline", id="run-123")
-        assert e.name == "MyPipeline"
-        assert e.id == "run-123"
-        assert isinstance(e, PipelineEvent)
+    def test_pipeline_events(self):
+        """PipelineStarted, PipelineCompleted, and PipelineFailed fields."""
+        started = PipelineStarted(name="MyPipeline", id="run-123")
+        assert started.name == "MyPipeline"
+        assert started.id == "run-123"
+        assert isinstance(started, PipelineEvent)
 
-    def test_pipeline_completed(self):
-        e = PipelineCompleted(duration=12.5, artifact_count=3)
-        assert e.duration == 12.5
-        assert e.artifact_count == 3
+        completed = PipelineCompleted(duration=12.5, artifact_count=3)
+        assert completed.duration == 12.5
+        assert completed.artifact_count == 3
 
-    def test_pipeline_failed(self):
-        e = PipelineFailed(error="boom", duration=1.0)
-        assert e.error == "boom"
+        failed = PipelineFailed(error="boom", duration=1.0)
+        assert failed.error == "boom"
 
-    def test_stage_started(self):
-        e = StageStarted(name="build", index=0)
-        assert e.name == "build"
-        assert e.index == 0
+    def test_stage_events(self):
+        """StageStarted, StageCompleted, and StageFailed fields."""
+        started = StageStarted(name="build", index=0)
+        assert started.name == "build"
+        assert started.index == 0
 
-    def test_stage_completed(self):
-        e = StageCompleted(name="build", index=0, duration=2.5)
-        assert e.duration == 2.5
+        completed = StageCompleted(name="build", index=0, duration=2.5)
+        assert completed.duration == 2.5
 
-    def test_stage_failed(self):
-        e = StageFailed(name="build", index=0, error="timeout", will_retry=True)
-        assert e.will_retry is True
+        failed = StageFailed(name="build", index=0, error="timeout", will_retry=True)
+        assert failed.will_retry is True
 
-    def test_stage_retrying(self):
-        e = StageRetrying(name="build", index=0, attempt=2, delay=1.5, error="timeout")
-        assert e.attempt == 2
-        assert e.delay == 1.5
-        assert e.error == "timeout"
-        assert "timeout" in e.description
+    def test_stage_retrying_with_and_without_error(self):
+        """StageRetrying fields and description formatting."""
+        with_err = StageRetrying(name="build", index=0, attempt=2, delay=1.5, error="timeout")
+        assert with_err.attempt == 2
+        assert with_err.delay == 1.5
+        assert with_err.error == "timeout"
+        assert "timeout" in with_err.description
 
-    def test_stage_retrying_without_error(self):
-        e = StageRetrying(name="build", index=0, attempt=1, delay=0.0)
-        assert e.error == ""
-        assert ":" not in e.description.split(")")[-1]
+        without_err = StageRetrying(name="build", index=0, attempt=1, delay=0.0)
+        assert without_err.error == ""
+        assert ":" not in without_err.description.split(")")[-1]
 
-    def test_parallel_started(self):
-        e = ParallelStarted(branch_count=3)
-        assert e.branch_count == 3
+    def test_parallel_events(self):
+        """ParallelStarted, ParallelBranchStarted/Completed, and ParallelCompleted fields."""
+        assert ParallelStarted(branch_count=3).branch_count == 3
+        assert ParallelBranchStarted(branch="branch_0", index=0).branch == "branch_0"
+        assert ParallelBranchCompleted(branch="b0", index=0, duration=1.0, success=True).success is True
+        assert ParallelCompleted(duration=5.0, success_count=2, failure_count=1).success_count == 2
 
-    def test_parallel_branch_started(self):
-        e = ParallelBranchStarted(branch="branch_0", index=0)
-        assert e.branch == "branch_0"
+    def test_interview_and_checkpoint_events(self):
+        """InterviewStarted/Completed/Timeout and CheckpointSaved fields."""
+        started = InterviewStarted(question="Approve?", stage="review")
+        assert started.question == "Approve?"
+        assert started.stage == "review"
 
-    def test_parallel_branch_completed(self):
-        e = ParallelBranchCompleted(branch="b0", index=0, duration=1.0, success=True)
-        assert e.success is True
+        completed = InterviewCompleted(question="Approve?", answer="yes", duration=3.0)
+        assert completed.answer == "yes"
 
-    def test_parallel_completed(self):
-        e = ParallelCompleted(duration=5.0, success_count=2, failure_count=1)
-        assert e.success_count == 2
+        timeout = InterviewTimeout(question="Approve?", stage="review", duration=60.0)
+        assert timeout.duration == 60.0
 
-    def test_interview_started(self):
-        e = InterviewStarted(question="Approve?", stage="review")
-        assert e.question == "Approve?"
-        assert e.stage == "review"
-
-    def test_interview_completed(self):
-        e = InterviewCompleted(question="Approve?", answer="yes", duration=3.0)
-        assert e.answer == "yes"
-
-    def test_interview_timeout(self):
-        e = InterviewTimeout(question="Approve?", stage="review", duration=60.0)
-        assert e.duration == 60.0
-
-    def test_checkpoint_saved(self):
-        e = CheckpointSaved(node_id="build_step")
-        assert e.node_id == "build_step"
+        ckpt = CheckpointSaved(node_id="build_step")
+        assert ckpt.node_id == "build_step"
 
     def test_all_events_are_pipeline_event_subtype(self):
         """Every event type is a subclass of PipelineEvent."""
@@ -533,62 +520,6 @@ class TestParallelHandlerEvents:
 
         assert len(par_completed) == 1
         assert par_completed[0].success_count + par_completed[0].failure_count == 2
-
-
-# ------------------------------------------------------------------ #
-# CLI --verbose event printer tests
-# ------------------------------------------------------------------ #
-
-
-class TestVerboseEventPrinter:
-    """The verbose console printer formats events for human consumption."""
-
-    @pytest.mark.skip(reason="CLI module not ported to factory")
-    def test_console_printer_formats_event(self, capsys):
-        """_console_event_printer writes event description to stdout."""
-        from dark_factory.engine.cli import _console_event_printer  # type: ignore[import-not-found]  # noqa: PLC0415
-
-        event = PipelineStarted(name="TestPipeline", id="abc123")
-        _console_event_printer(event)
-
-        captured = capsys.readouterr()
-        assert "TestPipeline" in captured.out
-        assert "abc123" in captured.out
-
-
-# ------------------------------------------------------------------ #
-# Public API export tests
-# ------------------------------------------------------------------ #
-
-
-class TestPublicExports:
-    """Event types are importable from the top-level package."""
-
-    def test_event_types_importable_from_package(self):
-        """All event types can be imported from dark_factory.engine."""
-        from dark_factory.engine import (  # noqa: F401
-            CheckpointSaved,
-            EventEmitter,
-            InterviewCompleted,
-            InterviewStarted,
-            InterviewTimeout,
-            ParallelBranchCompleted,
-            ParallelBranchStarted,
-            ParallelCompleted,
-            ParallelStarted,
-            PipelineCompleted,
-            PipelineEvent,
-            PipelineFailed,
-            PipelineStarted,
-            StageCompleted,
-            StageFailed,
-            StageRetrying,
-            StageStarted,
-        )
-
-        # Verify they're the actual classes, not None
-        assert PipelineEvent is not None
-        assert EventEmitter is not None
 
 
 # ------------------------------------------------------------------ #

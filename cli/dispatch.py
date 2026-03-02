@@ -339,10 +339,17 @@ def _run_forge_interactive() -> None:
         input("  Press Enter to return to menu...")
         return
 
+    # Load per-workspace settings
+    from dark_factory.modes.foundry_onboard import load_workspace_settings  # noqa: PLC0415
+
+    ws_settings = load_workspace_settings(workspace.path)
+    skip_arch = bool(ws_settings.get("skip_arch_review", False))
+
     t0 = time.monotonic()
     passed = run_dark_forge(
         issue,
         workspace.path,
+        skip_arch_review=skip_arch,
         on_event=_forge_event_printer,
     )
     elapsed = time.monotonic() - t0

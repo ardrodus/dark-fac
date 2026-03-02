@@ -163,6 +163,7 @@ def _default_forge(
     issue: IssueInfo,
     workspace_path: str,
     *,
+    skip_arch_review: bool = False,
     on_event: Callable[[object], None] | None = None,
 ) -> bool:
     """Run the Dark Forge pipeline for an issue via the DOT engine."""
@@ -173,7 +174,9 @@ def _default_forge(
 
     engine = FactoryPipelineEngine(on_event=on_event)
     issue_data = {"number": issue.number, "title": issue.title}
-    result = asyncio.run(engine.run_forge(issue_data, workspace_path))
+    result = asyncio.run(engine.run_forge(
+        issue_data, workspace_path, skip_arch_review=skip_arch_review,
+    ))
     return result.status == PipelineStatus.COMPLETED
 
 
@@ -181,6 +184,7 @@ def run_dark_forge(
     issue: IssueInfo,
     workspace_path: str,
     *,
+    skip_arch_review: bool = False,
     forge_fn: Callable[[IssueInfo, str], bool] | None = None,
     sentinel_fn: Callable[[str, str], bool] | None = None,
     on_event: Callable[[object], None] | None = None,
@@ -195,7 +199,11 @@ def run_dark_forge(
     if forge_fn is not None:
         passed = forge_fn(issue, workspace_path)
     else:
-        passed = _default_forge(issue, workspace_path, on_event=on_event)
+        passed = _default_forge(
+            issue, workspace_path,
+            skip_arch_review=skip_arch_review,
+            on_event=on_event,
+        )
 
     # Post-forge Sentinel gate
     if passed and not _run_sentinel_gate(workspace_path, "forge-post", sentinel_fn=sentinel_fn):

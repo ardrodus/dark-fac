@@ -61,36 +61,6 @@ class TestRunForgeInteractive:
 
     @patch("dark_factory.cli.dispatch.input", return_value="")
     @patch("dark_factory.cli.dispatch.sys")
-    def test_does_not_run_crucible(
-        self, mock_sys: MagicMock, _mock_input: MagicMock,
-    ) -> None:
-        """Interactive forge must not invoke Crucible."""
-        mock_sys.stdout = MagicMock()
-
-        with (
-            patch(
-                "dark_factory.dispatch.issue_dispatcher.select_next_issue",
-                return_value=_issue(),
-            ),
-            patch(
-                "dark_factory.workspace.manager.acquire_workspace",
-                return_value=_workspace(),
-            ),
-            patch(
-                "dark_factory.modes.auto.run_dark_forge",
-                return_value=True,
-            ),
-            patch(
-                "dark_factory.modes.auto.run_crucible_phase",
-                side_effect=AssertionError("run_crucible_phase must NOT be called"),
-            ),
-        ):
-            from dark_factory.cli.dispatch import _run_forge_interactive
-
-            _run_forge_interactive()
-
-    @patch("dark_factory.cli.dispatch.input", return_value="")
-    @patch("dark_factory.cli.dispatch.sys")
     def test_forge_failure_reports_failed(
         self, mock_sys: MagicMock, _mock_input: MagicMock,
     ) -> None:

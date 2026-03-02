@@ -39,15 +39,14 @@ def _fake_process(
 
 
 class TestClaudeCodeConfig:
-    def test_defaults(self) -> None:
-        cfg = ClaudeCodeConfig()
-        assert cfg.claude_path == "claude"
-        assert cfg.model == ""
+    def test_defaults_and_custom(self) -> None:
+        default = ClaudeCodeConfig()
+        assert default.claude_path == "claude"
+        assert default.model == ""
 
-    def test_custom(self) -> None:
-        cfg = ClaudeCodeConfig(claude_path="/usr/local/bin/claude", model="opus")
-        assert cfg.claude_path == "/usr/local/bin/claude"
-        assert cfg.model == "opus"
+        custom = ClaudeCodeConfig(claude_path="/usr/local/bin/claude", model="opus")
+        assert custom.claude_path == "/usr/local/bin/claude"
+        assert custom.model == "opus"
 
     def test_frozen(self) -> None:
         cfg = ClaudeCodeConfig()
@@ -56,11 +55,10 @@ class TestClaudeCodeConfig:
 
 
 class TestClaudeCodeBackendInit:
-    def test_default_config(self) -> None:
+    def test_config_wiring(self) -> None:
         backend = ClaudeCodeBackend()
         assert backend._config.claude_path == "claude"
 
-    def test_custom_config(self) -> None:
         cfg = ClaudeCodeConfig(model="sonnet")
         backend = ClaudeCodeBackend(cfg)
         assert backend._config.model == "sonnet"
@@ -80,7 +78,7 @@ class TestClaudeCodeBackendRun:
         mock_exec.assert_called_once()
         # Verify --print flag
         args = mock_exec.call_args[0]
-        assert args == ("claude", "--print")
+        assert args == ("claude", "--print", "--dangerously-skip-permissions")
         # Verify prompt piped via stdin
         proc.communicate.assert_called_once_with(input=b"Say hello")
 
@@ -126,46 +124,36 @@ class TestClaudeCodeBackendRun:
         assert "--model" not in args
 
     @pytest.mark.asyncio
-    async def test_system_prompt_from_node_attrs(self) -> None:
-        """--system-prompt flag when node attrs include system_prompt."""
+    async def test_system_prompt_flag(self) -> None:
+        """--system-prompt flag present when set, absent when empty."""
+        # With system_prompt
         proc = _fake_process(stdout=b"ok")
         node = _node(attrs={"system_prompt": "You are helpful."})
-
         with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend()
             await backend.run(node, "test", {})
-
         args = mock_exec.call_args[0]
         assert "--system-prompt" in args
         assert "You are helpful." in args
 
-    @pytest.mark.asyncio
-    async def test_no_system_prompt_when_empty(self) -> None:
-        """No --system-prompt flag when node has no system_prompt."""
+        # Without system_prompt
         proc = _fake_process(stdout=b"ok")
-
         with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             backend = ClaudeCodeBackend()
             await backend.run(_node(), "test", {})
-
         args = mock_exec.call_args[0]
         assert "--system-prompt" not in args
 
     @pytest.mark.asyncio
-    async def test_nonzero_exit_raises_runtime_error(self) -> None:
-        """RuntimeError on non-zero exit code with stderr content."""
+    async def test_nonzero_exit_raises_with_stderr(self) -> None:
+        """RuntimeError on non-zero exit code includes exit code and stderr content."""
         proc = _fake_process(returncode=1, stderr=b"Something went wrong")
-
         with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
             backend = ClaudeCodeBackend()
             with pytest.raises(RuntimeError, match="exited with code 1"):
                 await backend.run(_node(), "test", {})
 
-    @pytest.mark.asyncio
-    async def test_error_includes_stderr(self) -> None:
-        """RuntimeError message includes stderr content."""
         proc = _fake_process(returncode=2, stderr=b"API key invalid")
-
         with patch("dark_factory.engine.claude_backend.asyncio.create_subprocess_exec", return_value=proc):
             backend = ClaudeCodeBackend()
             with pytest.raises(RuntimeError, match="API key invalid"):

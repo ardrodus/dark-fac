@@ -19,6 +19,7 @@ Spec reference: attractor-spec S9.1-9.3.
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -64,7 +65,9 @@ def expand_variables(
             value = context[name]
             if isinstance(value, (str, int, float, bool)):
                 return str(value)
-            # Non-scalar values: keep the reference
+            if isinstance(value, (dict, list)):
+                return json.dumps(value, indent=2)
+            # Non-serializable values: keep the reference
             return match.group(0)
         # Undefined variable
         if undefined == "empty":

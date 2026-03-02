@@ -127,7 +127,7 @@ class Graph:
     # Graph-level attributes (Spec §2.7)
     goal: str = ""
     model_stylesheet: str = ""
-    default_max_retry: int = 50
+    default_max_retry: int = 3
     max_goal_gate_redirects: int = 5  # Our Issue 2 design
 
     # All raw graph attributes

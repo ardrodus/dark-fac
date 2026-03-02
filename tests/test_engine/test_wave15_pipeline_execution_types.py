@@ -28,16 +28,14 @@ class TestRetryPresets:
         expected = {"none", "standard", "aggressive", "linear", "patient"}
         assert expected == set(RETRY_PRESETS.keys())
 
-    def test_retry_preset_none_has_zero_retries(self) -> None:
-        """The 'none' preset never retries."""
+    def test_retry_preset_values(self) -> None:
+        """All five presets have their spec-mandated values."""
         from dark_factory.engine.runner import RETRY_PRESETS
 
+        # none: zero retries
         assert RETRY_PRESETS["none"].max_retries == 0
 
-    def test_retry_preset_standard_values(self) -> None:
-        """The 'standard' preset has the spec-mandated values."""
-        from dark_factory.engine.runner import RETRY_PRESETS
-
+        # standard: 3 retries, exponential backoff with jitter
         std = RETRY_PRESETS["standard"]
         assert std.max_retries == 3
         assert std.initial_delay == pytest.approx(1.0)
@@ -45,10 +43,7 @@ class TestRetryPresets:
         assert std.max_delay == pytest.approx(30.0)
         assert std.jitter is True
 
-    def test_retry_preset_aggressive_values(self) -> None:
-        """The 'aggressive' preset has 5 retries with tighter backoff."""
-        from dark_factory.engine.runner import RETRY_PRESETS
-
+        # aggressive: 5 retries with tighter backoff
         agg = RETRY_PRESETS["aggressive"]
         assert agg.max_retries == 5
         assert agg.initial_delay == pytest.approx(0.5)
@@ -56,18 +51,12 @@ class TestRetryPresets:
         assert agg.max_delay == pytest.approx(10.0)
         assert agg.jitter is True
 
-    def test_retry_preset_linear_no_jitter(self) -> None:
-        """The 'linear' preset uses backoff_factor=1.0 and jitter=False."""
-        from dark_factory.engine.runner import RETRY_PRESETS
-
+        # linear: no jitter, linear backoff
         lin = RETRY_PRESETS["linear"]
         assert lin.backoff_factor == pytest.approx(1.0)
         assert lin.jitter is False
 
-    def test_retry_preset_patient_values(self) -> None:
-        """The 'patient' preset waits up to 120 s and retries 10 times."""
-        from dark_factory.engine.runner import RETRY_PRESETS
-
+        # patient: long waits, many retries
         pat = RETRY_PRESETS["patient"]
         assert pat.max_retries == 10
         assert pat.initial_delay == pytest.approx(5.0)

@@ -1,21 +1,17 @@
 // Dark Forge: TDD Pipeline
 //
 // The build engine of Dark Factory. Takes an approved issue through
-// architecture review, PRD generation, story scheduling, and the
-// Test Writer -> Feature Writer -> Code Reviewer TDD loop.
-// Each story produces a merged PR.
+// spec generation, PRD splitting, and ralph-tui driven TDD execution.
 //
-// The architecture review is a SEPARATE pipeline, selected by deployment
-// strategy. Dark Forge invokes the appropriate one:
-//   arch_review_web.dot     --  6 specialists + SA Lead
-//   arch_review_console.dot --  4 specialists + SA Lead
-//
-// Demonstrates: pipeline invocation, supervisor loops, conditional branching,
-// tool confinement, information gap (test writer and feature writer are isolated).
+// Flow:
+//   1. Spec generation: design → api → schema → interfaces → test strategy
+//   2. gen_prd: separates specs into test + feature, generates PRD JSON for each
+//   3. test_writer: ralph-tui run test PRD (completes first)
+//   4. feature_writer_loop: ralph-tui run feature PRD, loop until tests pass
 
 digraph dark_forge {
     graph [
-        goal="Transform an approved GitHub issue into merged PRs via architecture review + TDD"
+        goal="Transform an approved GitHub issue into merged PRs via spec generation + TDD"
     ]
 
     // --- Entry ---
@@ -23,13 +19,7 @@ digraph dark_forge {
 
     // ===========================================
     // Architecture Review (external pipeline)
-    //
-    // Invokes the strategy-specific arch review pipeline.
-    // The pipeline is selected at runtime based on DEPLOY_STRATEGY:
-    //   web     -> arch_review_web.dot     ( 6 stages)
-    //   console -> arch_review_console.dot ( 4 stages)
-    //
-    // Returns: Engineering Brief (APPROVED | NEEDS_CHANGES | NEEDS_HUMAN)
+    // Currently bypassed for dev testing.
     // ===========================================
 
     arch_review [
@@ -44,76 +34,95 @@ digraph dark_forge {
     arch_needs_human [shape=house, label="Human Arch Review Required"]
 
     // ===========================================
-    // Specification Generation (US-301 through US-307)
+    // Specification Generation
     //
     // Sequential spec pipeline: each step builds on the previous.
     // All specs saved to .dark-factory/specs/{issue_number}/
     // ===========================================
 
-    // US-301: PRD generation
-    gen_prd [
-        shape=box,
-        prompt="You are the PRD Generator. Given this GitHub issue: $issue\n\nEngineering Brief (from Architecture Review):\n$engineering_brief\n\nGenerate a Product Requirements Document with:\n- Title, description, scope\n- User stories with id, title, description, acceptance_criteria, priority, depends_on\n- Non-functional requirements\n- Out of scope items\n\nSupport L1/L2/L3 detail levels based on issue complexity.\nOutput as structured JSON (PRDResult format).\nSave to .dark-factory/specs/$issue_number/prd.json"
-    ]
-
-    // US-302: Technical design document
     gen_design [
         shape=box,
-        prompt="You are the Design Agent. Given this PRD and codebase analysis:\n\nPRD:\n$gen_prd\n\nGenerate a Technical Design Document covering:\n- Architecture decisions (with rationale)\n- Component changes (new/modified/removed)\n- Data model changes\n- API changes\n- Risks and mitigations\n\nReference existing codebase patterns from the workspace.\nOutput as structured markdown.\nSave to .dark-factory/specs/$issue_number/design.md"
+        prompt="You are the Design Agent. Given this GitHub issue and codebase:\n\nIssue:\n$issue\n\nWorkspace: $workspace\n\nGenerate a Technical Design Document covering:\n- Architecture decisions (with rationale)\n- Component changes (new/modified/removed)\n- Data model changes\n- API changes\n- Risks and mitigations\n\nReference existing codebase patterns from the workspace.\nOutput as structured markdown.\nWrite output to .dark-factory/specs/$issue_number/design.md"
     ]
 
-    // US-303: API contract
     gen_api_contract [
         shape=box,
-        prompt="You are the API Contract Generator. Given the design doc:\n\n$gen_design\n\nAuto-detect the contract type from the codebase:\n- OpenAPI for REST APIs\n- GraphQL schema for GraphQL\n- Protobuf for gRPC\n- CLI spec for command-line tools\n\nGenerate the appropriate contract spec with endpoints, request/response schemas, error codes.\nSave to .dark-factory/specs/$issue_number/api-contract.*"
+        prompt="You are the API Contract Generator.\n\nRead the technical design document at: $gen_design_path\n\nAuto-detect the contract type from the codebase at $workspace:\n- OpenAPI for REST APIs\n- GraphQL schema for GraphQL\n- Protobuf for gRPC\n- CLI spec for command-line tools\n\nGenerate the appropriate contract spec with endpoints, request/response schemas, error codes.\nWrite output to .dark-factory/specs/$issue_number/api-contract.yaml"
     ]
 
-    // US-304: Database schema
     gen_schema [
         shape=box,
-        prompt="You are the Schema Generator. Given the design doc:\n\n$gen_design\n\nDetect the database type from the codebase (PostgreSQL, MySQL, SQLite, MongoDB, etc.).\nGenerate:\n- DDL for new tables/columns\n- Migration scripts for changes\n- Index recommendations\n\nSave to .dark-factory/specs/$issue_number/schema.sql"
+        prompt="You are the Schema Generator.\n\nRead the technical design document at: $gen_design_path\n\nDetect the database type from the codebase at $workspace (PostgreSQL, MySQL, SQLite, MongoDB, etc.).\nGenerate:\n- DDL for new tables/columns\n- Migration scripts for changes\n- Index recommendations\n\nWrite output to .dark-factory/specs/$issue_number/schema.sql"
     ]
 
-    // US-305: Interface definitions
     gen_interfaces [
         shape=box,
-        prompt="You are the Interface Generator. Given the design doc:\n\n$gen_design\n\nGenerate language-appropriate typed interface definitions:\n- TypeScript: interfaces/types\n- Python: Protocol classes\n- Go: interfaces\n- Rust: traits\n- Java: interfaces\n\nDetect the language from the codebase.\nSave to .dark-factory/specs/$issue_number/interfaces/"
+        prompt="You are the Interface Generator.\n\nRead the technical design document at: $gen_design_path\n\nGenerate language-appropriate typed interface definitions:\n- TypeScript: interfaces/types\n- Python: Protocol classes\n- Go: interfaces\n- Rust: traits\n- Java: interfaces\n\nDetect the language from the codebase at $workspace.\nWrite output to .dark-factory/specs/$issue_number/interfaces/"
     ]
 
-    // US-306: Test strategy
     gen_test_strategy [
         shape=box,
-        prompt="You are the Test Strategy Generator. Given:\n\nPRD:\n$gen_prd\n\nDesign:\n$gen_design\n\nGenerate a test strategy covering:\n- Unit tests: what to test, expected assertions\n- Integration tests: component interactions\n- E2E tests: user-facing flows\n- Fixtures and mocks needed\n- Coverage targets\n- Existing tests that may be affected\n\nSave to .dark-factory/specs/$issue_number/test-strategy.md"
+        prompt="You are the Test Strategy Generator.\n\nRead these artifacts:\n- Design: $gen_design_path\n- API Contract: $gen_api_contract_path\n- Schema: $gen_schema_path\n- Interfaces: $gen_interfaces_path\n\nGenerate a test strategy covering:\n- Unit tests: what to test, expected assertions\n- Integration tests: component interactions\n- E2E tests: user-facing flows\n- Fixtures and mocks needed\n- Coverage targets\n- Existing tests that may be affected\n\nWrite output to .dark-factory/specs/$issue_number/test-strategy.md"
     ]
 
-    // US-307: Story scheduling (parse PRD into ordered stories -> GitHub Issues)
-    schedule_stories [
+    // ===========================================
+    // PRD Generation -- Separates into Test + Feature PRDs
+    //
+    // Reads all spec artifacts, separates test vs feature concerns,
+    // then generates ralph-tui PRD JSON for each:
+    //   tasks/test-prd.json    -- test PRD (stories for test writer)
+    //   tasks/feature-prd.json -- feature PRD (stories for feature writer)
+    // ===========================================
+
+    gen_prd [
         shape=box,
-        prompt="Parse the PRD into ordered user stories ready for implementation.\n\nPRD:\n$gen_prd\n\nFor each story:\n- Validate required fields (id, title, description, acceptance_criteria)\n- Warn if acceptance criteria > 10 items (suggest split)\n- Order by dependency chain\n\nOutput as JSON array with fields: id, title, description, acceptance_criteria, depends_on.\nCreate GitHub Issues with factory labels (queued, priority) if configured."
+        prompt="You are the PRD Generator. Your workspace is: $workspace\n\nGitHub Issue:\n$issue\n\nRead all technical spec artifacts:\n- Design: $gen_design_path\n- API Contract: $gen_api_contract_path\n- Schema: $gen_schema_path\n- Interfaces: $gen_interfaces_path\n- Test Strategy: $gen_test_strategy_path\n\nYou must perform these steps:\n\n## Step 1: Separate test vs feature concerns\n\nCreate TWO spec documents:\n- .dark-factory/specs/$issue_number/test-spec.md -- all test-related content: test strategy, acceptance criteria, test cases, fixtures, mocks, coverage targets, edge cases.\n- .dark-factory/specs/$issue_number/feature-spec.md -- all feature/implementation content: architecture, component changes, API endpoints, database schema, interfaces, implementation steps.\n\nBoth documents must be complete and self-contained.\n\n## Step 2: Generate PRD JSON files\n\nFor EACH spec document (test-spec.md and feature-spec.md):\n1. If the document is larger than 22KB, split it into 22KB chunk files under .dark-factory/specs/$issue_number/chunks/test/ (or chunks/feature/)\n2. For each chunk (or the whole doc if small enough), generate a PRD JSON with user stories, acceptance criteria, and dependencies\n3. Merge all chunk PRDs into a single master PRD JSON\n\nWrite the final PRD files to:\n- .dark-factory/specs/$issue_number/tasks/test-prd.json\n- .dark-factory/specs/$issue_number/tasks/feature-prd.json\n\nEach PRD JSON must follow this structure:\n{\n  \"stories\": [\n    {\n      \"title\": \"story title\",\n      \"description\": \"what to implement\",\n      \"acceptance_criteria\": [\"criterion 1\", \"criterion 2\"],\n      \"dependencies\": []\n    }\n  ]\n}\n\nOutput a summary of what you created (file paths and story counts)."
     ]
 
-    // --- Per-Story TDD Loop (manager runs child pipeline per story) ---
-    story_loop [
+    // ===========================================
+    // Execution: TDD — Tests first, then features, then fix loop
+    //
+    // 1. test_writer: ralph-tui writes all tests from test PRD
+    // 2. feature_writer: ralph-tui implements features from full feature PRD (first pass)
+    // 3. feature_fix_loop: iterates — analyze failures, create targeted fix PRD,
+    //    ralph-tui fixes only what's broken. Exits when all tests pass.
+    // ===========================================
+
+    test_writer [
+        shape=parallelogram,
+        label="Test Writer\n(ralph-tui --headless)",
+        prompt="cd $workspace && ralph-tui run --prd .dark-factory/specs/$issue_number/tasks/test-prd.json --headless"
+    ]
+
+    feature_writer [
+        shape=parallelogram,
+        label="Feature Writer\n(ralph-tui --headless, full first pass)",
+        prompt="cd $workspace && ralph-tui run --prd .dark-factory/specs/$issue_number/tasks/feature-prd.json --headless"
+    ]
+
+    feature_fix_loop [
         shape=hexagon,
-        label="For Each Story",
-        child_graph="dark_factory/pipelines/story_tdd.dot",
-        max_iterations=5
+        label="Fix Loop\n(targeted fixes until tests pass)",
+        child_graph="dark_factory/pipelines/feature_tdd.dot",
+        max_iterations=10,
+        success_condition="status=completed"
     ]
 
-    done [shape=Msquare, label="All Stories Complete"]
+    // --- PR Creation ---
+    create_pr [
+        shape=box,
+        prompt="You are the PR creation agent.\n\nWorkspace: $workspace\nIssue: $issue\n\nAll tests pass. Create a pull request for the changes.\n\n1. Review the git diff to understand what was changed\n2. Create a clear, descriptive commit message referencing issue #$issue_number\n3. Push to a feature branch: feature/$issue_number\n4. Create a PR with:\n   - Title referencing the issue\n   - Summary of changes (design decisions, files modified, test coverage)\n   - Link to the original issue\n   - Label: dark-forge\n\nRun in $workspace:\n  git checkout -b feature/$issue_number\n  git add -A && git commit -m 'feat: <description> (#$issue_number)'\n  git push -u origin feature/$issue_number\n  gh pr create --title '<description> (#$issue_number)' --label dark-forge\n\nOutput the PR URL."
+    ]
+
+    done [shape=Msquare, label="PR Created"]
 
     // --- Flow ---
-    start -> arch_review -> arch_verdict
+    // NOTE: arch review bypassed for dev testing
+    start -> gen_design
 
-    // Architecture review verdict routing
-    arch_verdict -> gen_prd [label="APPROVED"]
-    arch_verdict -> gen_prd [label="success"]
-    arch_verdict -> arch_needs_human [label="NEEDS_HUMAN"]
-    arch_verdict -> arch_review [label="NEEDS_CHANGES"]
+    // Spec generation
+    gen_design -> gen_api_contract -> gen_schema -> gen_interfaces -> gen_test_strategy -> gen_prd
 
-    // Spec generation pipeline (US-301 -> US-307)
-    gen_prd -> gen_design -> gen_api_contract -> gen_schema -> gen_interfaces -> gen_test_strategy -> schedule_stories
-
-    // Stories -> TDD manager loop
-    schedule_stories -> story_loop -> done
+    // Execute: tests first, full feature pass, targeted fix loop, then PR
+    gen_prd -> test_writer -> feature_writer -> feature_fix_loop -> create_pr -> done
 }

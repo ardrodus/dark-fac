@@ -168,6 +168,17 @@ def run_specialist(
         "findings (list of strings), risk_level (low|medium|high|critical), "
         "recommendations (list of strings), approval (boolean)."
     )
+
+    # Inject progress log path for monitoring during development
+    workspace = context.get("workspace", "")
+    if workspace:
+        log_path = Path(str(workspace)) / ".dark-factory" / "logs" / f"arch_{agent.name}.log"
+        prompt += (
+            f"\n\n## Progress Log\n\n"
+            f"Log progress to: **{log_path}**\n"
+            "Log at major milestones (START, DONE, and key decisions). "
+            "Your FINAL output must be your JSON deliverable, not a log entry.\n"
+        )
     try:
         raw = _invoke_agent(prompt, invoke_fn=invoke_fn)
     except Exception as exc:  # noqa: BLE001

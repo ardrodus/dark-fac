@@ -115,19 +115,17 @@ class TestLoadStylesheet:
     def test_returns_default_when_missing(self, tmp_path: Path) -> None:
         df = tmp_path / ".dark-factory"
         df.mkdir()
-
-        result = _load_stylesheet(df)
-        assert result == _DEFAULT_STYLESHEET
+        assert _load_stylesheet(df) == _DEFAULT_STYLESHEET
 
     def test_config_includes_stylesheet(self, project_dir: Path) -> None:
+        # Without custom file, uses default
+        cfg_default = load_engine_config(start=project_dir)
+        assert cfg_default.model_stylesheet == _DEFAULT_STYLESHEET
+
+        # With custom file, loads it
         css = ".critical { llm_model: claude-opus-4-6; }"
         (project_dir / ".dark-factory" / "model-stylesheet.css").write_text(
             css, encoding="utf-8"
         )
-
-        cfg = load_engine_config(start=project_dir)
-        assert cfg.model_stylesheet == css
-
-    def test_default_stylesheet_when_no_file(self, project_dir: Path) -> None:
-        cfg = load_engine_config(start=project_dir)
-        assert cfg.model_stylesheet == _DEFAULT_STYLESHEET
+        cfg_custom = load_engine_config(start=project_dir)
+        assert cfg_custom.model_stylesheet == css

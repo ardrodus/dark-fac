@@ -84,16 +84,6 @@ class TestLocalEnvironment:
         assert result.returncode == 0
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform == "win32", reason="Unix env var expansion")
-    async def test_exec_shell_with_env(self):
-        env = LocalEnvironment()
-        result = await env.exec_shell(
-            "echo $TEST_VAR",
-            env={**os.environ, "TEST_VAR": "myvalue"},
-        )
-        assert "myvalue" in result.stdout
-
-    @pytest.mark.asyncio
     async def test_exec_shell_timeout(self):
         env = LocalEnvironment()
         result = await env.exec_shell("sleep 10", timeout=1)

@@ -107,52 +107,6 @@ class TestP22EventKindVocabulary:
         assert EventKind.TOOL_CALL_START == "tool.call_start"
         assert EventKind.TOOL_CALL_END == "tool.call_end"
 
-    @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Session event emission not fully ported")
-    async def test_assistant_text_end_event_fires_in_session(self) -> None:
-        """Session emits ASSISTANT_TEXT_END when the model produces text."""
-        session, _ = _make_session([make_text_response("hello")])
-        kinds: list[EventKind] = []
-        session.events.on(lambda e: kinds.append(e.kind))
-
-        await session.submit("hi")
-
-        assert EventKind.ASSISTANT_TEXT_END in kinds
-        # Old string value must NOT appear as any emitted event value
-        assert all(str(k) != "assistant.text" for k in kinds)
-
-    @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Session event emission not fully ported")
-    async def test_steering_injected_event_fires_in_session(self) -> None:
-        """Session emits STEERING_INJECTED when a steering message is drained."""
-        from dark_factory.engine.types import Tool
-
-        async def _noop(**kwargs: object) -> str:
-            return "ok"
-
-        session, _ = _make_session(
-            [
-                make_tool_call_response("noop", {}),
-                make_text_response("done"),
-            ]
-        )
-        session.tool_registry.register(
-            Tool(
-                name="noop",
-                description="no-op",
-                parameters={"type": "object", "properties": {}, "required": []},
-                execute=_noop,
-            )
-        )
-
-        kinds: list[EventKind] = []
-        session.events.on(lambda e: kinds.append(e.kind))
-        session.steer("focus on tests")
-
-        await session.submit("go")
-
-        assert EventKind.STEERING_INJECTED in kinds
-
 
 # ================================================================== #
 # F -- Auth errors -> CLOSED

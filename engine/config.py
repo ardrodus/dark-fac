@@ -31,7 +31,7 @@ _STYLESHEET_FILENAME = "model-stylesheet.css"
 # stylesheet is found in ``.dark-factory/model-stylesheet.css``.
 _DEFAULT_STYLESHEET = """\
 /* Default model stylesheet -- assigns a sensible base model to all nodes. */
-* { llm_model: claude-sonnet-4-5; }
+* { llm_model: ; }
 """
 
 
@@ -81,7 +81,7 @@ def load_engine_config(start: Path | None = None) -> EngineConfig:
     """
     cfg = load_config(start)
 
-    model = get_config_value(cfg, "engine.model") or ""
+    model = get_config_value(cfg, "engine.model") or get_config_value(cfg, "claude_model") or ""
     claude_path = get_config_value(cfg, "engine.claude_path") or "claude"
     deploy_strategy = get_config_value(cfg, "engine.deploy_strategy") or "console"
     sentinel_scan_mode = get_config_value(cfg, "sentinel.scan_mode") or "standard"

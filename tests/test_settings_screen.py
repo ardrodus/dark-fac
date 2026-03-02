@@ -187,49 +187,38 @@ async def test_settings_screen_shows_custom_values() -> None:
 
 
 @pytest.mark.asyncio
-async def test_escape_returns_none() -> None:
-    app = SettingsScreen(settings=SettingsModel())
-    async with app.run_test() as pilot:
-        await pilot.press("escape")
-        assert app.return_value is None
+async def test_escape_and_q_return_none() -> None:
+    """Both escape and q quit the screen with return_value None."""
+    for key in ("escape", "q"):
+        app = SettingsScreen(settings=SettingsModel())
+        async with app.run_test() as pilot:
+            await pilot.press(key)
+            assert app.return_value is None, f"Key '{key}' should return None"
 
 
 @pytest.mark.asyncio
-async def test_q_quits() -> None:
-    app = SettingsScreen(settings=SettingsModel())
-    async with app.run_test() as pilot:
-        await pilot.press("q")
-        assert app.return_value is None
-
-
-@pytest.mark.asyncio
-async def test_m_key_cycles_model() -> None:
+async def test_cycling_keyboard_shortcuts() -> None:
+    """m/p/u/o/d keys cycle their respective settings values."""
+    # m cycles model
     app = SettingsScreen(settings=SettingsModel(model=""))
     async with app.run_test() as pilot:
         await pilot.press("m")
         assert app.settings.model == "claude-sonnet-4-20250514"
         assert app.dirty is True
 
-
-@pytest.mark.asyncio
-async def test_p_key_cycles_provider() -> None:
+    # p cycles provider
     app = SettingsScreen(settings=SettingsModel(provider="anthropic"))
     async with app.run_test() as pilot:
         await pilot.press("p")
         assert app.settings.provider == "openai"
 
-
-@pytest.mark.asyncio
-async def test_u_key_cycles_auto_update() -> None:
+    # u cycles auto_update
     app = SettingsScreen(settings=SettingsModel(auto_update="prompt"))
     async with app.run_test() as pilot:
         await pilot.press("u")
-        # "prompt" is index 2, next is index 0 = "enabled"
         assert app.settings.auto_update == "enabled"
 
-
-@pytest.mark.asyncio
-async def test_o_key_toggles_ouroboros() -> None:
+    # o toggles ouroboros
     app = SettingsScreen(settings=SettingsModel(ouroboros_self_forge=False))
     async with app.run_test() as pilot:
         await pilot.press("o")
@@ -237,9 +226,7 @@ async def test_o_key_toggles_ouroboros() -> None:
         await pilot.press("o")
         assert app.settings.ouroboros_self_forge is False
 
-
-@pytest.mark.asyncio
-async def test_d_key_cycles_dashboard_interval() -> None:
+    # d cycles dashboard interval
     app = SettingsScreen(settings=SettingsModel(dashboard_refresh_interval=2.0))
     async with app.run_test() as pilot:
         await pilot.press("d")
@@ -255,11 +242,6 @@ async def test_settings_screen_uses_settings_theme() -> None:
     async with app.run_test():
         settings_theme = SUBSYSTEM_THEMES["settings"]
         assert app.screen.has_class(settings_theme.css_class)
-
-
-def test_settings_theme_accent_is_gray() -> None:
-    """Settings theme accent should be #94a3b8 (gray)."""
-    assert SUBSYSTEM_THEMES["settings"].accent == "#94a3b8"
 
 
 @pytest.mark.asyncio

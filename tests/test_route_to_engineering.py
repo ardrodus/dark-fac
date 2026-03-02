@@ -484,27 +484,12 @@ class TestPipelineMetrics:
 
 
 class TestIssueHelpers:
-    def test_inum_with_int(self) -> None:
-        from dark_factory.pipeline.route_to_engineering import _inum
+    def test_inum_and_ititle(self) -> None:
+        """_inum extracts/converts issue number; _ititle extracts title."""
+        from dark_factory.pipeline.route_to_engineering import _inum, _ititle
 
         assert _inum({"number": 42}) == 42
-
-    def test_inum_with_string(self) -> None:
-        from dark_factory.pipeline.route_to_engineering import _inum
-
         assert _inum({"number": "7"}) == 7
-
-    def test_inum_missing(self) -> None:
-        from dark_factory.pipeline.route_to_engineering import _inum
-
         assert _inum({}) == 0
-
-    def test_ititle(self) -> None:
-        from dark_factory.pipeline.route_to_engineering import _ititle
-
         assert _ititle({"title": "Fix bug"}) == "Fix bug"
-
-    def test_ititle_missing(self) -> None:
-        from dark_factory.pipeline.route_to_engineering import _ititle
-
         assert _ititle({}) == ""

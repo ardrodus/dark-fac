@@ -44,16 +44,10 @@ def _question(
 
 
 class TestHumanGateType:
-    def test_needs_human_value(self) -> None:
+    def test_enum_values_and_count(self) -> None:
         assert HumanGateType.NEEDS_HUMAN == "needs_human"
-
-    def test_needs_live_value(self) -> None:
         assert HumanGateType.NEEDS_LIVE == "needs_live"
-
-    def test_escalation_value(self) -> None:
         assert HumanGateType.ESCALATION == "escalation"
-
-    def test_all_three_types(self) -> None:
         assert len(HumanGateType) == 3
 
 
@@ -197,13 +191,9 @@ class TestBuildGateComment:
 
 
 class TestLabels:
-    def test_needs_human_label(self) -> None:
+    def test_label_values(self) -> None:
         assert LABEL_NEEDS_HUMAN == "human-review"
-
-    def test_needs_live_label(self) -> None:
         assert LABEL_NEEDS_LIVE == "needs-live-env"
-
-    def test_escalation_label(self) -> None:
         assert LABEL_ESCALATION == "human-review"
 
 
@@ -472,23 +462,7 @@ class TestNeedsLiveHelpers:
 
 
 class TestDotPipelineNodeIntegration:
-    """Verify that all house-shaped nodes from the DOT pipelines map correctly."""
-
-    def test_arch_review_web_needs_human(self) -> None:
-        """arch_review_web.dot: needs_human [shape=house]"""
-        assert classify_gate("needs_human") == HumanGateType.NEEDS_HUMAN
-
-    def test_arch_review_console_needs_human(self) -> None:
-        """arch_review_console.dot: needs_human [shape=house]"""
-        assert classify_gate("needs_human") == HumanGateType.NEEDS_HUMAN
-
-    def test_dark_forge_arch_needs_human(self) -> None:
-        """dark_forge.dot: arch_needs_human [shape=house]"""
-        assert classify_gate("arch_needs_human") == HumanGateType.NEEDS_HUMAN
-
-    def test_dark_forge_escalate(self) -> None:
-        """dark_forge.dot: escalate [shape=house]"""
-        assert classify_gate("escalate") == HumanGateType.ESCALATION
+    """Verify that DOT pipeline gate types integrate with the queue and interviewer."""
 
     def test_needs_live_from_crucible(self) -> None:
         """Crucible NEEDS_LIVE via metadata (orchestrator-level)."""

@@ -364,32 +364,25 @@ class TestConfigurableTruncationLimits:
 
 
 class TestDefaultLineLimits:
-    """Verify spec-mandated default line limits: shell=256, grep=200, glob=500."""
+    """Verify spec-mandated default line limits for all tools."""
 
-    def test_shell_256(self):
-        limits = TruncationLimits.for_tool("shell")
-        assert limits.max_lines == 256
+    def test_all_tool_line_limits(self):
+        """Each tool has its spec-mandated default max_lines limit."""
+        expected_lines = {
+            "shell": 256,
+            "grep": 200,
+            "glob": 500,
+            "read_file": 1000,
+            "write_file": 50,
+        }
+        for tool, lines in expected_lines.items():
+            limits = TruncationLimits.for_tool(tool)
+            assert limits.max_lines == lines, f"{tool}: expected max_lines={lines}, got {limits.max_lines}"
 
-    def test_grep_200(self):
-        limits = TruncationLimits.for_tool("grep")
-        assert limits.max_lines == 200
-
-    def test_glob_500(self):
-        limits = TruncationLimits.for_tool("glob")
-        assert limits.max_lines == 500
-
-    def test_read_file_unchanged(self):
-        limits = TruncationLimits.for_tool("read_file")
-        assert limits.max_lines == 1000
-
-    def test_write_file_unchanged(self):
-        limits = TruncationLimits.for_tool("write_file")
-        assert limits.max_lines == 50
-
-    def test_unknown_tool_uses_global_default(self):
-        limits = TruncationLimits.for_tool("unknown_tool_xyz")
-        assert limits.max_lines == 500
-        assert limits.max_chars == 30_000
+        # Unknown tool uses global defaults
+        unknown = TruncationLimits.for_tool("unknown_tool_xyz")
+        assert unknown.max_lines == 500
+        assert unknown.max_chars == 30_000
 
 
 # ================================================================== #

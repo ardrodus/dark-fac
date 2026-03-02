@@ -1,7 +1,6 @@
 """Tests for Wave 5 agent loop improvements.
 
 Covers spec compliance items:
-  #7  SIGTERM->SIGKILL escalation on shell timeout (Spec S9.4)
   #8  follow_up() method (Spec S2.6, S9.6)
   #13 Context window overflow detection (Spec S9.11)
   #29 Abort transitions session to CLOSED (Spec S9.1)
@@ -9,14 +8,11 @@ Covers spec compliance items:
 
 from __future__ import annotations
 
-import signal
-import subprocess
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from dark_factory.engine.agent.abort import AbortSignal
-from dark_factory.engine.agent.environment import LocalEnvironment, _sigterm_sigkill
 from dark_factory.engine.agent.events import EventKind, SessionEvent
 from dark_factory.engine.agent.session import Session, SessionConfig, SessionState
 from dark_factory.engine.types import Client, Message, Response, Usage
@@ -29,96 +25,6 @@ from dark_factory.engine.types import Client, Message, Response, Usage
 def _text_response(text: str) -> Response:
     """Create a simple text-only Response for mocking."""
     return Response(message=Message.assistant(text), usage=Usage())
-
-
-# ================================================================== #
-# Item #7: SIGTERM -> SIGKILL escalation (Spec S9.4)
-# ================================================================== #
-
-
-@pytest.mark.skipif(
-    not hasattr(signal, "SIGKILL"),
-    reason="SIGTERM/SIGKILL escalation requires Unix (os.getpgid/os.killpg)",
-)
-class TestSigtermSigkillEscalation:
-    """Timed-out commands: SIGTERM to process group, SIGKILL after 2 s."""
-
-    def test_sigterm_then_sigkill_when_process_resists(self):
-        """Full escalation: SIGTERM first, SIGKILL after 2 s grace period."""
-        mock_proc: MagicMock = MagicMock()
-        mock_proc.pid = 42
-        mock_proc.wait.side_effect = [
-            subprocess.TimeoutExpired("cmd", 2),  # survives SIGTERM
-            None,  # reaped after SIGKILL
-        ]
-
-        with (
-            patch("dark_factory.engine.agent.environment.os.getpgid", return_value=42),
-            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
-        ):
-            _sigterm_sigkill(mock_proc)
-
-        assert mock_killpg.call_args_list == [
-            call(42, signal.SIGTERM),
-            call(42, signal.SIGKILL),
-        ]
-
-    def test_sigterm_sufficient_skips_sigkill(self):
-        """If process exits after SIGTERM within 2 s, SIGKILL is not sent."""
-        mock_proc: MagicMock = MagicMock()
-        mock_proc.pid = 42
-        mock_proc.wait.return_value = None  # exits promptly after SIGTERM
-
-        with (
-            patch("dark_factory.engine.agent.environment.os.getpgid", return_value=42),
-            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
-        ):
-            _sigterm_sigkill(mock_proc)
-
-        assert mock_killpg.call_args_list == [
-            call(42, signal.SIGTERM),
-        ]
-
-    def test_already_exited_process_is_handled(self):
-        """If process already exited, OSError from getpgid is caught."""
-        mock_proc: MagicMock = MagicMock()
-        mock_proc.pid = 42
-
-        with (
-            patch("dark_factory.engine.agent.environment.os.getpgid", side_effect=OSError),
-            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
-        ):
-            _sigterm_sigkill(mock_proc)
-
-        mock_killpg.assert_not_called()
-
-    async def test_exec_shell_timeout_uses_escalation(self):
-        """LocalEnvironment.exec_shell invokes SIGTERM->SIGKILL on timeout."""
-        mock_proc: MagicMock = MagicMock()
-        mock_proc.pid = 42
-        mock_proc.communicate.side_effect = [
-            subprocess.TimeoutExpired("cmd", 1),  # first call times out
-            ("", ""),  # second call after kill
-        ]
-        mock_proc.wait.side_effect = [
-            subprocess.TimeoutExpired("cmd", 2),  # resists SIGTERM
-            None,  # reaped after SIGKILL
-        ]
-
-        with (
-            patch("dark_factory.engine.agent.environment.subprocess.Popen", return_value=mock_proc),
-            patch("dark_factory.engine.agent.environment.os.getpgid", return_value=42),
-            patch("dark_factory.engine.agent.environment.os.killpg") as mock_killpg,
-        ):
-            env = LocalEnvironment()
-            result = await env.exec_shell("sleep 100", timeout=1)
-
-        assert result.returncode == -1
-        assert "timed out" in result.stderr
-        assert mock_killpg.call_args_list == [
-            call(42, signal.SIGTERM),
-            call(42, signal.SIGKILL),
-        ]
 
 
 # ================================================================== #

@@ -761,6 +761,57 @@ async def run_pipeline(
                 )
             )
 
+        # Skip nodes listed in context _skip_nodes (e.g. skip_arch_review)
+        skip_nodes: list[str] = ctx.get("_skip_nodes", [])
+        if current_node.id in skip_nodes:
+            _workflow_log_entry(ctx, current_node.id, "SKIP", "node in _skip_nodes")
+            emitter.emit(StageStarted(name=current_node.id, index=node_index))
+            node_index += 1
+            result = HandlerResult(
+                status=Outcome.SUCCESS,
+                preferred_label="success",
+                notes="Skipped (in _skip_nodes)",
+            )
+            completed_nodes.append(current_node.id)
+            ctx["_preferred_label"] = result.preferred_label
+            # Write status artifact
+            if logs_root:
+                node_dir = logs_root / current_node.id
+                node_dir.mkdir(parents=True, exist_ok=True)
+                status_data = {
+                    "node_id": current_node.id,
+                    "status": "skipped",
+                    "preferred_label": "success",
+                    "notes": "Skipped via _skip_nodes context",
+                }
+                (node_dir / "status.json").write_text(
+                    json.dumps(status_data, indent=2), encoding="utf-8",
+                )
+            # Edge selection for next node
+            next_edge = select_edge(current_node, result, graph, ctx)
+            if next_edge is None:
+                return _emit_terminal(
+                    PipelineResult(
+                        status=PipelineStatus.COMPLETED,
+                        context=ctx,
+                        completed_nodes=completed_nodes,
+                        duration_seconds=time.monotonic() - start_time,
+                    )
+                )
+            next_node = graph.get_node(next_edge.target)
+            if next_node is None:
+                return _emit_terminal(
+                    PipelineResult(
+                        status=PipelineStatus.FAILED,
+                        error=f"Edge target not found: {next_edge.target}",
+                        context=ctx,
+                        completed_nodes=completed_nodes,
+                        duration_seconds=time.monotonic() - start_time,
+                    )
+                )
+            current_node = next_node
+            continue
+
         # Execute with retry (Spec §3.5)
         max_retries = (
             current_node.max_retries if current_node.max_retries >= 0 else graph.default_max_retry
@@ -793,10 +844,10 @@ async def run_pipeline(
 
         # Workflow log: DONE entry
         _stage_dur = time.monotonic() - stage_start_time
-        _workflow_log_entry(
-            ctx, current_node.id, "DONE",
-            f"{result.status.value} ({_stage_dur:.1f}s)",
-        )
+        _done_detail = f"{result.status.value} ({_stage_dur:.1f}s)"
+        if result.failure_reason:
+            _done_detail += f" -- {result.failure_reason[:200]}"
+        _workflow_log_entry(ctx, current_node.id, "DONE", _done_detail)
 
         # Apply context updates from handler
         ctx.update(result.context_updates)

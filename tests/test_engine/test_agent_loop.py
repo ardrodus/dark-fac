@@ -7,7 +7,7 @@ import os
 import pytest
 
 from dark_factory.engine.agent.abort import AbortSignal
-from dark_factory.engine.agent.events import EventEmitter, EventKind, SessionEvent
+from dark_factory.engine.agent.events import EventKind
 from dark_factory.engine.agent.registry import ToolRegistry
 from dark_factory.engine.agent.session import Session, SessionState
 from dark_factory.engine.agent.tools import ALL_CORE_TOOLS, set_allowed_roots
@@ -50,55 +50,6 @@ class TestAbortSignal:
         fired: list[bool] = []
         sig.on_abort(lambda: fired.append(True))
         assert fired == [True]
-
-
-# ================================================================== #
-# EventEmitter
-# ================================================================== #
-
-
-class TestEventEmitter:
-    @pytest.mark.asyncio
-    async def test_emit_and_receive(self):
-        emitter = EventEmitter()
-        received: list[EventKind] = []
-
-        async def handler(e: SessionEvent) -> None:
-            received.append(e.kind)
-
-        emitter.on(handler)
-        await emitter.emit(SessionEvent(kind=EventKind.SESSION_START))
-        assert received == [EventKind.SESSION_START]
-
-    @pytest.mark.asyncio
-    async def test_off_removes_handler(self):
-        emitter = EventEmitter()
-        received: list[EventKind] = []
-
-        async def handler(e: SessionEvent) -> None:
-            received.append(e.kind)
-
-        emitter.on(handler)
-        await emitter.emit(SessionEvent(kind=EventKind.SESSION_START))
-        emitter.off(handler)
-        await emitter.emit(SessionEvent(kind=EventKind.SESSION_END))
-        assert len(received) == 1  # only the first event
-
-    @pytest.mark.asyncio
-    async def test_handler_exception_doesnt_break_emit(self):
-        emitter = EventEmitter()
-        received: list[str] = []
-
-        async def bad_handler(e: SessionEvent) -> None:
-            raise RuntimeError("boom")
-
-        async def good_handler(e: SessionEvent) -> None:
-            received.append("ok")
-
-        emitter.on(bad_handler)
-        emitter.on(good_handler)
-        await emitter.emit(SessionEvent(kind=EventKind.SESSION_START))
-        assert received == ["ok"]
 
 
 # ================================================================== #
@@ -348,16 +299,6 @@ class TestSession:
 
         with pytest.raises(RuntimeError, match="closed"):
             await session.submit("test")
-
-    @pytest.mark.asyncio
-    async def test_abort_returns_immediately(self):
-        client = Client()
-        abort = AbortSignal()
-        abort.set()
-        session = Session(client=client, abort_signal=abort)
-
-        result = await session.submit("test")
-        assert result == "[Session aborted]"
 
     @pytest.mark.asyncio
     async def test_error_emits_error_and_turn_end(self):

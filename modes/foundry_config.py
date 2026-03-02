@@ -62,6 +62,7 @@ class WorkspaceConfig:
     last_crucible_verdict: str = "none"
     deploy_pipeline: str = _DEPLOY_PIPELINE_NOT_CONFIGURED
     status: str = "active"              # "active" | "paused"
+    skip_arch_review: bool = False      # skip architecture review pipeline
 
     # Mutable actions performed via the TUI are communicated back to
     # the caller via the App return value.
