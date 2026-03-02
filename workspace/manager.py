@@ -444,33 +444,26 @@ def _ensure_branch(ws_path: Path, branch: str) -> None:
 def _run_sentinel_gate(ws_path: Path) -> bool:
     """Run Sentinel security scans on the workspace.
 
-    Imports :class:`~factory.gates.framework.GateRunner` lazily to avoid
-    circular dependencies.
+    Runs the real gate framework checks: secret scanning (regex + entropy),
+    dependency vulnerability scanning (language-auto-detected), and SAST
+    if tools are available.  Writes gate-metrics.json and gate-report.json
+    to the workspace's ``.dark-factory/`` directory.
     """
     if os.environ.get("WSREG_SKIP_SENTINEL", "").lower() == "true":
         logger.info("Sentinel gates skipped (WSREG_SKIP_SENTINEL=true)")
         return True
 
-    from dark_factory.gates.framework import GateRunner  # noqa: PLC0415
+    from dark_factory.gates.framework import run_all_gates  # noqa: PLC0415
 
-    runner = GateRunner("sentinel-acquire", metrics_dir=str(ws_path.parent))
-    cwd = str(ws_path)
-
-    def _check_secrets() -> bool:
-        r = git(["log", "--oneline", "-1"], cwd=cwd)
-        return r.returncode == 0
-
-    def _check_dependencies() -> bool:
-        for lockfile in ("package-lock.json", "yarn.lock", "requirements.txt"):
-            if (ws_path / lockfile).exists():
-                logger.debug("Dependency file present: %s", lockfile)
-        return True
-
-    runner.register_check("secret-scan", _check_secrets)
-    runner.register_check("dependency-scan", _check_dependencies)
-
-    report = runner.run()
-    return report.passed
+    metrics_dir = ws_path / ".dark-factory"
+    logger.info("Running Sentinel Gate 1 on %s", ws_path)
+    report = run_all_gates(workspace=ws_path, metrics_dir=metrics_dir)
+    logger.info(
+        "Sentinel Gate 1: %s (%d gate(s) ran)",
+        "PASSED" if report.overall_passed else "FAILED",
+        len(report.gate_reports),
+    )
+    return report.overall_passed
 
 
 def _clean_stale_workspaces(root: Path, ttl_seconds: float) -> int:
