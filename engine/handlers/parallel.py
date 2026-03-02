@@ -124,7 +124,11 @@ class ParallelHandler:
         # Pre-clone contexts BEFORE launching tasks to avoid a race
         # where concurrent deepcopy calls observe a partially-updated dict.
         # Each branch gets its own pre-cloned snapshot.
-        branch_snapshots: list[dict[str, Any]] = [copy.deepcopy(context) for _ in outgoing]
+        # Exclude internal _-prefixed keys (_event_emitter, _artifact_prompt.*)
+        # to avoid deep-copying non-serializable objects (asyncio.Queue) and
+        # to reduce copy size.
+        _clonable = {k: v for k, v in context.items() if not k.startswith("_")}
+        branch_snapshots: list[dict[str, Any]] = [copy.deepcopy(_clonable) for _ in outgoing]
 
         if _emitter:
             _emitter.emit(ParallelStarted(branch_count=len(outgoing)))

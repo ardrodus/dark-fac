@@ -125,12 +125,13 @@ class ManagerHandler:
                 child_logs.mkdir(parents=True, exist_ok=True)
 
             # Run child pipeline.
-            # Filter out _artifact_prompt.* keys before deep-copying to
-            # reduce copy size -- these are only needed for artifact writing
-            # and accumulate across iterations.
+            # Filter out _-prefixed internal keys before deep-copying:
+            # - _event_emitter contains asyncio.Queue (not deep-copyable)
+            # - _artifact_prompt.* accumulate across iterations
+            # - _branch_id, _resume_preamble are parent-specific
             slim_context = {
                 k: v for k, v in context.items()
-                if not k.startswith("_artifact_prompt.")
+                if not k.startswith("_")
             }
             start_time = time.monotonic()
             child_result = await run_pipeline(
