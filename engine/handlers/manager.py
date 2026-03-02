@@ -85,13 +85,16 @@ class ManagerHandler:
                 failure_reason="ManagerHandler has no handler registry",
             )
 
-        # Get child graph source
+        # Get child graph source, expanding $variables from context
+        from dark_factory.engine.variable_expansion import expand_variables  # noqa: PLC0415
+
         child_source = node.attrs.get("child_graph", "")
         if not child_source:
             return HandlerResult(
                 status=Outcome.FAIL,
                 failure_reason=(f"Manager node '{node.id}' has no child_graph attribute"),
             )
+        child_source = expand_variables(child_source, context, undefined="keep")
 
         # Parse child graph (inline DOT or file path)
         try:

@@ -33,11 +33,14 @@ digraph dark_forge {
     // ===========================================
 
     arch_review [
-        shape=component,
+        shape=hexagon,
         label="Architecture Review\n(strategy-selected pipeline)",
-        pipeline="arch_review_${strategy}.dot"
+        child_graph="dark_factory/pipelines/arch_review_${strategy}.dot",
+        max_iterations=2,
+        max_retries=2
     ]
 
+    arch_verdict [shape=diamond, label="SA Verdict?"]
     arch_needs_human [shape=house, label="Human Arch Review Required"]
 
     // ===========================================
@@ -100,12 +103,13 @@ digraph dark_forge {
     done [shape=Msquare, label="All Stories Complete"]
 
     // --- Flow ---
-    start -> arch_review
+    start -> arch_review -> arch_verdict
 
-    // Architecture review exits
-    arch_review -> gen_prd [label="APPROVED"]
-    arch_review -> arch_needs_human [label="NEEDS_HUMAN"]
-    arch_review -> arch_review [label="NEEDS_CHANGES\n(re-run)"]
+    // Architecture review verdict routing
+    arch_verdict -> gen_prd [label="APPROVED"]
+    arch_verdict -> gen_prd [label="success"]
+    arch_verdict -> arch_needs_human [label="NEEDS_HUMAN"]
+    arch_verdict -> arch_review [label="NEEDS_CHANGES"]
 
     // Spec generation pipeline (US-301 -> US-307)
     gen_prd -> gen_design -> gen_api_contract -> gen_schema -> gen_interfaces -> gen_test_strategy -> schedule_stories

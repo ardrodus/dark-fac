@@ -120,9 +120,11 @@ digraph ouroboros {
 
     // --- Step 2: Dark Forge on own code ---
     self_forge [
-        shape=component,
+        shape=hexagon,
         label="Dark Forge\n(on factory repo itself)",
-        pipeline="dark_forge.dot"
+        child_graph="dark_factory/pipelines/dark_forge.dot",
+        max_iterations=2,
+        max_retries=2
     ]
 
     // --- Step 3: 4-Layer Self-Crucible ---
