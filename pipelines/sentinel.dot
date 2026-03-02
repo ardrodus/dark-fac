@@ -56,23 +56,25 @@ digraph sentinel {
     // Gate 1a: Secret Scan (gitleaks + trufflehog)
     secret_scan_full [
         shape=parallelogram,
-        label="gitleaks detect --source $workspace\ntrufflehog filesystem $workspace"
+        label="Secret Scan\n(gitleaks + trufflehog)",
+        prompt="cd $workspace && (gitleaks detect --source . --report-format json --report-path .dark-factory/sentinel/secrets-full.json 2>&1 || true) && (trufflehog filesystem . --json > .dark-factory/sentinel/trufflehog-full.json 2>&1 || true)"
     ]
     secret_classify [
         shape=box,
-        prompt="Classify secret scan findings by severity:\n$scan_results\n\n- CRITICAL: Active credentials (API keys, tokens, passwords with high entropy)\n- WARNING: Low-confidence patterns (base64 blobs, config values that look like keys)\n- INFO: Test/example secrets (in test fixtures, .env.example, mock data)\n\nFor each CRITICAL finding, recommend: rotation required, rotation recommended, or investigation needed.\nOutput structured JSON with severity, file, line, finding type, recommendation."
+        prompt="You are the Sentinel secret classifier.\n\nWorkspace: $workspace\n\nRead the secret scan results at:\n- $workspace/.dark-factory/sentinel/secrets-full.json (gitleaks)\n- $workspace/.dark-factory/sentinel/trufflehog-full.json (trufflehog)\n\nIf neither file exists or both are empty, the workspace is clean.\n\nClassify each finding by severity:\n- CRITICAL: Active credentials (API keys, tokens, passwords with high entropy)\n- WARNING: Low-confidence patterns (base64 blobs, config values that look like keys)\n- INFO: Test/example secrets (in test fixtures, .env.example, mock data)\n\nFor each CRITICAL finding, recommend: rotation required, rotation recommended, or investigation needed.\n\nWrite results to: $workspace/.dark-factory/sentinel/secret-classification.json\nOutput: CLEAN (no critical findings) | CRITICAL (critical secrets found)"
     ]
     secret_verdict [shape=diamond, label="Secrets\nFound?"]
     secret_blocked [shape=house, label="BLOCK\nCritical Secrets\n-> Security Triage"]
 
-    // Gate 1b: Dependency Vulnerability Scan (npm audit / pip-audit / cargo audit)
+    // Gate 1b: Dependency Vulnerability Scan
     dep_scan [
         shape=parallelogram,
-        label="npm audit / pip-audit / cargo audit\n(language-auto-detected)"
+        label="Dependency Scan\n(auto-detected package manager)",
+        prompt="cd $workspace && mkdir -p .dark-factory/sentinel && ([ -f requirements.txt ] && pip-audit -f json > .dark-factory/sentinel/dep-scan.json 2>&1 || [ -f package-lock.json ] && npm audit --json > .dark-factory/sentinel/dep-scan.json 2>&1 || [ -f Cargo.toml ] && cargo audit --json > .dark-factory/sentinel/dep-scan.json 2>&1 || echo '{\"info\": \"no supported package manager detected\"}' > .dark-factory/sentinel/dep-scan.json)"
     ]
     dep_classify [
         shape=box,
-        prompt="Analyze dependency vulnerability scan results:\n$dep_results\n\nClassify each vulnerability:\n- CRITICAL (CVSS >= 9.0): Known exploited, remote code execution, auth bypass\n- HIGH (CVSS 7.0-8.9): Significant but requires specific conditions\n- MEDIUM/LOW: Log only\n\nCheck for dependency confusion attacks (private package name squatting).\nOutput: severity, package, version, CVE, CVSS, recommendation (upgrade/patch/replace)."
+        prompt="You are the Sentinel dependency analyst.\n\nWorkspace: $workspace\n\nRead the dependency scan results at: $workspace/.dark-factory/sentinel/dep-scan.json\n\nClassify each vulnerability:\n- CRITICAL (CVSS >= 9.0): Known exploited, remote code execution, auth bypass\n- HIGH (CVSS 7.0-8.9): Significant but requires specific conditions\n- MEDIUM/LOW: Log only\n\nCheck for dependency confusion attacks (private package name squatting).\n\nWrite results to: $workspace/.dark-factory/sentinel/dep-classification.json\nOutput: CLEAN (no critical CVEs) | CRITICAL (critical CVEs found)"
     ]
     dep_verdict [shape=diamond, label="Critical\nDeps?"]
     dep_blocked [shape=house, label="BLOCK\nCritical CVEs\n-> Security Triage"]
@@ -88,19 +90,21 @@ digraph sentinel {
     // Gate 2a: Dependency re-scan (catches new deps from arch review)
     dep_rescan [
         shape=parallelogram,
-        label="npm audit / pip-audit\n(re-scan after arch changes)"
+        label="Dependency Re-Scan\n(after arch changes)",
+        prompt="cd $workspace && mkdir -p .dark-factory/sentinel && ([ -f requirements.txt ] && pip-audit -f json > .dark-factory/sentinel/dep-rescan.json 2>&1 || [ -f package-lock.json ] && npm audit --json > .dark-factory/sentinel/dep-rescan.json 2>&1 || echo '{\"info\": \"no supported package manager detected\"}' > .dark-factory/sentinel/dep-rescan.json)"
     ]
 
     // Gate 2b: SAST -- Two-layer static analysis
     sast_layer1 [
         shape=parallelogram,
-        label="semgrep --config=auto $workspace\n(deterministic, <60s)"
+        label="SAST Layer 1\n(semgrep)",
+        prompt="cd $workspace && mkdir -p .dark-factory/sentinel && semgrep --config=auto . --json > .dark-factory/sentinel/sast-layer1.json 2>&1"
     ]
     sast_layer1_check [shape=diamond, label="SAST\nFindings?"]
 
     sast_layer2 [
         shape=box,
-        prompt="You are the Sentinel AI security agent.\n\nSAST Layer 1 (semgrep) produced these findings:\n$sast_findings\n\nPerform deeper analysis:\n1. Data flow tracing -- can the finding actually be reached?\n2. Business logic analysis -- is the pattern dangerous in this context?\n3. Adversarial verification -- construct a plausible attack path or downgrade\n4. Contextual reasoning -- is this a false positive from framework patterns?\n\nFor each finding, output: confirmed | downgraded | false_positive\nWith evidence and reasoning."
+        prompt="You are the Sentinel AI security analyst.\n\nWorkspace: $workspace\n\nRead the SAST Layer 1 (semgrep) results at: $workspace/.dark-factory/sentinel/sast-layer1.json\n\nPerform deeper analysis on each finding:\n1. Data flow tracing — can the finding actually be reached from user input?\n2. Business logic analysis — is the pattern dangerous in this codebase's context?\n3. Adversarial verification — construct a plausible attack path or downgrade\n4. Contextual reasoning — is this a false positive from framework patterns?\n\nRead the relevant source files in $workspace to verify each finding.\n\nFor each finding, classify: confirmed | downgraded | false_positive\nWith evidence and reasoning.\n\nWrite results to: $workspace/.dark-factory/sentinel/sast-layer2.json\nOutput: CLEAN (all downgraded/false positive) | CRITICAL (confirmed critical findings)"
     ]
     sast_verdict [shape=diamond, label="Confirmed\nFindings?"]
     sast_blocked [shape=house, label="BLOCK\nCritical SAST\n-> Security Triage"]
@@ -108,7 +112,8 @@ digraph sentinel {
     // Gate 2c: SBOM generation
     sbom_generate [
         shape=parallelogram,
-        label="syft $workspace -o spdx-json\n(Software Bill of Materials)"
+        label="SBOM Generation\n(syft)",
+        prompt="cd $workspace && mkdir -p .dark-factory/sentinel && syft . -o spdx-json > .dark-factory/sentinel/sbom.json 2>&1"
     ]
 
     gate2_pass [shape=Msquare, label="Gate 2 PASS\n-> TDD Pipeline"]
@@ -122,13 +127,14 @@ digraph sentinel {
     // Gate 3a: Network isolation validation
     netiso_scan [
         shape=box,
-        prompt="Validate network isolation and egress policy for the container:\n$container_config\n\nCheck:\n- Egress rules: only allowed destinations (package registries, API endpoints)\n- No unrestricted outbound internet access\n- DNS filtering configured\n- Inter-container network segmentation\n- Volume mount restrictions (no host filesystem leaks)\n\nOutput: PASS (policy compliant) | WARN (minor gaps) | BLOCK (unrestricted egress)"
+        prompt="You are the Sentinel network isolation validator.\n\nWorkspace: $workspace\nContainer config: $container_config\n\nRead the container configuration files in $workspace (Dockerfile, docker-compose.yml, etc.).\n\nCheck:\n- Egress rules: only allowed destinations (package registries, API endpoints)\n- No unrestricted outbound internet access\n- DNS filtering configured\n- Inter-container network segmentation\n- Volume mount restrictions (no host filesystem leaks)\n\nWrite results to: $workspace/.dark-factory/sentinel/netiso.json\nOutput: PASS (policy compliant) | WARN (minor gaps) | BLOCK (unrestricted egress)"
     ]
 
     // Gate 3b: Container image vulnerability scan (trivy)
     image_scan [
         shape=parallelogram,
-        label="trivy image $image_name\n--severity CRITICAL,HIGH"
+        label="Image Scan\n(trivy)",
+        prompt="cd $workspace && mkdir -p .dark-factory/sentinel && trivy image $image_name --severity CRITICAL,HIGH --format json --output .dark-factory/sentinel/image-scan.json 2>&1"
     ]
     image_verdict [shape=diamond, label="Image\nCVEs?"]
     image_blocked [shape=house, label="BLOCK\nCritical Image CVEs\n-> Security Triage"]
@@ -143,7 +149,8 @@ digraph sentinel {
 
     secret_scan_incremental [
         shape=parallelogram,
-        label="gitleaks detect --source $workspace\n--log-opts HEAD~1..HEAD"
+        label="Incremental Secret Scan\n(diff only)",
+        prompt="cd $workspace && mkdir -p .dark-factory/sentinel && gitleaks detect --source . --log-opts HEAD~1..HEAD --report-format json --report-path .dark-factory/sentinel/secrets-incremental.json 2>&1"
     ]
     gate4_verdict [shape=diamond, label="New Secrets\nin Diff?"]
     gate4_blocked [shape=house, label="BLOCK\nSecrets in PR\n-> Security Triage"]
@@ -158,7 +165,7 @@ digraph sentinel {
 
     security_review [
         shape=box,
-        prompt="You are the Sentinel security reviewer.\n\nReview the PR diff with full context:\n- Story/issue context: $story_context\n- Architecture guidance: $engineering_brief\n- SAST Layer 1 results: $sast_report\n\nCheck the diff for:\n- Input validation at system boundaries\n- Output encoding (HTML, SQL, shell)\n- Authentication/Authorization consistency\n- Error handling (no sensitive info leaks in errors)\n- Cryptography (no MD5, no ECB, no hardcoded IVs)\n- New dependency additions\n- SSRF / Path traversal vulnerabilities\n- Hardcoded credentials\n\nAdversarial verification: findings without a plausible attack path are downgraded.\n\nOutput verdict:\n- CRITICAL: PR not created, issue flagged, Dark Forge attempts fix\n- HIGH: PR created with security-review-required label, human must acknowledge\n- CLEAN: PR created normally, findings (if any) in description"
+        prompt="You are the Sentinel security reviewer.\n\nWorkspace: $workspace\n\nReview the PR diff. Read the changed files in $workspace using git diff.\n\nContext:\n- Issue: $issue\n- Engineering brief: read $workspace/.dark-factory/specs/$issue_number/engineering-brief.md if it exists\n- SAST results: read $workspace/.dark-factory/sentinel/sast-layer2.json if it exists\n\nCheck the diff for:\n- Input validation at system boundaries\n- Output encoding (HTML, SQL, shell)\n- Authentication/Authorization consistency\n- Error handling (no sensitive info leaks in errors)\n- Cryptography (no MD5, no ECB, no hardcoded IVs)\n- New dependency additions\n- SSRF / Path traversal vulnerabilities\n- Hardcoded credentials\n\nAdversarial verification: findings without a plausible attack path are downgraded.\n\nWrite results to: $workspace/.dark-factory/sentinel/security-review.json\n\nOutput verdict:\n- CRITICAL: PR not created, issue flagged, Dark Forge attempts fix\n- HIGH: PR created with security-review-required label, human must acknowledge\n- CLEAN: PR created normally, findings (if any) in description"
     ]
     gate5_verdict [shape=diamond, label="Security\nReview?"]
     gate5_critical [shape=house, label="CRITICAL\nPR Blocked\n-> Dark Forge Fix"]
@@ -171,25 +178,25 @@ digraph sentinel {
 
     // Gate 1: Post-clone
     gate1_start -> secret_scan_full -> secret_classify -> secret_verdict
-    secret_verdict -> dep_scan [label="CLEAN / INFO"]
+    secret_verdict -> dep_scan [label="CLEAN"]
     secret_verdict -> secret_blocked [label="CRITICAL"]
     dep_scan -> dep_classify -> dep_verdict
     dep_verdict -> gate1_pass [label="CLEAN"]
-    dep_verdict -> dep_blocked [label="CRITICAL CVE"]
+    dep_verdict -> dep_blocked [label="CRITICAL"]
 
     // Gate 2: Post-architecture
     gate2_start -> dep_rescan -> sast_layer1 -> sast_layer1_check
     sast_layer1_check -> sast_layer2 [label="findings exist"]
     sast_layer1_check -> sbom_generate [label="clean"]
     sast_layer2 -> sast_verdict
-    sast_verdict -> sbom_generate [label="all downgraded\nor false positive"]
-    sast_verdict -> sast_blocked [label="confirmed CRITICAL"]
+    sast_verdict -> sbom_generate [label="CLEAN"]
+    sast_verdict -> sast_blocked [label="CRITICAL"]
     sbom_generate -> gate2_pass
 
     // Gate 3: Pre-container
     gate3_start -> netiso_scan -> image_scan -> image_verdict
     image_verdict -> gate3_pass [label="CLEAN"]
-    image_verdict -> image_blocked [label="CRITICAL CVE"]
+    image_verdict -> image_blocked [label="CRITICAL"]
 
     // Gate 4: Pre-PR (incremental)
     gate4_start -> secret_scan_incremental -> gate4_verdict
@@ -198,7 +205,7 @@ digraph sentinel {
 
     // Gate 5: AI security review
     gate5_start -> security_review -> gate5_verdict
-    gate5_verdict -> gate5_clean [label="CLEAN / MEDIUM / LOW"]
+    gate5_verdict -> gate5_clean [label="CLEAN"]
     gate5_verdict -> gate5_high [label="HIGH"]
     gate5_verdict -> gate5_critical [label="CRITICAL"]
 }

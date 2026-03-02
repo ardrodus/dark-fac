@@ -62,7 +62,7 @@ digraph dark_forge {
 
     gen_test_strategy [
         shape=box,
-        prompt="You are the Test Strategy Generator.\n\nRead these artifacts:\n- Design: $gen_design_path\n- API Contract: $gen_api_contract_path\n- Schema: $gen_schema_path\n- Interfaces: $gen_interfaces_path\n\nGenerate a test strategy covering:\n- Unit tests: what to test, expected assertions\n- Integration tests: component interactions\n- E2E tests: user-facing flows\n- Fixtures and mocks needed\n- Coverage targets\n- Existing tests that may be affected\n\nWrite output to .dark-factory/specs/$issue_number/test-strategy.md"
+        prompt="You are the Test Strategy Generator.\n\nWorkspace: $workspace\n\nRead these artifacts:\n- Design: $gen_design_path\n- API Contract: $gen_api_contract_path\n- Schema: $gen_schema_path\n- Interfaces: $gen_interfaces_path\n\nExplore the existing test suite in $workspace to understand current patterns.\n\nGenerate a test strategy covering:\n- Unit tests: what to test, expected assertions\n- Integration tests: component interactions\n- E2E tests: user-facing flows\n- Fixtures and mocks needed\n- Coverage targets\n- Existing tests that may be affected\n\nWrite output to .dark-factory/specs/$issue_number/test-strategy.md"
     ]
 
     // ===========================================
