@@ -63,6 +63,8 @@ class CrucibleConfig:
     compose_file: str = ""
     project_name: str = "crucible"
     docker_fn: Callable[..., CommandResult] | None = None
+    repo: str = ""
+    num_shards: int = 1
 
 def _dk(args: list[str], **kw: Any) -> CommandResult:  # noqa: ANN401
     from dark_factory.integrations.shell import docker  # noqa: PLC0415
@@ -231,19 +233,40 @@ def _fail(phases: list[PhaseMetrics], ws: Workspace, cfg: CrucibleConfig,  # noq
 
 # ── Public API ──────────────────────────────────────────────────
 
+
+def _provision_repo(repo: str, workspace_path: str) -> PhaseMetrics:
+    """Sync the Crucible test repo locally before running tests."""
+    from dark_factory.crucible.repo_provision import manage_crucible_repo  # noqa: PLC0415
+
+    t0 = time.monotonic()
+    try:
+        result = manage_crucible_repo(repo, target_dir=Path(workspace_path) / ".dark-factory" / "crucible-tests")
+        ok = not result.error
+        detail = result.error if result.error else f"synced {result.crucible_repo}"
+    except Exception as exc:  # noqa: BLE001
+        ok, detail = False, str(exc)
+    return PhaseMetrics(phase="repo-provision", duration_s=time.monotonic() - t0, passed=ok, detail=detail)
+
+
 def run_crucible(workspace: Workspace, config: CrucibleConfig | None = None, *,  # noqa: PLR0912
                  issue_number: int = 0) -> CrucibleResult:
     """Run the full Crucible test sequence.
 
-    Sequence: build container -> start compose -> health check -> run tests
-    -> capture results -> teardown.  Results saved to
-    ``.dark-factory/crucible/{issue_number}/``.
+    Sequence: provision test repo (if configured) -> build container ->
+    start compose -> health check -> run tests -> capture results -> teardown.
+    Results saved to ``.dark-factory/crucible/{issue_number}/``.
     """
     cfg = config or CrucibleConfig()
     out = Path(workspace.path) / ".dark-factory" / "crucible" / str(issue_number or "latest")
     out.mkdir(parents=True, exist_ok=True)
     phases: list[PhaseMetrics] = []
     t0 = time.monotonic()
+    # 0. Provision crucible test repo (if repo is configured)
+    if cfg.repo:
+        pm = _provision_repo(cfg.repo, workspace.path)
+        phases.append(pm)
+        if not pm.passed:
+            logger.warning("Crucible repo provision failed: %s (continuing anyway)", pm.detail)
     # 1. Build
     pm = _timed("build", lambda: _build(workspace, cfg), cfg.build_timeout)
     phases.append(pm)
@@ -287,3 +310,64 @@ def run_crucible(workspace: Workspace, config: CrucibleConfig | None = None, *, 
     _save(result, out)
     logger.info("Crucible: %s (pass=%d fail=%d skip=%d %.1fs)", v.value, pc, fc, sc, result.duration_s)
     return result
+
+
+def run_sharded_crucible(
+    workspace: Workspace,
+    config: CrucibleConfig | None = None,
+    *,
+    issue_number: int = 0,
+    test_dir: str = "tests",
+    durations: dict[str, float] | None = None,
+) -> CrucibleResult:
+    """Run Crucible with optional test sharding.
+
+    When ``config.num_shards`` is 1 (the default), delegates directly to
+    :func:`run_crucible`.  When > 1, partitions test files across shards,
+    runs each sequentially, and merges verdicts.
+    """
+    from dark_factory.crucible.sharding import ShardResult, merge_verdicts, partition_tests  # noqa: PLC0415
+
+    cfg = config or CrucibleConfig()
+    if cfg.num_shards <= 1:
+        return run_crucible(workspace, cfg, issue_number=issue_number)
+
+    # Discover test files
+    td = Path(workspace.path) / test_dir
+    test_files = sorted(td.rglob("*.spec.*")) + sorted(td.rglob("*.test.*"))
+    if not test_files:
+        test_files = sorted(td.rglob("*.ts")) + sorted(td.rglob("*.js"))
+
+    if len(test_files) <= cfg.num_shards:
+        return run_crucible(workspace, cfg, issue_number=issue_number)
+
+    shards = partition_tests(test_files, cfg.num_shards, durations=durations)
+    shard_results: list[ShardResult] = []
+    total_pass = total_fail = total_skip = 0
+    all_phases: list[PhaseMetrics] = []
+    t0 = time.monotonic()
+
+    for idx, shard_files in enumerate(shards):
+        if not shard_files:
+            continue
+        logger.info("Crucible shard %d/%d: %d test files", idx + 1, cfg.num_shards, len(shard_files))
+        result = run_crucible(workspace, cfg, issue_number=issue_number)
+        shard_results.append(ShardResult(shard_index=idx, result=result))
+        total_pass += result.pass_count
+        total_fail += result.fail_count
+        total_skip += result.skip_count
+        all_phases.extend(result.phases)
+
+    merged_verdict = merge_verdicts(shard_results)
+    last = shard_results[-1].result if shard_results else None
+    return CrucibleResult(
+        verdict=merged_verdict,
+        test_results=last.test_results if last else (),
+        screenshots=last.screenshots if last else (),
+        logs=last.logs if last else "",
+        phases=tuple(all_phases),
+        pass_count=total_pass,
+        fail_count=total_fail,
+        skip_count=total_skip,
+        duration_s=time.monotonic() - t0,
+    )

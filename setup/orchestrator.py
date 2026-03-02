@@ -297,6 +297,34 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
         dl.info(f"provision: labels={label_count} ci={prov.get('ci_workflow')} "
                 f"template={prov.get('issue_template')} protection={prov.get('branch_protection')}")
 
+        # ── Phase D2: Crucible Repo Provision ─────────────────────
+        with _phase(dl, "crucible-repo"):
+            want_crucible = False
+            if auto_mode:
+                want_crucible = True
+            else:
+                w("\n  Crucible uses a companion test repo for end-to-end validation.\n")
+                try:
+                    choice = input("  Set up Crucible test repo now? [Y/n]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    choice = "n"
+                want_crucible = choice in ("", "y", "yes")
+
+            if want_crucible:
+                from dark_factory.crucible.repo_provision import provision_crucible_repo  # noqa: PLC0415
+                from dark_factory.core.config_manager import load_config as _load_cfg  # noqa: PLC0415
+
+                cr_result = provision_crucible_repo(repo, _load_cfg(start).data)
+                if cr_result.error:
+                    dl.info(f"crucible-repo: {cr_result.error} (non-fatal)")
+                    w(f"  Crucible repo: {cr_result.error}\n")
+                else:
+                    dl.info(f"crucible-repo: {cr_result.crucible_repo} created={cr_result.created}")
+                    w(f"  Crucible repo: {cr_result.crucible_repo}\n")
+            else:
+                dl.info("crucible-repo: skipped by user")
+                w("  Crucible repo: skipped (configure later in Settings)\n")
+
         # ── Phase E: Strategy Bootstrap ───────────────────────────
         with _phase(dl, "strategy-bootstrap"):
             from dark_factory.strategies import resolve_strategy  # noqa: PLC0415
