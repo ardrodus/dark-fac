@@ -157,19 +157,16 @@ def _default_sentinel(workspace_path: str, phase: str) -> bool:
 
 
 def _default_forge(issue: IssueInfo, workspace_path: str) -> bool:
-    """Run the Dark Forge pipeline for an issue."""
-    from dark_factory.pipeline.orchestrator import PipelineConfig, run_full_pipeline  # noqa: PLC0415
-    from dark_factory.pipeline.runner import StoryContext  # noqa: PLC0415
+    """Run the Dark Forge pipeline for an issue via the DOT engine."""
+    import asyncio  # noqa: PLC0415
 
-    story = StoryContext(
-        title=issue.title,
-        description=f"Issue #{issue.number}: {issue.title}",
-        acceptance_criteria=(),
-        changed_files=(),
-    )
-    config = PipelineConfig(max_retries=0, cwd=workspace_path)
-    result = run_full_pipeline(story, config=config)
-    return result.passed
+    from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+
+    engine = FactoryPipelineEngine()
+    issue_data = {"number": issue.number, "title": issue.title}
+    result = asyncio.run(engine.run_forge(issue_data, workspace_path))
+    return result.status == PipelineStatus.COMPLETED
 
 
 def run_dark_forge(

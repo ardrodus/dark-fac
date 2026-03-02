@@ -77,8 +77,8 @@ class WorkspaceResult:
 
 
 def _resolve_root(root: Path | None) -> Path:
-    """Return the workspace root directory, creating it if needed."""
-    directory = root or _DEFAULT_WORKSPACE_ROOT
+    """Return the workspace root directory as an absolute path, creating it if needed."""
+    directory = (root or _DEFAULT_WORKSPACE_ROOT).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
