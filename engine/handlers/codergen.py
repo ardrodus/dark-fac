@@ -21,6 +21,36 @@ from dark_factory.engine.variable_expansion import expand_node_prompt
 
 logger = logging.getLogger(__name__)
 
+# Verdict keywords that agents can emit on their final line to drive
+# conditional edge routing (e.g. arch_verdict diamond).
+_VERDICT_KEYWORDS: frozenset[str] = frozenset({
+    "APPROVED", "NEEDS_CHANGES", "NEEDS_HUMAN",
+    "ALL_PASS", "FIXES_NEEDED",
+})
+
+
+def _extract_verdict(output: str) -> str:
+    """Scan the last non-empty line of *output* for a known verdict keyword.
+
+    Returns the keyword (uppercase) if found, otherwise empty string.
+    """
+    for line in reversed(output.splitlines()):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Check if the line IS a verdict or ends with one
+        upper = stripped.upper()
+        if upper in _VERDICT_KEYWORDS:
+            return upper
+        # Also check last word (agent might write "Verdict: APPROVED")
+        last_word = upper.rsplit(None, 1)[-1] if upper else ""
+        if last_word in _VERDICT_KEYWORDS:
+            return last_word
+        # Only check the last non-empty line
+        break
+    return ""
+
+
 # Node ID -> filename for disk artifacts.  Nodes not listed here
 # still get written as {node_id}.md.
 _ARTIFACT_FILENAMES: dict[str, str] = {
@@ -116,11 +146,17 @@ class CodergenHandler:
         if isinstance(result, str):
             # Plain string -> wrap as SUCCESS
             context[f"codergen.{node.id}.output"] = result[:max_ctx_output]
+            # Extract verdict from final line for conditional edge routing
+            verdict = _extract_verdict(result)
             handler_result = HandlerResult(
                 status=Outcome.SUCCESS,
                 output=result,
+                preferred_label=verdict,
                 notes=f"Codergen node '{node.id}' completed",
             )
+            if verdict:
+                context["verdict"] = verdict
+                logger.info("Extracted verdict '%s' from node '%s'", verdict, node.id)
         else:
             # Already a HandlerResult
             if result.output:
