@@ -125,7 +125,11 @@ def dispatch_test(parsed: ParsedCommand) -> None:
     """Dispatch the ``test`` command (``--test <PR>`` flag)."""
     import shutil  # noqa: PLC0415
 
-    from factory.crucible.orchestrator import CrucibleConfig, CrucibleVerdict, run_crucible  # noqa: PLC0415
+    from factory.crucible.orchestrator import (  # noqa: PLC0415
+        CrucibleConfig,
+        CrucibleVerdict,
+        run_crucible,
+    )
     from factory.ui.cli_colors import print_error  # noqa: PLC0415
     from factory.workspace.manager import Workspace  # noqa: PLC0415
 

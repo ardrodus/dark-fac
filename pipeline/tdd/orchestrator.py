@@ -187,7 +187,8 @@ def run_tdd_pipeline(
                 raw_output=cur_test.raw_output,
             )
         fw_r, fw_m = _timed(
-            lambda: run_feature_writer(specs, workspace, fw_input, invoke_fn=invoke_fn),
+            lambda _fw=fw_input: run_feature_writer(  # type: ignore[misc]
+                specs, workspace, _fw, invoke_fn=invoke_fn),
             f"feature_writer_r{rnd}",
         )
     
@@ -215,9 +216,9 @@ def run_tdd_pipeline(
         # Stage 5: Code Reviewer
         diff = _get_diff(ws_path)
         cr_r, cr_m = _timed(
-            lambda: run_code_reviewer(
-                specs, workspace, diff,
-                test_results=green_r.raw_output, invoke_fn=invoke_fn,
+            lambda _d=diff, _gr=green_r: run_code_reviewer(  # type: ignore[misc]
+                specs, workspace, _d,
+                test_results=_gr.raw_output, invoke_fn=invoke_fn,
             ),
             f"code_review_r{rnd}",
         )

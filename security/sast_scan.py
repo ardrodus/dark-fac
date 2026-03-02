@@ -12,6 +12,7 @@ from factory.security.scan_runner import create_scan_gate, run_tool
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from factory.gates.framework import GateRunner
     from factory.workspace.manager import Workspace
 

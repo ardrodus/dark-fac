@@ -10,12 +10,16 @@ user enters interactive mode.
 
 from __future__ import annotations
 
+import io
 import os
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from rich.console import Console
+
 from factory import __version__
+from factory.ui.theme import FULL_HEADER_BANNER
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -48,19 +52,14 @@ class MenuCommand:
 
 # ── Menu banner / rendering ────────────────────────────────────────
 
-_BANNER = f"""\
-\033[35m╔══════════════════════════════════════════╗\033[0m
-\033[35m║\033[0m  \033[1;35m\u2593\u2593\033[0m \033[1mDark Factory\033[0m  v{__version__:<17s}\033[35m║\033[0m
-\033[35m║\033[0m     Automated Issue-Dispatch Pipeline    \033[35m║\033[0m
-\033[35m║\033[0m                                          \033[35m║\033[0m
-\033[35m║\033[0m  \033[34m\u25cf\033[0m Sentinel  \033[33m\u25cf\033[0m Forge  \033[33m\u25cf\033[0m Crucible       \033[35m║\033[0m
-\033[35m║\033[0m  \033[32m\u25cf\033[0m Obelisk   \033[35m\u25cf\033[0m Ouroboros              \033[35m║\033[0m
-\033[35m╚══════════════════════════════════════════╝\033[0m"""
-
 
 def render_banner() -> str:
-    """Return the menu banner string."""
-    return _BANNER
+    """Render the Rich-markup header banner to an ANSI string."""
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=True, width=120)
+    console.print(FULL_HEADER_BANNER, highlight=False)
+    console.print(f"[dim]  v{__version__}  —  Automated Issue-Dispatch Pipeline[/]")
+    return buf.getvalue()
 
 
 def render_menu(commands: tuple[MenuCommand, ...]) -> str:

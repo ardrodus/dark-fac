@@ -10,7 +10,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from factory.specs.base import (
-    extract_json, format_analysis, run_generate, save_artifact, tup,
+    extract_json,
+    format_analysis,
+    run_generate,
+    save_artifact,
+    tup,
 )
 from factory.specs.prd_generator import PRDResult
 

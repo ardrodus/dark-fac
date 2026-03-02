@@ -230,7 +230,7 @@ def ingest_prd(
                             stories_valid=valid_count, issues_created=0,
                             issues_skipped=invalid_count, validations=validations)
 
-    valid_stories = [s for s, v in zip(stories, validations) if v.valid]
+    valid_stories = [s for s, v in zip(stories, validations, strict=False) if v.valid]
     if not valid_stories:
         sys.stderr.write("Error: No valid stories to create issues for.\n")
         return IngestResult(passed=False, stories_total=len(stories),

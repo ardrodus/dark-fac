@@ -1,0 +1,64 @@
+// Architecture Review Pipeline -- Console Strategy
+//
+// 4 sequential domain specialists + Solutions Architect Lead.
+// Lightest pipeline -- for CLI tools, scripts, and local-machine apps.
+// No cloud or infrastructure stages. Focused on code quality,
+// security, integration patterns, and performance.
+//
+// Agents: factory/agents/sa-{code-quality,security-console,
+//         integration-console,performance-console}.md, sa-lead-console.md
+//
+// Called by: Dark Forge (dark_forge.dot) when DEPLOY_STRATEGY=console
+
+digraph arch_review_console {
+    graph [
+        goal="Review a GitHub issue across 4 software quality domains and produce an Engineering Brief"
+    ]
+
+    // --- Entry ---
+    start [shape=Mdiamond, label="Approved Issue"]
+
+    // --- Stage 1: Code Quality (patterns, maintainability, SOLID) ---
+    sa_code_quality [
+        shape=box,
+        prompt="You are Stage 1/4 (Code Quality) in Dark Factory's console architecture review pipeline.\n\nRead your role definition (factory/agents/sa-code-quality.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: Code patterns, SOLID principles, maintainability, testability, error handling patterns, dependency management, documentation.\n\nThis is a CRITICAL stage. Output ONLY your stage section."
+    ]
+
+    // --- Stage 2: Security (input validation, secrets, OWASP) ---
+    // CRITICAL: Reviews ALL prior recommendations
+    sa_security_console [
+        shape=box,
+        prompt="You are Stage 2/4 (Security) in Dark Factory's console architecture review pipeline.\n\nCRITICAL: Review ALL prior stage recommendations for security implications.\n\nRead your role definition (factory/agents/sa-security-console.md), the GitHub issue, and ALL cumulative guidance.\n\nEvaluate: Input validation, command injection prevention, secrets handling, file system safety, OWASP top 10 (adapted for CLI), dependency vulnerabilities.\n\nThis is a CRITICAL stage. Output ONLY your stage section."
+    ]
+
+    // --- Stage 3: Integration (CLI UX, piping, exit codes, config) ---
+    sa_integration_console [
+        shape=box,
+        prompt="You are Stage 3/4 (Integration) in Dark Factory's console architecture review pipeline.\n\nRead your role definition (factory/agents/sa-integration-console.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: CLI argument parsing, stdin/stdout/stderr conventions, exit codes, piping compatibility, configuration file formats, environment variable handling.\n\nOutput ONLY your stage section."
+    ]
+
+    // --- Stage 4: Performance (runtime, memory, startup time) ---
+    sa_performance_console [
+        shape=box,
+        prompt="You are Stage 4/4 (Performance) in Dark Factory's console architecture review pipeline.\n\nRead your role definition (factory/agents/sa-performance-console.md), the GitHub issue, and ALL cumulative guidance.\n\nEvaluate: Runtime performance, memory usage, startup time, binary size, async I/O, caching strategies, algorithmic complexity.\n\nOutput ONLY your stage section."
+    ]
+
+    // --- Solutions Architect Lead (final synthesis) ---
+    sa_lead_console [
+        shape=box,
+        prompt="You are the Solutions Architect performing final review of the console architecture pipeline.\n\nYou have L1/L2/L3 tiered output from 4 specialist stages.\n\nSynthesize all reviews into an Engineering Brief:\n- Approved architectural approach for CLI/console application\n- Key constraints and risks\n- Implementation guidance per domain\n- Verdict: APPROVED | NEEDS_CHANGES | NEEDS_HUMAN\n\nIf critical stages (Code Quality, Security) failed, consider NEEDS_HUMAN."
+    ]
+
+    // --- Verdict ---
+    verdict [shape=diamond, label="SA Verdict?"]
+    approved [shape=Msquare, label="Engineering Brief\n(APPROVED)"]
+    needs_human [shape=house, label="Human Review Required"]
+
+    // --- Flow: Sequential ---
+    start -> sa_code_quality -> sa_security_console -> sa_integration_console -> sa_performance_console
+    sa_performance_console -> sa_lead_console -> verdict
+
+    verdict -> approved [label="APPROVED"]
+    verdict -> sa_code_quality [label="NEEDS_CHANGES\n(re-run pipeline)"]
+    verdict -> needs_human [label="NEEDS_HUMAN"]
+}

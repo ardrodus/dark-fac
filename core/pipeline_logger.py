@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -37,7 +37,7 @@ def _resolve_log_dir(config_dir: Path | None = None) -> Path:
 
 
 def _today_str() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(tz=UTC).strftime("%Y-%m-%d")
 
 
 def _purge_old_logs(log_dir: Path) -> None:
@@ -89,7 +89,7 @@ class PipelineLogger:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Write a structured log entry to JSONL and Python logging."""
-        ts = datetime.now(tz=timezone.utc).isoformat()
+        ts = datetime.now(tz=UTC).isoformat()
         record: dict[str, Any] = {
             "timestamp": ts,
             "level": level.upper(),

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import sys
 import traceback
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator
 
 _LOG_FILE = "onboarding.log"
 _MAX_RUNS = 3
@@ -39,7 +39,7 @@ class _Log:
         self._buf: list[str] = []
 
     def start(self) -> None:
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         self._buf = [_SEP, f"\nOnboarding run: {ts}\n"]
 
     def phase_start(self, name: str) -> None:
@@ -68,7 +68,7 @@ class _Log:
 
     @staticmethod
     def _ts() -> str:
-        return datetime.now(timezone.utc).strftime("%H:%M:%S")
+        return datetime.now(UTC).strftime("%H:%M:%S")
 
 
 @contextmanager
@@ -94,16 +94,21 @@ def _phase(log: _Log, name: str) -> Iterator[None]:
 def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int:  # noqa: PLR0912, PLR0915
     """Sequence all onboarding phases. Returns 0 on success, 1 on failure."""
     from factory.setup.claude_detect import (  # noqa: PLC0415
-        detect_claude_model, prompt_claude_model, save_claude_model,
+        detect_claude_model,
+        prompt_claude_model,
+        save_claude_model,
     )
     from factory.setup.config_init import (  # noqa: PLC0415
-        add_repo_to_config, init_config, prompt_deployment_strategy,
+        add_repo_to_config,
+        init_config,
+        prompt_deployment_strategy,
     )
     from factory.setup.docker_gen import write_generated_files  # noqa: PLC0415
     from factory.setup.github_auth import auto_connect_github, connect_github  # noqa: PLC0415
     from factory.setup.platform import check_dependencies, detect_platform  # noqa: PLC0415
     from factory.setup.project_analyzer import (  # noqa: PLC0415
-        analyze_project, confirm_or_override_analysis,
+        analyze_project,
+        confirm_or_override_analysis,
     )
     lp = _log_path(start)
     _rotate(lp)

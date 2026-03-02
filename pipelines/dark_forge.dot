@@ -1,0 +1,162 @@
+// Dark Forge: TDD Pipeline
+//
+// The build engine of Dark Factory. Takes an approved issue through
+// architecture review, PRD generation, story scheduling, and the
+// Test Writer -> Feature Writer -> Code Reviewer TDD loop.
+// Each story produces a merged PR.
+//
+// The architecture review is a SEPARATE pipeline, selected by deployment
+// strategy. Dark Forge invokes the appropriate one:
+//   arch_review_web.dot     --  6 specialists + SA Lead
+//   arch_review_console.dot --  4 specialists + SA Lead
+//
+// Demonstrates: pipeline invocation, supervisor loops, conditional branching,
+// tool confinement, information gap (test writer and feature writer are isolated).
+
+digraph dark_forge {
+    graph [
+        goal="Transform an approved GitHub issue into merged PRs via architecture review + TDD"
+    ]
+
+    // --- Entry ---
+    start [shape=Mdiamond, label="Approved Issue"]
+
+    // ===========================================
+    // Architecture Review (external pipeline)
+    //
+    // Invokes the strategy-specific arch review pipeline.
+    // The pipeline is selected at runtime based on DEPLOY_STRATEGY:
+    //   web     -> arch_review_web.dot     ( 6 stages)
+    //   console -> arch_review_console.dot ( 4 stages)
+    //
+    // Returns: Engineering Brief (APPROVED | NEEDS_CHANGES | NEEDS_HUMAN)
+    // ===========================================
+
+    arch_review [
+        shape=component,
+        label="Architecture Review\n(strategy-selected pipeline)",
+        pipeline="arch_review_${strategy}.dot"
+    ]
+
+    arch_needs_human [shape=house, label="Human Arch Review Required"]
+
+    // ===========================================
+    // Specification Generation (US-301 through US-307)
+    //
+    // Sequential spec pipeline: each step builds on the previous.
+    // All specs saved to .dark-factory/specs/{issue_number}/
+    // ===========================================
+
+    // US-301: PRD generation
+    gen_prd [
+        shape=box,
+        prompt="You are the PRD Generator. Given this GitHub issue: $issue\n\nEngineering Brief (from Architecture Review):\n$engineering_brief\n\nGenerate a Product Requirements Document with:\n- Title, description, scope\n- User stories with id, title, description, acceptance_criteria, priority, depends_on\n- Non-functional requirements\n- Out of scope items\n\nSupport L1/L2/L3 detail levels based on issue complexity.\nOutput as structured JSON (PRDResult format).\nSave to .dark-factory/specs/$issue_number/prd.json"
+    ]
+
+    // US-302: Technical design document
+    gen_design [
+        shape=box,
+        prompt="You are the Design Agent. Given this PRD and codebase analysis:\n\nPRD:\n$gen_prd\n\nGenerate a Technical Design Document covering:\n- Architecture decisions (with rationale)\n- Component changes (new/modified/removed)\n- Data model changes\n- API changes\n- Risks and mitigations\n\nReference existing codebase patterns from the workspace.\nOutput as structured markdown.\nSave to .dark-factory/specs/$issue_number/design.md"
+    ]
+
+    // US-303: API contract
+    gen_api_contract [
+        shape=box,
+        prompt="You are the API Contract Generator. Given the design doc:\n\n$gen_design\n\nAuto-detect the contract type from the codebase:\n- OpenAPI for REST APIs\n- GraphQL schema for GraphQL\n- Protobuf for gRPC\n- CLI spec for command-line tools\n\nGenerate the appropriate contract spec with endpoints, request/response schemas, error codes.\nSave to .dark-factory/specs/$issue_number/api-contract.*"
+    ]
+
+    // US-304: Database schema
+    gen_schema [
+        shape=box,
+        prompt="You are the Schema Generator. Given the design doc:\n\n$gen_design\n\nDetect the database type from the codebase (PostgreSQL, MySQL, SQLite, MongoDB, etc.).\nGenerate:\n- DDL for new tables/columns\n- Migration scripts for changes\n- Index recommendations\n\nSave to .dark-factory/specs/$issue_number/schema.sql"
+    ]
+
+    // US-305: Interface definitions
+    gen_interfaces [
+        shape=box,
+        prompt="You are the Interface Generator. Given the design doc:\n\n$gen_design\n\nGenerate language-appropriate typed interface definitions:\n- TypeScript: interfaces/types\n- Python: Protocol classes\n- Go: interfaces\n- Rust: traits\n- Java: interfaces\n\nDetect the language from the codebase.\nSave to .dark-factory/specs/$issue_number/interfaces/"
+    ]
+
+    // US-306: Test strategy
+    gen_test_strategy [
+        shape=box,
+        prompt="You are the Test Strategy Generator. Given:\n\nPRD:\n$gen_prd\n\nDesign:\n$gen_design\n\nGenerate a test strategy covering:\n- Unit tests: what to test, expected assertions\n- Integration tests: component interactions\n- E2E tests: user-facing flows\n- Fixtures and mocks needed\n- Coverage targets\n- Existing tests that may be affected\n\nSave to .dark-factory/specs/$issue_number/test-strategy.md"
+    ]
+
+    // US-307: Story scheduling (parse PRD into ordered stories -> GitHub Issues)
+    schedule_stories [
+        shape=box,
+        prompt="Parse the PRD into ordered user stories ready for implementation.\n\nPRD:\n$gen_prd\n\nFor each story:\n- Validate required fields (id, title, description, acceptance_criteria)\n- Warn if acceptance criteria > 10 items (suggest split)\n- Order by dependency chain\n\nOutput as JSON array with fields: id, title, description, acceptance_criteria, depends_on.\nCreate GitHub Issues with factory labels (queued, priority) if configured."
+    ]
+
+    // --- Per-Story TDD Loop (supervisor retries whole block) ---
+    story_loop [
+        shape=hexagon,
+        label="For Each Story",
+        max_iterations=5
+    ]
+
+    // --- Stage 1: Test Writer (isolated to tests/) ---
+    test_writer [
+        shape=box,
+        prompt="You are the Test Writer. You have access ONLY to the tests/ directory.\n\nWrite failing tests for this user story:\n$current_story\n\nDesign contract:\n$gen_prd\n\nRules:\n- Write pytest tests that clearly express the acceptance criteria\n- Tests MUST fail (the feature doesn't exist yet)\n- Include edge cases and error scenarios\n- Do NOT implement any production code\n- Output test files only"
+    ]
+
+    // --- Stage 2: Feature Writer (isolated to src/, blind to tests) ---
+    feature_writer [
+        shape=box,
+        prompt="You are the Feature Writer. You have access to src/ and lib/ ONLY.\nYou CANNOT see the test source code.\n\nImplement the feature for this user story:\n$current_story\n\nDesign artifacts:\n$gen_prd\n\nRules:\n- Implement against the design spec, NOT by reverse-engineering tests\n- Run pytest to validate (black-box, you see pass/fail only)\n- Production-quality code with proper error handling\n- Follow existing code conventions"
+    ]
+
+    // --- Run Tests ---
+    run_tests [
+        shape=parallelogram,
+        label="pytest $test_files"
+    ]
+    tests_pass [shape=diamond, label="Tests Pass?"]
+
+    // --- Stage 3: Code Reviewer (read-only) ---
+    code_reviewer [
+        shape=box,
+        prompt="You are the Code Reviewer. You have READ-ONLY access to the entire repository.\n\nReview the implementation for:\n- Correctness against design spec\n- Code quality and conventions\n- Security vulnerabilities (OWASP top 10)\n- Error handling completeness\n- Test coverage adequacy\n\nProvide verdict: approved | changes_requested | human_review_required\nIf changes_requested, provide specific actionable feedback."
+    ]
+    review_verdict [shape=diamond, label="Review\nVerdict?"]
+
+    // --- Feedback Loop ---
+    feedback_check [shape=diamond, label="Rounds < 3?"]
+
+    // --- Outputs ---
+    create_pr [
+        shape=parallelogram,
+        label="gh pr create --title '$current_story.title' --body '$review_summary'"
+    ]
+    escalate [shape=house, label="Human Review Required"]
+    done [shape=Msquare, label="PR Created"]
+
+    // --- Flow ---
+    start -> arch_review
+
+    // Architecture review exits
+    arch_review -> gen_prd [label="APPROVED"]
+    arch_review -> arch_needs_human [label="NEEDS_HUMAN"]
+    arch_review -> arch_review [label="NEEDS_CHANGES\n(re-run)"]
+
+    // Spec generation pipeline (US-301 -> US-307)
+    gen_prd -> gen_design -> gen_api_contract -> gen_schema -> gen_interfaces -> gen_test_strategy -> schedule_stories
+
+    // Stories -> TDD
+    schedule_stories -> story_loop
+    story_loop -> test_writer -> feature_writer -> run_tests -> tests_pass
+
+    tests_pass -> code_reviewer [label="pass"]
+    tests_pass -> feature_writer [label="fail (retry)"]
+
+    code_reviewer -> review_verdict
+    review_verdict -> create_pr [label="approved"]
+    review_verdict -> feedback_check [label="changes_requested"]
+
+    feedback_check -> feature_writer [label="yes"]
+    feedback_check -> escalate [label="no (>=3 rounds)"]
+
+    create_pr -> done
+}

@@ -13,7 +13,11 @@ import sys
 from pathlib import Path
 
 from factory.core.config_manager import (
-    get_config_value, load_config, resolve_config_dir, save_config, set_config_value,
+    get_config_value,
+    load_config,
+    resolve_config_dir,
+    save_config,
+    set_config_value,
 )
 from factory.integrations.shell import gh, run_command
 

@@ -6,7 +6,7 @@ import os
 import stat
 import sys
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -123,7 +123,7 @@ def add_repo_to_config(
         if isinstance(r, dict):
             r["active"] = False
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry: dict[str, object] = {
         "name": repo,
         "strategy": strategy,

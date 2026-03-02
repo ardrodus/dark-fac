@@ -106,6 +106,7 @@ def _parse_java(raw: str) -> list[Finding]:
 
 def _scan_java(ws: str) -> list[Finding]:
     import shutil  # noqa: PLC0415
+
     from factory.integrations.shell import run_command  # noqa: PLC0415
     if not shutil.which("dependency-check"):
         return []

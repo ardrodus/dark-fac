@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "agents" / "prompts"
+_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "agents"
 _AGENT_TIMEOUT = 120
 _RISK_LEVELS = frozenset({"low", "medium", "high", "critical"})
 
@@ -55,7 +55,7 @@ class SpecialistResult:
 
 
 def _load_prompt(template_name: str) -> str:
-    """Read a prompt template from factory/agents/prompts/."""
+    """Read a prompt template from factory/agents/."""
     path = _PROMPTS_DIR / template_name
     return path.read_text(encoding="utf-8")
 
@@ -186,47 +186,56 @@ SA_CODE_QUALITY = Specialist(
     name="sa-code-quality", role="Code Quality",
     prompt_template="sa-code-quality.md",
 )
-SA_SECURITY = Specialist(
-    name="sa-security", role="Security",
-    prompt_template="sa-security.md",
+SA_SECURITY_WEB = Specialist(
+    name="sa-security-web", role="Security",
+    prompt_template="sa-security-web.md",
 )
-SA_INTEGRATION = Specialist(
-    name="sa-integration", role="Integration",
-    prompt_template="sa-integration.md",
+SA_INTEGRATION_WEB = Specialist(
+    name="sa-integration-web", role="Integration",
+    prompt_template="sa-integration-web.md",
 )
-SA_PERFORMANCE = Specialist(
-    name="sa-performance", role="Performance",
-    prompt_template="sa-performance.md",
+SA_PERFORMANCE_WEB = Specialist(
+    name="sa-performance-web", role="Performance",
+    prompt_template="sa-performance-web.md",
 )
-SA_TESTING = Specialist(
-    name="sa-testing", role="Testing",
-    prompt_template="sa-testing.md",
+SA_DATABASE_WEB = Specialist(
+    name="sa-database-web", role="Database",
+    prompt_template="sa-database-web.md",
 )
-SA_DEPENDENCIES = Specialist(
-    name="sa-dependencies", role="Dependencies",
-    prompt_template="sa-dependencies.md",
+SA_FRONTEND = Specialist(
+    name="sa-frontend", role="Frontend",
+    prompt_template="sa-frontend.md",
 )
-SA_API_DESIGN = Specialist(
-    name="sa-api-design", role="API Design",
-    prompt_template="sa-api-design.md",
+SA_BACKEND = Specialist(
+    name="sa-backend", role="Backend",
+    prompt_template="sa-backend.md",
 )
-SA_DATABASE = Specialist(
-    name="sa-database", role="Database",
-    prompt_template="sa-database.md",
+SA_LEAD_WEB = Specialist(
+    name="sa-lead-web", role="Lead",
+    prompt_template="sa-lead-web.md",
 )
-SA_UX = Specialist(
-    name="sa-ux", role="UX",
-    prompt_template="sa-ux.md",
+SA_SECURITY_CONSOLE = Specialist(
+    name="sa-security-console", role="Security (Console)",
+    prompt_template="sa-security-console.md",
 )
-SA_DEVOPS = Specialist(
-    name="sa-devops", role="DevOps",
-    prompt_template="sa-devops.md",
+SA_INTEGRATION_CONSOLE = Specialist(
+    name="sa-integration-console", role="Integration (Console)",
+    prompt_template="sa-integration-console.md",
+)
+SA_PERFORMANCE_CONSOLE = Specialist(
+    name="sa-performance-console", role="Performance (Console)",
+    prompt_template="sa-performance-console.md",
+)
+SA_LEAD_CONSOLE = Specialist(
+    name="sa-lead-console", role="Lead (Console)",
+    prompt_template="sa-lead-console.md",
 )
 
 ALL_SPECIALISTS: tuple[Specialist, ...] = (
-    SA_CODE_QUALITY, SA_SECURITY, SA_INTEGRATION, SA_PERFORMANCE,
-    SA_TESTING, SA_DEPENDENCIES, SA_API_DESIGN, SA_DATABASE,
-    SA_UX, SA_DEVOPS,
+    SA_CODE_QUALITY, SA_SECURITY_WEB, SA_INTEGRATION_WEB, SA_PERFORMANCE_WEB,
+    SA_DATABASE_WEB, SA_FRONTEND, SA_BACKEND, SA_LEAD_WEB,
+    SA_SECURITY_CONSOLE, SA_INTEGRATION_CONSOLE, SA_PERFORMANCE_CONSOLE,
+    SA_LEAD_CONSOLE,
 )
 
 SPECIALISTS_BY_NAME: dict[str, Specialist] = {s.name: s for s in ALL_SPECIALISTS}

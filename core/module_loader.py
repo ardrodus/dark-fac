@@ -54,7 +54,7 @@ def validate_manifest(
 
     # DFS cycle detection (white/gray/black colouring)
     white, gray, black = 0, 1, 2
-    colour: dict[str, int] = {n: white for n in modules}
+    colour: dict[str, int] = dict.fromkeys(modules, white)
     stack: list[str] = []
 
     def _dfs(node: str) -> None:

@@ -1,0 +1,36 @@
+// Deploy: Deployment Pipeline (Template)
+//
+// Empty deployment template that ships with Dark Factory. Does nothing
+// out of the box — customize this pipeline to match your deployment
+// workflow.
+//
+// To add deployment steps, insert nodes between "start" and "done"
+// and wire them with edges. Example nodes you might add:
+//
+//   staging        — deploy to a staging environment
+//   smoke_test     — run smoke tests against staged deployment
+//   prod_gate      — manual or automated approval gate
+//   production     — promote to production
+//
+// Example flow (uncomment and adapt):
+//
+//   staging [shape=parallelogram, label="Deploy to Staging"]
+//   smoke_test [shape=box, prompt="Run smoke tests against staging..."]
+//   prod_gate [shape=diamond, label="Production\nApproved?"]
+//   production [shape=parallelogram, label="Deploy to Production"]
+//
+//   start -> staging -> smoke_test -> prod_gate
+//   prod_gate -> production [label="approved"]
+//   prod_gate -> done [label="rejected"]
+//   production -> done
+
+digraph deploy {
+    graph [
+        goal="Deploy validated code (no deployment configured — customize this template)"
+    ]
+
+    start [shape=Mdiamond, label="Crucible GO"]
+    done  [shape=Msquare,  label="Deploy Complete\n(no deployment configured)"]
+
+    start -> done
+}

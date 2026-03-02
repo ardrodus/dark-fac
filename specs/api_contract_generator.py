@@ -8,10 +8,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from factory.setup.project_analyzer import AnalysisResult
 
 from factory.specs.base import (
-    run_generate, save_artifact, strip_fences, validate_checks,
+    run_generate,
+    save_artifact,
+    strip_fences,
+    validate_checks,
 )
 from factory.specs.design_generator import DesignResult
 
@@ -20,11 +24,16 @@ _PY = ("requirements.txt", "setup.py", "setup.cfg", "pyproject.toml")
 _GQL_JS = ("apollo-server", "@apollo/server", "graphql-yoga", "express-graphql", "@nestjs/graphql", "type-graphql")
 _GQL_PY = ("graphene", "strawberry", "ariadne", "graphql-core")
 _CLI_JS = ("commander", "yargs", "oclif", "inquirer", "meow", "cac", "citty", "clipanion")
-_CLI_PY, _CLI_RS, _CLI_GO = ("click", "typer", "argparse", "fire", "cement"), ("clap", "structopt"), ("cobra", "urfave/cli", "kong")
-_REST_JS = ("express", "fastify", "koa", "hapi", "@hapi/hapi", "@nestjs/core", "next", "nuxt", "hono", "elysia")
+_CLI_PY = ("click", "typer", "argparse", "fire", "cement")
+_CLI_RS = ("clap", "structopt")
+_CLI_GO = ("cobra", "urfave/cli", "kong")
+_REST_JS = (
+    "express", "fastify", "koa", "hapi", "@hapi/hapi", "@nestjs/core", "next", "nuxt", "hono", "elysia"
+)
 _REST_PY = ("flask", "fastapi", "django", "djangorestframework", "starlette", "tornado", "falcon", "sanic", "aiohttp")
 _REST_JVM = ("spring-boot", "spring-web", "javax.ws.rs", "jakarta.ws.rs", "quarkus", "micronaut", "dropwizard")
-_REST_GO, _REST_RS = ("gin-gonic", "gorilla/mux", "chi", "echo", "fiber"), ("actix-web", "axum", "rocket", "warp", "tide")
+_REST_GO = ("gin-gonic", "gorilla/mux", "chi", "echo", "fiber")
+_REST_RS = ("actix-web", "axum", "rocket", "warp", "tide")
 _REST_CS = ("Microsoft.AspNetCore", "Swashbuckle", "Microsoft.NET.Sdk.Web")
 
 

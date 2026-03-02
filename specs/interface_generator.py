@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from factory.setup.project_analyzer import AnalysisResult
 
 from factory.specs.base import run_generate, save_artifact, strip_fences
@@ -48,27 +49,34 @@ _LANG_MAP: dict[str, InterfaceLang] = {
 _SPEC: dict[InterfaceLang, tuple[str, str, str, str]] = {
     InterfaceLang.TS: (
         "TypeScript Interfaces", ".ts",
-        "**TypeScript** (.ts): `export interface` with method sigs, `export type` for DTOs, JSDoc on all, generics, `?`/`readonly`, import statements for dependencies",
+        "**TypeScript** (.ts): `export interface` with method sigs, `export type` for DTOs,"
+        " JSDoc on all, generics, `?`/`readonly`, import statements for dependencies",
         r"(export\s+(interface|type|function)|interface\s+\w+|type\s+\w+)"),
     InterfaceLang.PY: (
         "Python Protocol/TypedDict Specs", ".py",
-        "**Python** (.py): `typing.Protocol` for interfaces, `TypedDict` for data, `from __future__ import annotations`, full type hints, docstrings with Args/Returns/Raises, Exception subclasses",
+        "**Python** (.py): `typing.Protocol` for interfaces, `TypedDict` for data,"
+        " `from __future__ import annotations`, full type hints, docstrings with Args/Returns/Raises,"
+        " Exception subclasses",
         r"(class\s+\w+|Protocol|TypedDict|def\s+\w+)"),
     InterfaceLang.GO: (
         "Go Interface Definitions", ".go",
-        "**Go** (.go): `type X interface{}` with method sigs, `type X struct{}` with field tags for data, godoc comments, `context.Context` first param, `error` returns",
+        "**Go** (.go): `type X interface{}` with method sigs, `type X struct{}` with field tags"
+        " for data, godoc comments, `context.Context` first param, `error` returns",
         r"(type\s+\w+\s+interface|type\s+\w+\s+struct|func\s)"),
     InterfaceLang.RS: (
         "Rust Trait Definitions", ".rs",
-        "**Rust** (.rs): `pub trait` with method sigs, `pub struct`/`pub enum` for data, `///` doc comments, `Result<T,E>` for fallible ops, `async fn` where needed",
+        "**Rust** (.rs): `pub trait` with method sigs, `pub struct`/`pub enum` for data,"
+        " `///` doc comments, `Result<T,E>` for fallible ops, `async fn` where needed",
         r"(pub\s+trait\s+\w+|trait\s+\w+|pub\s+struct\s+\w+|pub\s+enum\s+\w+)"),
     InterfaceLang.JAVA: (
         "Java Interface Definitions", ".java",
-        "**Java** (.java): `public interface` with method sigs, record/DTO types, Javadoc on all, generics, `@Nullable` for optional, exception subclasses",
+        "**Java** (.java): `public interface` with method sigs, record/DTO types,"
+        " Javadoc on all, generics, `@Nullable` for optional, exception subclasses",
         r"(public\s+interface\s+\w+|interface\s+\w+|public\s+class\s+\w+)"),
     InterfaceLang.JS: (
         "JavaScript JSDoc Specifications", ".js",
-        "**JavaScript** (.js): `@typedef`/`@callback` for types, `@param`/`@returns`/`@throws` on functions, `module.exports` or `export`, function stubs only",
+        "**JavaScript** (.js): `@typedef`/`@callback` for types, `@param`/`@returns`/`@throws`"
+        " on functions, `module.exports` or `export`, function stubs only",
         r"(@typedef|@param|@returns|@callback|function\s+\w+|export\s+(function|const|class))"),
 }
 

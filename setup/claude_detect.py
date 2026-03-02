@@ -118,7 +118,9 @@ def prompt_claude_model() -> str:
 def save_claude_model(model: str) -> None:
     """Persist *model* to .dark-factory/config.json and update the cache."""
     from factory.core.config_manager import (  # noqa: PLC0415
-        load_config, save_config, set_config_value,
+        load_config,
+        save_config,
+        set_config_value,
     )
     global _cached_model  # noqa: PLW0603
     cfg = load_config()

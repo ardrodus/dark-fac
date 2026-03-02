@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from factory.setup.project_analyzer import AnalysisResult
 
 from factory.specs.base import run_generate, save_artifact, strip_fences

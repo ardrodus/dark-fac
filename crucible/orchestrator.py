@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from factory.integrations.shell import CommandResult
     from factory.workspace.manager import Workspace
 
@@ -74,7 +75,9 @@ def _timed(phase: str, fn: Callable[[], bool], timeout: int) -> PhaseMetrics:
     except Exception as exc:  # noqa: BLE001
         return PhaseMetrics(phase=phase, duration_s=time.monotonic() - t0, passed=False, detail=str(exc))
     el = time.monotonic() - t0
-    return PhaseMetrics(phase=phase, duration_s=el, passed=False, detail="timeout") if el > timeout else PhaseMetrics(phase=phase, duration_s=el, passed=ok)
+    if el > timeout:
+        return PhaseMetrics(phase=phase, duration_s=el, passed=False, detail="timeout")
+    return PhaseMetrics(phase=phase, duration_s=el, passed=ok)
 
 def _cf(ws: Workspace, cfg: CrucibleConfig) -> str:
     if cfg.compose_file:
@@ -188,7 +191,12 @@ def _parse_tests(raw: str) -> tuple[list[TestResult], int, int, int]:
                 elif st in ("unexpected", "flaky"):
                     status = "fail"
             results.append(TestResult(name=name, status=status, duration_ms=dur))
-            pc, fc, sc = (pc + 1, fc, sc) if status == "pass" else (pc, fc + 1, sc) if status == "fail" else (pc, fc, sc + 1)
+            if status == "pass":
+                pc += 1
+            elif status == "fail":
+                fc += 1
+            else:
+                sc += 1
     return results, pc, fc, sc
 
 def _verdict(pc: int, fc: int, sc: int) -> CrucibleVerdict:

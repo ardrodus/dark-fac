@@ -1,6 +1,11 @@
-"""Quality gate checks — lint, type-check, and test runners.
+"""Quality and security gate checks.
 
 Gate enumeration uses a static registry instead of dynamic discovery.
+Security gates (secret-scan, dependency-scan, sast-scan, image-scan,
+sbom-scan, ai-security-review) are thin wrappers in this package that
+bridge to :mod:`factory.security` implementations.  Sentinel invokes
+each security gate independently at the appropriate pipeline lifecycle
+point via ``factory.gates.<gate_module>.create_runner``.
 """
 
 from factory.gates.contract_validation import run_contract_validation

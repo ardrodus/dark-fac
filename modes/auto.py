@@ -1,0 +1,512 @@
+"""Auto mode — headless continuous loop for autonomous issue processing.
+
+Watches for GitHub issues (poll-based), then runs the full cycle per issue:
+
+  1. **Dark Forge** — pipeline execution with Sentinel gates at lifecycle points.
+  2. **Crucible** — end-to-end test validation with Sentinel gates.
+  3. **Deploy** — push the working branch to the remote.
+  4. **Ouroboros** — capture learnings and optionally trigger self-improvement.
+
+Verdict handling:
+
+- ``GO`` → deploy the change and move to the next issue.
+- ``NO_GO`` → feed failure context back to Dark Forge for retry.
+- ``NEEDS_LIVE`` → comment on the ticket, add a label, queue for human validation.
+
+Graceful shutdown on ``SIGINT`` / ``SIGTERM``.
+"""
+
+from __future__ import annotations
+
+import logging
+import signal
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import TYPE_CHECKING
+
+from factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
+from factory.dispatch.issue_dispatcher import (
+    LABEL_DONE,
+    LABEL_FAILED,
+    LABEL_IN_PROGRESS,
+    LABEL_QUEUED,
+    DispatcherState,
+    select_next_issue,
+)
+from factory.integrations.gh_safe import (
+    GhSafeError,
+    IssueInfo,
+    add_label,
+    comment_on_issue,
+    remove_label,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from factory.workspace.manager import Workspace
+
+logger = logging.getLogger(__name__)
+
+# ── Labels ────────────────────────────────────────────────────────────
+
+LABEL_NEEDS_LIVE = "factory:needs-live"
+
+# ── Defaults ──────────────────────────────────────────────────────────
+
+_DEFAULT_POLL_INTERVAL = 30.0
+_DEFAULT_MAX_FORGE_RETRIES = 2
+
+
+# ── Value types ───────────────────────────────────────────────────────
+
+
+class CycleOutcome(Enum):
+    """Possible outcomes for a full auto-mode cycle."""
+
+    SUCCESS = "success"
+    NO_GO = "no_go"
+    NEEDS_LIVE = "needs_live"
+    FORGE_FAILED = "forge_failed"
+    DEPLOY_FAILED = "deploy_failed"
+    ERROR = "error"
+
+
+@dataclass(frozen=True, slots=True)
+class CycleResult:
+    """Outcome of processing a single issue through the full cycle."""
+
+    issue_number: int
+    outcome: CycleOutcome
+    message: str
+    forge_attempts: int = 0
+    duration_s: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class AutoModeConfig:
+    """Configuration for the auto-mode loop."""
+
+    repo: str = ""
+    cwd: str | None = None
+    poll_interval: float = _DEFAULT_POLL_INTERVAL
+    max_forge_retries: int = _DEFAULT_MAX_FORGE_RETRIES
+    max_cycles: int | None = None
+
+    # Dependency injection hooks (for testing and customisation)
+    forge_fn: Callable[[IssueInfo, str], bool] | None = None
+    crucible_fn: Callable[[Workspace, int], CrucibleResult] | None = None
+    deploy_fn: Callable[[Workspace, int], bool] | None = None
+    ouroboros_fn: Callable[[IssueInfo, CycleOutcome, str], None] | None = None
+    acquire_workspace_fn: Callable[[str, int], Workspace] | None = None
+    sentinel_fn: Callable[[str, str], bool] | None = None
+    sleep_fn: Callable[[float], None] | None = None
+
+
+@dataclass(slots=True)
+class AutoModeState:
+    """Mutable runtime state for the auto-mode loop."""
+
+    shutdown_requested: bool = False
+    cycles_completed: int = 0
+    results: list[CycleResult] = field(default_factory=list)
+    dispatcher: DispatcherState = field(default_factory=DispatcherState)
+
+
+# ── Signal handling ───────────────────────────────────────────────────
+
+
+def _install_signal_handlers(state: AutoModeState) -> None:
+    """Register SIGINT/SIGTERM handlers that set the shutdown flag."""
+
+    def _handler(signum: int, _frame: object) -> None:
+        sig_name = signal.Signals(signum).name
+        logger.info("Received %s — requesting graceful shutdown", sig_name)
+        state.shutdown_requested = True
+
+    signal.signal(signal.SIGINT, _handler)
+    signal.signal(signal.SIGTERM, _handler)
+
+
+# ── Dark Forge (pipeline) ────────────────────────────────────────────
+
+
+def _run_sentinel_gate(workspace_path: str, phase: str, *, sentinel_fn: Callable[[str, str], bool] | None) -> bool:
+    """Fire a Sentinel gate at a lifecycle point inside a phase.
+
+    Returns ``True`` if the gate passes (or no sentinel function is configured).
+    """
+    if sentinel_fn is None:
+        return _default_sentinel(workspace_path, phase)
+    return sentinel_fn(workspace_path, phase)
+
+
+def _default_sentinel(workspace_path: str, phase: str) -> bool:
+    """Run default Sentinel gate checks using the gate framework."""
+    from factory.gates.framework import GateRunner  # noqa: PLC0415
+
+    runner = GateRunner(f"sentinel-{phase}", metrics_dir=workspace_path)
+
+    def _check() -> bool:
+        return True
+
+    runner.register_check(f"{phase}-integrity", _check)
+    report = runner.run()
+    return report.passed
+
+
+def _default_forge(issue: IssueInfo, workspace_path: str) -> bool:
+    """Run the Dark Forge pipeline for an issue."""
+    from factory.pipeline.orchestrator import PipelineConfig, run_full_pipeline  # noqa: PLC0415
+    from factory.pipeline.runner import StoryContext  # noqa: PLC0415
+
+    story = StoryContext(
+        title=issue.title,
+        description=f"Issue #{issue.number}: {issue.title}",
+        acceptance_criteria=(),
+        changed_files=(),
+    )
+    config = PipelineConfig(max_retries=0, cwd=workspace_path)
+    result = run_full_pipeline(story, config=config)
+    return result.passed
+
+
+def run_dark_forge(
+    issue: IssueInfo,
+    workspace_path: str,
+    *,
+    forge_fn: Callable[[IssueInfo, str], bool] | None = None,
+    sentinel_fn: Callable[[str, str], bool] | None = None,
+) -> bool:
+    """Execute Dark Forge with Sentinel gates at lifecycle points."""
+    # Pre-forge Sentinel gate
+    if not _run_sentinel_gate(workspace_path, "forge-pre", sentinel_fn=sentinel_fn):
+        logger.warning("Sentinel pre-forge gate failed for #%d", issue.number)
+        return False
+
+    # Run the forge pipeline
+    fn = forge_fn or _default_forge
+    passed = fn(issue, workspace_path)
+
+    # Post-forge Sentinel gate
+    if passed and not _run_sentinel_gate(workspace_path, "forge-post", sentinel_fn=sentinel_fn):
+        logger.warning("Sentinel post-forge gate failed for #%d", issue.number)
+        return False
+
+    return passed
+
+
+# ── Crucible ──────────────────────────────────────────────────────────
+
+
+def _default_crucible(workspace: Workspace, issue_number: int) -> CrucibleResult:
+    """Run the Crucible test suite."""
+    from factory.crucible.orchestrator import run_crucible  # noqa: PLC0415
+
+    return run_crucible(workspace, issue_number=issue_number)
+
+
+def run_crucible_phase(
+    workspace: Workspace,
+    issue_number: int,
+    *,
+    crucible_fn: Callable[[Workspace, int], CrucibleResult] | None = None,
+    sentinel_fn: Callable[[str, str], bool] | None = None,
+) -> CrucibleResult:
+    """Execute Crucible with Sentinel gates at lifecycle points."""
+    # Pre-crucible Sentinel gate
+    if not _run_sentinel_gate(workspace.path, "crucible-pre", sentinel_fn=sentinel_fn):
+        logger.warning("Sentinel pre-crucible gate failed for #%d", issue_number)
+        return CrucibleResult(
+            verdict=CrucibleVerdict.NO_GO,
+            test_results=(),
+            screenshots=(),
+            logs="",
+            phases=(),
+            error="Sentinel pre-crucible gate failed",
+        )
+
+    fn = crucible_fn or _default_crucible
+    result = fn(workspace, issue_number)
+
+    # Post-crucible Sentinel gate (only on GO)
+    if result.verdict == CrucibleVerdict.GO:
+        if not _run_sentinel_gate(workspace.path, "crucible-post", sentinel_fn=sentinel_fn):
+            logger.warning("Sentinel post-crucible gate failed for #%d", issue_number)
+            return CrucibleResult(
+                verdict=CrucibleVerdict.NO_GO,
+                test_results=result.test_results,
+                screenshots=result.screenshots,
+                logs=result.logs,
+                phases=result.phases,
+                error="Sentinel post-crucible gate failed",
+            )
+
+    return result
+
+
+# ── Deploy ────────────────────────────────────────────────────────────
+
+
+def _default_deploy(workspace: Workspace, issue_number: int) -> bool:
+    """Push the working branch to the remote."""
+    from factory.integrations.shell import git  # noqa: PLC0415
+
+    result = git(["push", "origin", workspace.branch], cwd=workspace.path, timeout=120)
+    if result.returncode != 0:
+        logger.error("Deploy failed for #%d: %s", issue_number, result.stderr.strip())
+        return False
+    logger.info("Deployed branch %s for #%d", workspace.branch, issue_number)
+    return True
+
+
+# ── Ouroboros ─────────────────────────────────────────────────────────
+
+
+def _default_ouroboros(issue: IssueInfo, outcome: CycleOutcome, detail: str) -> None:
+    """Capture learnings from the cycle into the knowledge store."""
+    try:
+        from factory.knowledge.patterns import Pattern, PatternStore  # noqa: PLC0415
+
+        store = PatternStore(".")
+        pattern_name = f"auto-cycle-{issue.number}"
+        existing = store.get(pattern_name)
+
+        if existing is not None:
+            store.update_confidence(pattern_name, success=outcome == CycleOutcome.SUCCESS)
+        else:
+            store.add(
+                Pattern(
+                    name=pattern_name,
+                    type="auto-cycle",
+                    content=f"Issue #{issue.number} ({issue.title}): {outcome.value} — {detail}",
+                    confidence=0.7 if outcome == CycleOutcome.SUCCESS else 0.3,
+                    tags=["auto-mode", outcome.value],
+                )
+            )
+
+        store.prune_stale()
+        logger.info("Ouroboros: recorded learnings for #%d (%s)", issue.number, outcome.value)
+    except Exception:
+        logger.exception("Ouroboros: failed to record learnings for #%d", issue.number)
+
+
+# ── Verdict handling ──────────────────────────────────────────────────
+
+
+def _handle_needs_live(issue_number: int, crucible_result: CrucibleResult, *, config: AutoModeConfig) -> None:
+    """Queue issue for human validation: comment + tag."""
+    body = (
+        f"**Dark Factory — NEEDS_LIVE verdict**\n\n"
+        f"Crucible tests produced a `NEEDS_LIVE` verdict for this issue.\n"
+        f"Some tests were skipped and require manual validation in a live environment.\n\n"
+        f"- Pass: {crucible_result.pass_count}\n"
+        f"- Fail: {crucible_result.fail_count}\n"
+        f"- Skip: {crucible_result.skip_count}\n"
+        f"- Duration: {crucible_result.duration_s:.1f}s\n"
+    )
+    try:
+        comment_on_issue(issue_number, body, repo=config.repo or None, cwd=config.cwd)
+    except GhSafeError:
+        logger.exception("Failed to comment on #%d for NEEDS_LIVE", issue_number)
+    try:
+        add_label(issue_number, LABEL_NEEDS_LIVE, repo=config.repo or None, cwd=config.cwd)
+    except GhSafeError:
+        logger.exception("Failed to add NEEDS_LIVE label to #%d", issue_number)
+
+
+def _label_transition(issue_number: int, *, remove: str, add: str, config: AutoModeConfig) -> None:
+    """Swap labels on an issue, ignoring errors on removal."""
+    repo = config.repo or None
+    try:
+        remove_label(issue_number, remove, repo=repo, cwd=config.cwd)
+    except GhSafeError:
+        pass
+    try:
+        add_label(issue_number, add, repo=repo, cwd=config.cwd)
+    except GhSafeError:
+        logger.warning("Failed to add label '%s' to #%d", add, issue_number)
+
+
+# ── Single-issue cycle ────────────────────────────────────────────────
+
+
+def _acquire_workspace(repo: str, issue_number: int, *, config: AutoModeConfig) -> Workspace:
+    """Acquire a workspace for the issue."""
+    if config.acquire_workspace_fn is not None:
+        return config.acquire_workspace_fn(repo, issue_number)
+    from factory.workspace.manager import acquire_workspace  # noqa: PLC0415
+
+    return acquire_workspace(repo, issue_number)
+
+
+def run_cycle(issue: IssueInfo, *, config: AutoModeConfig) -> CycleResult:
+    """Process a single issue through the full Dark Forge → Crucible → Deploy → Ouroboros cycle."""
+    t0 = time.monotonic()
+    issue_num = issue.number
+    forge_attempts = 0
+
+    logger.info("Cycle start: #%d %r", issue_num, issue.title)
+    _label_transition(issue_num, remove=LABEL_QUEUED, add=LABEL_IN_PROGRESS, config=config)
+
+    # Acquire workspace (Sentinel gates fire inside acquire_workspace for security files)
+    try:
+        workspace = _acquire_workspace(config.repo, issue_num, config=config)
+    except Exception as exc:
+        logger.exception("Failed to acquire workspace for #%d", issue_num)
+        _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, config=config)
+        return CycleResult(
+            issue_number=issue_num,
+            outcome=CycleOutcome.ERROR,
+            message=f"workspace acquisition failed: {exc}",
+            duration_s=time.monotonic() - t0,
+        )
+
+    # Dark Forge with NO_GO retry loop
+    forge_passed = False
+    failure_context = ""
+    max_attempts = 1 + config.max_forge_retries
+
+    for attempt in range(1, max_attempts + 1):
+        forge_attempts = attempt
+        logger.info("Dark Forge attempt %d/%d for #%d", attempt, max_attempts, issue_num)
+
+        forge_passed = run_dark_forge(
+            issue, workspace.path, forge_fn=config.forge_fn, sentinel_fn=config.sentinel_fn,
+        )
+        if forge_passed:
+            break
+
+        failure_context = f"Forge attempt {attempt} failed"
+        logger.warning("Dark Forge failed (attempt %d/%d) for #%d", attempt, max_attempts, issue_num)
+
+    if not forge_passed:
+        _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, config=config)
+        ouroboros_fn = config.ouroboros_fn or _default_ouroboros
+        ouroboros_fn(issue, CycleOutcome.FORGE_FAILED, failure_context)
+        return CycleResult(
+            issue_number=issue_num,
+            outcome=CycleOutcome.FORGE_FAILED,
+            message=f"Dark Forge failed after {forge_attempts} attempt(s)",
+            forge_attempts=forge_attempts,
+            duration_s=time.monotonic() - t0,
+        )
+
+    # Crucible
+    crucible_result = run_crucible_phase(
+        workspace, issue_num, crucible_fn=config.crucible_fn, sentinel_fn=config.sentinel_fn,
+    )
+
+    if crucible_result.verdict == CrucibleVerdict.NO_GO:
+        # Feed failure context back to Dark Forge for another attempt
+        failure_context = f"Crucible NO_GO: {crucible_result.error or 'tests failed'}"
+        logger.warning("Crucible NO_GO for #%d — retrying Dark Forge", issue_num)
+
+        # One more forge attempt with crucible failure context
+        forge_passed = run_dark_forge(
+            issue, workspace.path, forge_fn=config.forge_fn, sentinel_fn=config.sentinel_fn,
+        )
+        forge_attempts += 1
+
+        if forge_passed:
+            crucible_result = run_crucible_phase(
+                workspace, issue_num, crucible_fn=config.crucible_fn, sentinel_fn=config.sentinel_fn,
+            )
+
+        if crucible_result.verdict == CrucibleVerdict.NO_GO:
+            _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, config=config)
+            ouroboros_fn = config.ouroboros_fn or _default_ouroboros
+            ouroboros_fn(issue, CycleOutcome.NO_GO, failure_context)
+            return CycleResult(
+                issue_number=issue_num,
+                outcome=CycleOutcome.NO_GO,
+                message=failure_context,
+                forge_attempts=forge_attempts,
+                duration_s=time.monotonic() - t0,
+            )
+
+    if crucible_result.verdict == CrucibleVerdict.NEEDS_LIVE:
+        _handle_needs_live(issue_num, crucible_result, config=config)
+        _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_NEEDS_LIVE, config=config)
+        ouroboros_fn = config.ouroboros_fn or _default_ouroboros
+        ouroboros_fn(issue, CycleOutcome.NEEDS_LIVE, "queued for human validation")
+        return CycleResult(
+            issue_number=issue_num,
+            outcome=CycleOutcome.NEEDS_LIVE,
+            message="queued for human validation",
+            forge_attempts=forge_attempts,
+            duration_s=time.monotonic() - t0,
+        )
+
+    # Deploy
+    deploy_fn = config.deploy_fn or _default_deploy
+    deployed = deploy_fn(workspace, issue_num)
+
+    if not deployed:
+        _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, config=config)
+        ouroboros_fn = config.ouroboros_fn or _default_ouroboros
+        ouroboros_fn(issue, CycleOutcome.DEPLOY_FAILED, "deploy failed")
+        return CycleResult(
+            issue_number=issue_num,
+            outcome=CycleOutcome.DEPLOY_FAILED,
+            message="deploy failed",
+            forge_attempts=forge_attempts,
+            duration_s=time.monotonic() - t0,
+        )
+
+    # Success
+    _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_DONE, config=config)
+
+    # Ouroboros — capture learnings
+    ouroboros_fn = config.ouroboros_fn or _default_ouroboros
+    ouroboros_fn(issue, CycleOutcome.SUCCESS, "full cycle completed")
+
+    elapsed = time.monotonic() - t0
+    logger.info("Cycle complete: #%d SUCCESS (%.1fs, %d forge attempts)", issue_num, elapsed, forge_attempts)
+    return CycleResult(
+        issue_number=issue_num,
+        outcome=CycleOutcome.SUCCESS,
+        message="full cycle completed",
+        forge_attempts=forge_attempts,
+        duration_s=elapsed,
+    )
+
+
+# ── Main loop ─────────────────────────────────────────────────────────
+
+
+def run_auto_mode(config: AutoModeConfig | None = None) -> list[CycleResult]:
+    """Run the auto-mode loop: watch for issues → Dark Forge → Crucible → Deploy → Ouroboros → next.
+
+    Returns the list of cycle results when the loop exits (via ``max_cycles``
+    or graceful shutdown).
+    """
+    cfg = config or AutoModeConfig()
+    state = AutoModeState()
+    _sleep = cfg.sleep_fn or time.sleep
+
+    _install_signal_handlers(state)
+    logger.info("Auto mode started (poll_interval=%.1fs, max_cycles=%s)", cfg.poll_interval, cfg.max_cycles)
+
+    while not state.shutdown_requested:
+        if cfg.max_cycles is not None and state.cycles_completed >= cfg.max_cycles:
+            logger.info("Reached max_cycles=%d — exiting", cfg.max_cycles)
+            break
+
+        issue = select_next_issue(repo=cfg.repo or None, cwd=cfg.cwd, state=state.dispatcher)
+        if issue is None:
+            _sleep(cfg.poll_interval)
+            continue
+
+        result = run_cycle(issue, config=cfg)
+        state.results.append(result)
+        state.cycles_completed += 1
+
+        logger.info(
+            "Cycle #%d result: issue=#%d outcome=%s (%.1fs)",
+            state.cycles_completed, result.issue_number, result.outcome.value, result.duration_s,
+        )
+
+    logger.info("Auto mode stopped after %d cycle(s)", state.cycles_completed)
+    return state.results
