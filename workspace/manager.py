@@ -402,6 +402,22 @@ def _has_security_relevant_files(
 
 def _force_rmtree(path: Path) -> None:
     """Remove a directory tree, handling Windows file-lock errors on .git pack files."""
+    import subprocess  # noqa: PLC0415
+
+    # On Windows, .git pack files are often locked. Use OS-level removal.
+    if os.name == "nt":
+        # Try PowerShell Remove-Item first (handles locks better than Python)
+        try:
+            subprocess.run(
+                ["powershell", "-Command", f"Remove-Item -Recurse -Force '{path}'"],
+                timeout=30, check=False, capture_output=True,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if not path.exists():
+            return
+
+    # Fallback: Python rmtree with chmod retry
     def _onerror(_fn: object, fpath: str, _exc_info: object) -> None:
         try:
             os.chmod(fpath, 0o777)
