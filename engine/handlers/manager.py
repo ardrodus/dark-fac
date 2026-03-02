@@ -136,6 +136,13 @@ class ManagerHandler:
                 k: v for k, v in context.items()
                 if not k.startswith("_")
             }
+
+            # Bubble parent event callback into child pipeline so
+            # child stage events (e.g. arch_review specialists) are
+            # visible to the top-level event printer.
+            parent_emitter = context.get("_event_emitter")
+            child_on_event = getattr(parent_emitter, "_on_event", None)
+
             start_time = time.monotonic()
             child_result = await run_pipeline(
                 child_graph,
@@ -143,6 +150,7 @@ class ManagerHandler:
                 context=copy.deepcopy(slim_context),
                 abort_signal=abort_signal,
                 logs_root=child_logs,
+                on_event=child_on_event,
             )
             duration = time.monotonic() - start_time
 

@@ -241,8 +241,12 @@ def _run_subsystem(key: str) -> None:
         run_settings_tui()
 
 
+_forge_depth = 0  # track nested pipeline depth for indentation
+
+
 def _forge_event_printer(event: object) -> None:
     """Print pipeline events to stdout for interactive progress."""
+    global _forge_depth  # noqa: PLW0603
     from dark_factory.engine.events import (  # noqa: PLC0415
         ParallelCompleted,
         ParallelStarted,
@@ -254,8 +258,23 @@ def _forge_event_printer(event: object) -> None:
         StageStarted,
     )
 
-    if isinstance(event, StageStarted):
-        sys.stdout.write(f"  [{event.index}] {event.name} ... ")
+    indent = "  " + "    " * _forge_depth
+
+    if isinstance(event, PipelineStarted):
+        if _forge_depth == 0:
+            sys.stdout.write(f"\n{indent}Pipeline '{event.name}' started\n")
+        else:
+            sys.stdout.write(f"\n{indent}>> {event.name}\n")
+        _forge_depth += 1
+    elif isinstance(event, PipelineCompleted):
+        _forge_depth = max(0, _forge_depth - 1)
+        indent = "  " + "    " * _forge_depth
+        if _forge_depth == 0:
+            sys.stdout.write(f"{indent}Pipeline completed ({event.duration:.1f}s)\n\n")
+        else:
+            sys.stdout.write(f"{indent}<< done ({event.duration:.1f}s)\n")
+    elif isinstance(event, StageStarted):
+        sys.stdout.write(f"{indent}[{event.index}] {event.name} ... ")
         sys.stdout.flush()
     elif isinstance(event, StageCompleted):
         sys.stdout.write(f"done ({event.duration:.1f}s)\n")
@@ -263,16 +282,12 @@ def _forge_event_printer(event: object) -> None:
         retry = " (retrying)" if event.will_retry else ""
         sys.stdout.write(f"FAILED{retry}\n")
     elif isinstance(event, StageRetrying):
-        sys.stdout.write(f"  [{event.index}] {event.name} retry #{event.attempt}... ")
+        sys.stdout.write(f"{indent}[{event.index}] {event.name} retry #{event.attempt}... ")
         sys.stdout.flush()
     elif isinstance(event, ParallelStarted):
-        sys.stdout.write(f"  parallel ({event.branch_count} branches)...\n")
+        sys.stdout.write(f"{indent}parallel ({event.branch_count} branches)...\n")
     elif isinstance(event, ParallelCompleted):
-        sys.stdout.write(f"  parallel done ({event.duration:.1f}s)\n")
-    elif isinstance(event, PipelineStarted):
-        sys.stdout.write(f"\n  Pipeline '{event.name}' started\n")
-    elif isinstance(event, PipelineCompleted):
-        sys.stdout.write(f"  Pipeline completed ({event.duration:.1f}s)\n\n")
+        sys.stdout.write(f"{indent}parallel done ({event.duration:.1f}s)\n")
 
 
 def _run_forge_interactive() -> None:
