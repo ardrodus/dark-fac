@@ -104,20 +104,35 @@ def dispatch_selftest(parsed: ParsedCommand) -> None:
 
 
 def dispatch_auto(parsed: ParsedCommand) -> None:
-    """Dispatch the ``auto`` command (``--auto`` / ``-a`` flag)."""
-    from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
-    from dark_factory.dispatch.issue_dispatcher import DispatcherState, auto_main_loop  # noqa: PLC0415
+    """Dispatch the ``auto`` command (``--auto`` / ``-a`` flag).
 
-    dev = parsed.flags.get("dev_mode", False)
+    Runs the full 4-pillar auto-mode loop: poll for issues → Dark Forge →
+    Crucible → Deploy → Ouroboros.
+    """
+    import os  # noqa: PLC0415
+
+    from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
+    from dark_factory.modes.auto import AutoModeConfig, run_auto_mode  # noqa: PLC0415
+
+    repo = os.environ.get("GITHUB_REPO", "")
+    if not repo:
+        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+        cfg = load_config()
+        repos = cfg.data.get("repos", [])
+        for r in repos:
+            if isinstance(r, dict) and r.get("active"):
+                repo = r.get("name", "")
+                break
 
     try:
         with instance_lock():
-            auto_main_loop(state=DispatcherState(dev_mode=dev))
+            run_auto_mode(AutoModeConfig(repo=repo))
     except InstanceLockError as exc:
         sys.stderr.write(f"[instance-lock] ERROR: {exc}\n")
         raise SystemExit(1) from None
     except KeyboardInterrupt:
-        sys.stderr.write("Dispatch interrupted\n")
+        sys.stderr.write("Auto mode interrupted\n")
         raise SystemExit(130) from None
 
 
@@ -199,11 +214,122 @@ def _needs_onboarding() -> bool:
     return True
 
 
+def _run_subsystem(key: str) -> None:
+    """Launch the subsystem selected from the interactive TUI menu."""
+    if key == "1":
+        # Dark Forge — run one dispatch cycle through the full pipeline
+        _run_forge_interactive()
+    elif key == "2":
+        # Crucible — prompt for PR number and validate
+        _run_crucible_interactive()
+    elif key == "3":
+        # Ouroboros — runs automatically in auto mode
+        sys.stdout.write(
+            "\n  Ouroboros runs automatically after each auto-mode cycle.\n"
+            "  Use 'dark-factory auto' to start the autonomous loop.\n\n"
+        )
+        input("  Press Enter to return to menu...")
+    elif key == "4":
+        # Foundry — workspace manager TUI
+        from dark_factory.modes.foundry import run_foundry_tui  # noqa: PLC0415
+
+        run_foundry_tui()
+    elif key == "5":
+        # Settings — config editor TUI
+        from dark_factory.modes.settings import run_settings_tui  # noqa: PLC0415
+
+        run_settings_tui()
+
+
+def _run_forge_interactive() -> None:
+    """Pick the next queued issue and run it through the full pipeline."""
+    import os  # noqa: PLC0415
+
+    from dark_factory.modes.auto import AutoModeConfig, run_cycle  # noqa: PLC0415
+
+    repo = os.environ.get("GITHUB_REPO", "")
+    if not repo:
+        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+        cfg = load_config()
+        for r in cfg.data.get("repos", []):
+            if isinstance(r, dict) and r.get("active"):
+                repo = r.get("name", "")
+                break
+
+    from dark_factory.dispatch.issue_dispatcher import select_next_issue  # noqa: PLC0415
+
+    sys.stdout.write("\n  Dark Forge: scanning for queued issues...\n")
+    issue = select_next_issue(repo=repo or None)
+    if issue is None:
+        sys.stdout.write("  No queued issues found.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    sys.stdout.write(f"  Processing #{issue.number}: {issue.title}\n")
+    result = run_cycle(issue, config=AutoModeConfig(repo=repo, max_forge_retries=2))
+    sys.stdout.write(
+        f"  Result: {result.outcome.value} ({result.duration_s:.1f}s, "
+        f"{result.forge_attempts} forge attempt(s))\n"
+        f"  {result.message}\n\n"
+    )
+    input("  Press Enter to return to menu...")
+
+
+def _run_crucible_interactive() -> None:
+    """Prompt for a PR number and run Crucible validation."""
+    import shutil  # noqa: PLC0415
+
+    sys.stdout.write("\n")
+    try:
+        raw = input("  Enter PR number to validate: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if not raw.isdigit() or int(raw) <= 0:
+        sys.stdout.write("  Invalid PR number.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    if not shutil.which("docker"):
+        sys.stdout.write("  Crucible requires Docker but 'docker' was not found.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    pr_number = int(raw)
+    from dark_factory.crucible.orchestrator import CrucibleConfig, run_crucible  # noqa: PLC0415
+    from dark_factory.workspace.manager import Workspace  # noqa: PLC0415
+
+    from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+    config = load_config()
+    repo_root = config.data.get("project", {}).get("repo_root", "")
+    if not repo_root:
+        from pathlib import Path  # noqa: PLC0415
+
+        repo_root = str(Path.cwd())
+
+    ws = Workspace(
+        name=f"crucible-pr-{pr_number}", path=repo_root,
+        repo_url="", branch=f"pr-{pr_number}",
+    )
+    sys.stdout.write(f"  Crucible: validating PR #{pr_number}...\n")
+    result = run_crucible(ws, CrucibleConfig(), issue_number=pr_number)
+    sys.stdout.write(
+        f"  Verdict: {result.verdict.value}\n"
+        f"  pass={result.pass_count} fail={result.fail_count} "
+        f"skip={result.skip_count} ({result.duration_s:.1f}s)\n"
+    )
+    if result.error:
+        sys.stdout.write(f"  Error: {result.error}\n")
+    sys.stdout.write("\n")
+    input("  Press Enter to return to menu...")
+
+
 def dispatch_interactive(parsed: ParsedCommand) -> None:
     """Dispatch the ``interactive`` command (default when no args).
 
     On first run — or if a previous onboarding didn't complete — automatically
-    triggers onboarding before entering the interactive menu.
+    triggers onboarding before entering the Textual TUI menu loop.
     """
     if _needs_onboarding():
         sys.stdout.write("First run detected \u2014 starting onboarding...\n\n")
@@ -214,11 +340,15 @@ def dispatch_interactive(parsed: ParsedCommand) -> None:
             raise SystemExit(rc)
 
     from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
-    from dark_factory.ui.interactive_menu import run_interactive  # noqa: PLC0415
+    from dark_factory.modes.interactive import run_interactive_tui  # noqa: PLC0415
 
     try:
         with instance_lock():
-            run_interactive()
+            while True:
+                selection = run_interactive_tui()
+                if selection is None:
+                    break
+                _run_subsystem(selection)
     except InstanceLockError as exc:
         sys.stderr.write(f"[instance-lock] ERROR: {exc}\n")
         raise SystemExit(1) from None
