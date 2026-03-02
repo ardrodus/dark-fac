@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from typing import TextIO
 
-from factory.ui.theme import PILLARS, THEME, stage_icon
+from dark_factory.ui.theme import PILLARS, THEME, stage_icon
 
 # ── Semantic colour map ──────────────────────────────────────────
 

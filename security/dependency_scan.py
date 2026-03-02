@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.security.scan_runner import create_scan_gate, run_tool
+from dark_factory.security.scan_runner import create_scan_gate, run_tool
 
 if TYPE_CHECKING:
-    from factory.gates.framework import GateRunner
-    from factory.workspace.manager import Workspace
+    from dark_factory.gates.framework import GateRunner
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,8 @@ def _parse_java(raw: str) -> list[Finding]:
 
 def _scan_java(ws: str) -> list[Finding]:
     import shutil  # noqa: PLC0415
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
     if not shutil.which("dependency-check"):
         return []
     rpt = Path(ws) / ".dark-factory" / "security" / "owasp-dc-raw.json"
@@ -172,7 +173,7 @@ GATE_NAME = "dependency-scan"
 def create_runner(workspace: str | Path, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured dependency-scan gate runner."""
     def _check(ws: str) -> tuple[bool, str]:
-        from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
+        from dark_factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = run_dependency_scan(Ws(name="scan", path=ws, repo_url="", branch=""))
         if result.blocked_count > 0:
             return False, f"Critical vulnerabilities: {result.blocked_count} blocking"

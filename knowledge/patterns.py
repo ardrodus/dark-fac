@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -47,7 +47,7 @@ class Pattern:
     usage_count: int = 0
 
     def __post_init__(self) -> None:
-        now = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+        now = datetime.now(tz=UTC).isoformat(timespec="seconds")
         if not self.created_at:
             self.created_at = now
         if not self.last_used_at:
@@ -72,7 +72,7 @@ class SharingConfig:
 
 
 def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(tz=UTC).isoformat(timespec="seconds")
 
 
 def _age_days(iso_ts: str) -> int:
@@ -82,8 +82,8 @@ def _age_days(iso_ts: str) -> int:
     except (ValueError, TypeError):
         return -1
     if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
-    return (datetime.now(tz=timezone.utc) - last).days
+        last = last.replace(tzinfo=UTC)
+    return (datetime.now(tz=UTC) - last).days
 
 
 class PatternStore:

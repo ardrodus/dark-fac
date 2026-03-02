@@ -8,12 +8,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from factory.security.scan_runner import create_scan_gate, run_tool
+from dark_factory.security.scan_runner import create_scan_gate, run_tool
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from factory.gates.framework import GateRunner
-    from factory.workspace.manager import Workspace
+
+    from dark_factory.gates.framework import GateRunner
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _SEV_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
@@ -153,7 +154,7 @@ def _build_l2_prompt(findings: list[SastFinding], diff: str) -> str:
 def _invoke_l2(prompt: str, ws_path: str, *, invoke_fn: Callable[[str], str] | None = None) -> str:
     if invoke_fn is not None:
         return invoke_fn(prompt)
-    from factory.integrations.shell import run_command  # noqa: PLC0415
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
     return run_command(["claude", "-p", prompt, "--output-format", "json"],
                        timeout=_AGENT_TIMEOUT, cwd=ws_path).stdout
 
@@ -223,7 +224,7 @@ GATE_NAME = "sast-scan"
 def create_runner(workspace: str | Path, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured SAST gate runner."""
     def _check(ws: str) -> tuple[bool, str]:
-        from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
+        from dark_factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = run_sast_scan(Ws(name="scan", path=ws, repo_url="", branch=""), "")
         if not result.passed:
             return False, f"SAST blocked: {len(result.layer1_findings)} L1, {len(result.layer2_findings)} L2"

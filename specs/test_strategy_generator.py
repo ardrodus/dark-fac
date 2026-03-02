@@ -9,11 +9,15 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-from factory.specs.base import (
-    extract_json, format_analysis, run_generate, save_artifact, tup,
+from dark_factory.specs.base import (
+    extract_json,
+    format_analysis,
+    run_generate,
+    save_artifact,
+    tup,
 )
-from factory.specs.design_generator import DesignResult
-from factory.specs.prd_generator import PRDResult
+from dark_factory.specs.design_generator import DesignResult
+from dark_factory.specs.prd_generator import PRDResult
 
 _DEF_COV: dict[str, float] = {"unit": 80.0, "integration": 60.0, "e2e": 40.0, "overall": 70.0}
 

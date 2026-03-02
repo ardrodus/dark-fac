@@ -1,0 +1,77 @@
+// Crucible: Validation Pipeline
+//
+// Dark Factory's test validation layer. Runs the full test suite against
+// a workspace and produces a three-way verdict:
+//   GO        -- 95%+ pass rate AND zero real bugs detected
+//   NO_GO     -- Any real bug found (test failure confirmed as genuine)
+//   NEEDS_LIVE -- Tests require live/external services not available in CI
+//
+// Single test run (no fan-out or sharding). Sentinel Gate 1 scans the
+// test code itself before execution to catch injected malicious tests.
+//
+// Flow: clone tests -> security scan -> scope detection -> run -> analyze -> verdict
+//
+// Demonstrates: linear pipeline, security gate on test code, AI-driven
+// failure analysis, three-way verdict routing.
+
+digraph crucible {
+    graph [
+        goal="Validate workspace code via single test run with three-way verdict"
+    ]
+
+    // --- Entry ---
+    start [shape=Mdiamond, label="Workspace Ready\n(code under test)"]
+
+    // --- Stage 1: Load Tests (git clone) ---
+    load_tests [
+        shape=parallelogram,
+        label="git clone $test_repo $workspace/tests\n(fetch test suite)"
+    ]
+
+    // --- Stage 2: Sentinel Scan (Gate 1 on test code) ---
+    // Ensures test code itself is not malicious before execution.
+    // Reuses Sentinel Gate 1: secret scan + dependency audit.
+    sentinel_scan [
+        shape=box,
+        prompt="You are Sentinel performing Gate 1 on TEST CODE (not production code).\n\nScan the cloned test suite for:\n- Embedded secrets or credentials in test fixtures\n- Malicious dependencies in test requirements\n- Shell injection or file-system escape in test helpers\n- Network calls to unexpected external hosts\n- Any attempt to modify code outside the test directory\n\nVerdict: CLEAN (proceed) | BLOCK (test code is unsafe, abort pipeline)"
+    ]
+    sentinel_verdict [shape=diamond, label="Test Code\nSafe?"]
+    sentinel_blocked [shape=house, label="BLOCK\nMalicious Test Code\n-> Security Triage"]
+
+    // --- Stage 3: Detect Scope ---
+    detect_scope [
+        shape=box,
+        prompt="Analyze the test suite and workspace to determine test scope.\n\nDetect:\n- Test framework (pytest, jest, playwright, cargo test, go test, etc.)\n- Test files and count\n- Required services (databases, APIs, message queues)\n- Environment variables needed\n- Fixtures and setup requirements\n\nClassify each test as: unit | integration | e2e\nFlag tests that require live/external services not available in CI.\n\nOutput: framework, test_count, run_command, live_service_tests[]"
+    ]
+
+    // --- Stage 4: Run Tests (single run, no sharding) ---
+    run_tests [
+        shape=parallelogram,
+        label="$detected_framework $test_command\n(single run, full suite)"
+    ]
+
+    // --- Stage 5: Analyze Results ---
+    analyze [
+        shape=box,
+        prompt="You are the Crucible test analyst.\n\nAnalyze test results from the single test run:\n$test_output\n\nFor each failure, classify:\n- REAL_BUG: Genuine code defect (assertion on correct behavior fails)\n- FLAKY: Non-deterministic failure (timing, ordering, resource contention)\n- ENV_ISSUE: Missing service, config, or dependency (not a code bug)\n- NEEDS_LIVE: Requires live external service unavailable in CI\n\nCompute pass rate: passed / (passed + failed) * 100\n\nProvide:\n- pass_rate (percentage)\n- real_bug_count (REAL_BUG classifications)\n- needs_live_count (NEEDS_LIVE classifications)\n- failure_details[] with test name, classification, evidence"
+    ]
+
+    // --- Stage 6: Verdict (three-way) ---
+    verdict [shape=diamond, label="Verdict?"]
+
+    go [shape=Msquare, label="GO\n95%+ pass rate\nzero real bugs"]
+    no_go [shape=Msquare, label="NO_GO\nreal bug detected"]
+    needs_live [shape=Msquare, label="NEEDS_LIVE\nrequires live services"]
+
+    // --- Flow ---
+    start -> load_tests -> sentinel_scan -> sentinel_verdict
+
+    sentinel_verdict -> detect_scope [label="CLEAN"]
+    sentinel_verdict -> sentinel_blocked [label="BLOCK"]
+
+    detect_scope -> run_tests -> analyze -> verdict
+
+    verdict -> go [label="pass >= 95%\nreal_bugs == 0"]
+    verdict -> no_go [label="real_bugs > 0"]
+    verdict -> needs_live [label="needs_live > 0\nreal_bugs == 0"]
+}

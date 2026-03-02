@@ -288,11 +288,17 @@ _REPORT_DIR = ".dark-factory"
 _REPORT_FILE = "gate-report.json"
 
 GATE_REGISTRY: dict[str, str] = {
-    "contract-validation": "factory.gates.contract_validation",
-    "design-review": "factory.gates.design_review",
-    "integration-test": "factory.gates.integration_test",
-    "quality": "factory.gates.quality",
-    "startup-health": "factory.gates.startup_health",
+    "ai-security-review": "dark_factory.gates.ai_security_review",
+    "contract-validation": "dark_factory.gates.contract_validation",
+    "dependency-scan": "dark_factory.gates.dependency_scan",
+    "design-review": "dark_factory.gates.design_review",
+    "image-scan": "dark_factory.gates.image_scan",
+    "integration-test": "dark_factory.gates.integration_test",
+    "quality": "dark_factory.gates.quality",
+    "sast-scan": "dark_factory.gates.sast_scan",
+    "sbom-scan": "dark_factory.gates.sbom_scan",
+    "secret-scan": "dark_factory.gates.secret_scan",
+    "startup-health": "dark_factory.gates.startup_health",
 }
 
 

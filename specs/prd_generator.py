@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-from factory.specs.base import extract_json, run_generate, save_artifact, tup
+from dark_factory.specs.base import extract_json, run_generate, save_artifact, tup
 
 _MAX_STORIES = 20
 

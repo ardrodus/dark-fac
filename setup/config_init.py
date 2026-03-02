@@ -6,23 +6,19 @@ import os
 import stat
 import sys
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.setup.project_analyzer import AnalysisResult
+    from dark_factory.setup.project_analyzer import AnalysisResult
 
 _CONFIG_VERSION = 1
 
 _STRAT_MENU = (
-    ("1", "aws", "AWS         ECS/Fargate, Lambda, S3, CloudFront"),
-    ("2", "on-prem", "On-prem     Docker Compose, self-hosted"),
-    ("3", "console", "Console     CLI tool, no server deployment"),
-    ("4", "azure", "Azure       (coming soon)"),
-    ("5", "gcp", "GCP         (coming soon)"),
+    ("1", "console", "Console     CLI tool, no server deployment"),
+    ("2", "web", "Web         Web app with Docker, CI/CD"),
 )
-_COMING_SOON = frozenset({"azure", "gcp"})
 
 
 def prompt_deployment_strategy(
@@ -30,7 +26,7 @@ def prompt_deployment_strategy(
 ) -> str:
     """Present deployment strategy choices based on analysis signals.
 
-    Returns the selected strategy name (``aws``, ``on-prem``, or ``console``).
+    Returns the selected strategy name (``console`` or ``web``).
     """
     w = sys.stdout.write
     w("\n  Select deployment strategy:\n\n")
@@ -46,10 +42,7 @@ def prompt_deployment_strategy(
         choice = input("  Choice [1]: ").strip() or "1"
     except (EOFError, KeyboardInterrupt):
         choice = "1"
-    strat = next((s for n, s, _ in _STRAT_MENU if choice == n), "aws")
-    if strat in _COMING_SOON:
-        w(f"  ! {strat.title()} support is coming soon. Falling back to AWS.\n")
-        strat = "aws"
+    strat = next((s for n, s, _ in _STRAT_MENU if choice == n), "console")
     w(f"  + Strategy: {strat}\n")
     return strat
 
@@ -64,7 +57,7 @@ def init_config(
     Idempotent: skips creation if config already exists unless *force* is True.
     Returns the config file path.
     """
-    from factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
+    from dark_factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
 
     config_dir = resolve_config_dir(start)
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -107,7 +100,7 @@ def add_repo_to_config(
     If *analysis* is provided, its fields are merged into the repo entry and
     also stored in the top-level ``analysis`` and ``strategy`` keys.
     """
-    from factory.core.config_manager import (  # noqa: PLC0415
+    from dark_factory.core.config_manager import (  # noqa: PLC0415
         load_config,
         save_config,
     )
@@ -123,7 +116,7 @@ def add_repo_to_config(
         if isinstance(r, dict):
             r["active"] = False
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry: dict[str, object] = {
         "name": repo,
         "strategy": strategy,

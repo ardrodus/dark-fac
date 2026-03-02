@@ -1,0 +1,217 @@
+// Ouroboros: Self-Improvement Pipeline
+//
+// Dark Factory's self-improvement layer. Three paths:
+//
+//   1. Auto-Update  — detect new version, stage, smoke-test, swap/rollback
+//   2. Self-Forge   — guardrail check, Dark Forge on own code, 4-layer
+//                     self-crucible (ruff + mypy, pytest, pipeline sim,
+//                     health check), PR with merge policy
+//   3. Feedback     — learn from self-modifications, pattern confidence
+//
+// Built-in factory deployment (staging, swap, rollback) is NOT
+// user-customisable — it is the factory updating itself.
+//
+// Demonstrates: parallel paths, self-referential pipeline, multi-layer
+// validation, factory-internal deployment, feedback learning loop.
+
+digraph ouroboros {
+    graph [
+        goal="Self-improve the Dark Factory via auto-update, self-forge, and feedback learning"
+    ]
+
+    // =============================================
+    // ENTRY — decide which improvement path to take
+    // =============================================
+
+    start [shape=Mdiamond, label="Ouroboros Trigger\n(scheduled / post-cycle / manual)"]
+
+    path_select [
+        shape=diamond,
+        label="Improvement\nPath?"
+    ]
+
+    start -> path_select
+
+    // =============================================
+    // PATH 1 — Auto-Update
+    //
+    // Detect whether a newer factory release exists, stage the
+    // update in an isolated copy, run a smoke test, then swap
+    // the live instance (or rollback on failure).
+    // =============================================
+
+    // --- Step 1: Detect version ---
+    detect_version [
+        shape=box,
+        prompt="Check the current factory version against the upstream release.\n\nSteps:\n1. Read the local version from factory/__init__.py or pyproject.toml\n2. Query the upstream release (GitHub releases API or git ls-remote --tags)\n3. Compare semantic versions\n\nOutput:\n- current_version\n- latest_version\n- update_available (bool)\n- changelog_summary (if update available)"
+    ]
+    version_check [shape=diamond, label="Update\nAvailable?"]
+
+    // --- Step 2: Staging deployment ---
+    staging_deploy [
+        shape=parallelogram,
+        label="Clone upstream release\ninto staging directory\n(.dark-factory/staging/)"
+    ]
+
+    // --- Step 3: Smoke test the staged version ---
+    smoke_test [
+        shape=box,
+        prompt="Run a smoke test against the staged factory copy.\n\nExecute in the staging directory:\n1. python -m factory selftest   (core self-test)\n2. python -m factory doctor     (dependency check)\n3. Verify all pipeline DOT files parse without error\n4. Verify config migration (old config still loads)\n\nVerdict: PASS (all checks green) | FAIL (any check failed, with details)"
+    ]
+    smoke_verdict [shape=diamond, label="Smoke\nTest?"]
+
+    // --- Step 4a: Swap — replace live with staging ---
+    swap_live [
+        shape=parallelogram,
+        label="Swap live ↔ staging\n(atomic rename:\n live → .backup, staging → live)"
+    ]
+
+    // --- Step 4b: Rollback — staging failed, discard ---
+    rollback [
+        shape=parallelogram,
+        label="Rollback\n(remove staging, keep live)"
+    ]
+
+    // --- Step 5: Post-update diagnostic ---
+    post_update_diag [
+        shape=box,
+        prompt="Run a post-update diagnostic on the now-live updated factory.\n\n1. python -m factory selftest\n2. python -m factory doctor\n3. Verify the auto-mode loop can start and poll for issues\n4. Verify the dashboard renders without errors\n5. Compare config state before and after update\n\nIf ANY check fails, trigger automatic rollback to .backup.\n\nOutput:\n- all_checks_passed (bool)\n- failed_checks[] (name, error)\n- rollback_triggered (bool)"
+    ]
+    post_diag_verdict [shape=diamond, label="Post-Update\nHealthy?"]
+
+    auto_rollback [
+        shape=parallelogram,
+        label="Auto-Rollback\n(.backup → live)"
+    ]
+
+    update_done [shape=Msquare, label="Auto-Update\nComplete"]
+    update_skipped [shape=Msquare, label="Already Up-to-Date"]
+
+    // --- Auto-Update flow ---
+    path_select -> detect_version [label="auto_update"]
+    detect_version -> version_check
+    version_check -> staging_deploy [label="yes"]
+    version_check -> update_skipped [label="no"]
+    staging_deploy -> smoke_test -> smoke_verdict
+    smoke_verdict -> swap_live [label="PASS"]
+    smoke_verdict -> rollback [label="FAIL"]
+    swap_live -> post_update_diag -> post_diag_verdict
+    post_diag_verdict -> update_done [label="healthy"]
+    post_diag_verdict -> auto_rollback [label="unhealthy"]
+    auto_rollback -> update_done [label="rolled back"]
+    rollback -> update_done [label="staging discarded"]
+
+    // =============================================
+    // PATH 2 — Self-Forge
+    //
+    // The factory improves its own code. Guardrail checks prevent
+    // unsafe self-modification. Dark Forge runs against the factory
+    // repo itself. A 4-layer self-crucible validates changes.
+    // A PR is created with a strict merge policy.
+    // =============================================
+
+    // --- Step 1: Guardrail check ---
+    guardrail_check [
+        shape=box,
+        prompt="You are the Ouroboros guardrail agent.\n\nBefore allowing self-modification, verify:\n1. The proposed change is within allowed scope (bug fix, performance,\n   code quality, test coverage — NOT security policy, gate logic,\n   or merge policy changes)\n2. No circular dependency risk (change won't break the self-forge\n   pipeline itself)\n3. Change complexity is bounded (< 500 lines diff, < 10 files)\n4. The change has a clear motivation (issue, metric, or pattern)\n\nVerdict: ALLOW (proceed) | DENY (too risky, log reason and skip)"
+    ]
+    guardrail_verdict [shape=diamond, label="Guardrail?"]
+    guardrail_denied [shape=house, label="Self-Forge DENIED\n(logged, skipped)"]
+
+    // --- Step 2: Dark Forge on own code ---
+    self_forge [
+        shape=component,
+        label="Dark Forge\n(on factory repo itself)",
+        pipeline="dark_forge.dot"
+    ]
+
+    // --- Step 3: 4-Layer Self-Crucible ---
+
+    // Layer 1: Syntax — ruff + mypy
+    self_crucible_syntax [
+        shape=parallelogram,
+        label="Layer 1: Syntax\nruff check . && mypy ."
+    ]
+    syntax_verdict [shape=diamond, label="Syntax\nClean?"]
+    syntax_failed [shape=house, label="Syntax FAILED\n(ruff/mypy errors)\n→ Self-Forge retry"]
+
+    // Layer 2: Unit tests — pytest
+    self_crucible_tests [
+        shape=parallelogram,
+        label="Layer 2: Unit Tests\npytest tests/ -x"
+    ]
+    tests_verdict [shape=diamond, label="Tests\nPass?"]
+    tests_failed [shape=house, label="Tests FAILED\n→ Self-Forge retry"]
+
+    // Layer 3: Pipeline simulation
+    self_crucible_pipeline [
+        shape=box,
+        prompt="You are the Ouroboros pipeline simulation agent.\n\nLayer 3 of the self-crucible. Validate that all factory pipelines\nstill function correctly after self-modification:\n\n1. Parse every DOT file in factory/pipelines/ — verify valid digraph syntax\n2. Trace each pipeline end-to-end: entry → all terminal nodes reachable\n3. Verify node attribute contracts (shape, prompt, label, pipeline refs)\n4. Check that pipeline references (e.g. pipeline=\"dark_forge.dot\") resolve\n5. Dry-run the dispatch table — every registered command has a handler\n\nVerdict: PASS | FAIL (with broken pipeline name and failure detail)"
+    ]
+    pipeline_verdict [shape=diamond, label="Pipelines\nValid?"]
+    pipeline_failed [shape=house, label="Pipeline Sim FAILED\n→ Self-Forge retry"]
+
+    // Layer 4: Health check
+    self_crucible_health [
+        shape=box,
+        prompt="You are the Ouroboros health check agent.\n\nLayer 4 of the self-crucible. Run a full factory health check\nafter self-modification:\n\n1. python -m factory selftest (core self-test passes)\n2. python -m factory doctor   (all dependencies present)\n3. Import every factory subpackage — no import errors\n4. Verify config load/save round-trip\n5. Verify the dashboard app can be instantiated\n\nThis is the final gate before creating a PR.\n\nVerdict: HEALTHY | UNHEALTHY (with failing component and error)"
+    ]
+    health_verdict [shape=diamond, label="Factory\nHealthy?"]
+    health_failed [shape=house, label="Health Check FAILED\n→ Self-Forge retry"]
+
+    // --- Step 4: PR with merge policy ---
+    self_forge_pr [
+        shape=box,
+        prompt="Create a pull request for the self-forge changes.\n\nMerge policy (enforced, not user-customisable):\n- Title: 'ouroboros: <concise description>'\n- Label: ouroboros-self-forge\n- Require ALL 4 self-crucible layers to have passed\n- Auto-merge ONLY if:\n  1. Diff < 200 lines\n  2. No security policy files modified\n  3. No gate logic files modified\n  4. All 4 crucible layers passed\n- Otherwise: require human approval (add needs-human-review label)\n\nOutput:\n- pr_url\n- auto_merge_eligible (bool)\n- merge_policy_reason"
+    ]
+    self_forge_done [shape=Msquare, label="Self-Forge PR\nCreated"]
+
+    // --- Self-Forge flow ---
+    path_select -> guardrail_check [label="self_forge"]
+    guardrail_check -> guardrail_verdict
+    guardrail_verdict -> self_forge [label="ALLOW"]
+    guardrail_verdict -> guardrail_denied [label="DENY"]
+    self_forge -> self_crucible_syntax -> syntax_verdict
+    syntax_verdict -> self_crucible_tests [label="clean"]
+    syntax_verdict -> syntax_failed [label="errors"]
+    self_crucible_tests -> tests_verdict
+    tests_verdict -> self_crucible_pipeline [label="pass"]
+    tests_verdict -> tests_failed [label="fail"]
+    self_crucible_pipeline -> pipeline_verdict
+    pipeline_verdict -> self_crucible_health [label="PASS"]
+    pipeline_verdict -> pipeline_failed [label="FAIL"]
+    self_crucible_health -> health_verdict
+    health_verdict -> self_forge_pr [label="HEALTHY"]
+    health_verdict -> health_failed [label="UNHEALTHY"]
+    self_forge_pr -> self_forge_done
+
+    // =============================================
+    // PATH 3 — Feedback Learning
+    //
+    // After any self-modification (auto-update or self-forge),
+    // capture learnings, update pattern confidence scores,
+    // and feed insights back for future cycles.
+    // =============================================
+
+    feedback_entry [shape=Mdiamond, label="Self-Modification\nCompleted"]
+
+    // --- Step 1: Learn from self-modifications ---
+    learn_modifications [
+        shape=box,
+        prompt="You are the Ouroboros feedback learning agent.\n\nAnalyze the completed self-modification:\n- Diff summary: $diff_summary\n- Crucible results: $crucible_results\n- Cycle outcome: $cycle_outcome\n\nExtract learnings:\n1. What pattern was applied? (refactor, optimisation, bug fix, new feature)\n2. Which files/modules were most affected?\n3. Did the change pass all crucible layers on first attempt?\n4. What retry iterations were needed (if any)?\n5. What code patterns emerged that could be reused?\n\nOutput:\n- pattern_name\n- pattern_description\n- affected_modules[]\n- first_attempt_success (bool)\n- retry_count\n- reusable_patterns[]"
+    ]
+
+    // --- Step 2: Pattern confidence scoring ---
+    pattern_confidence [
+        shape=box,
+        prompt="You are the Ouroboros pattern confidence scorer.\n\nUpdate the pattern knowledge store with confidence scores.\n\nFor each pattern from the current and historical modifications:\n1. Calculate success_rate = successful_applications / total_applications\n2. Recency weight: recent successes count more than old ones\n3. Complexity weight: patterns that work on complex changes score higher\n4. Scope weight: patterns used across multiple modules score higher\n\nConfidence tiers:\n- HIGH (>= 0.85): Auto-apply in future self-forge cycles\n- MEDIUM (0.5 - 0.84): Suggest but require guardrail approval\n- LOW (< 0.5): Log only, do not suggest\n\nPrune patterns with LOW confidence and zero applications in 30 days.\n\nOutput:\n- updated_patterns[] with name, confidence, tier, last_applied, apply_count\n- pruned_patterns[] (removed due to staleness)"
+    ]
+
+    feedback_done [shape=Msquare, label="Feedback\nRecorded"]
+
+    // --- Feedback flow ---
+    // Feedback runs after either auto-update or self-forge completes
+    update_done -> feedback_entry
+    self_forge_done -> feedback_entry
+    feedback_entry -> learn_modifications -> pattern_confidence -> feedback_done
+}

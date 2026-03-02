@@ -83,9 +83,6 @@ _CMD: dict[str, tuple[str, str, str, tuple[str, ...]]] = {
 _DB_KW = frozenset(
     "pg mysql mongodb sequelize prisma typeorm sqlalchemy diesel "
     "gorm psycopg2 pymongo redis sqlite3 knex".split())
-_AWS_SVC = (
-    "s3", "sqs", "sns", "dynamodb", "lambda", "secretsmanager",
-    "ssm", "ecs", "rds", "cognito", "cloudfront", "apigateway")
 _TEST_PATS = ("test_*", "*_test.*", "*.test.*", "*.spec.*", "*.bats")
 
 
@@ -160,29 +157,17 @@ def _detect_test_dirs(root: Path) -> tuple[str, ...]:
 
 
 def _detect_strategy(root: Path) -> tuple[str, str]:
+    """Detect deployment strategy: ``console`` or ``web``."""
     has_docker = (root / "Dockerfile").is_file()
     has_compose = (root / "docker-compose.yml").is_file() or (
         root / "docker-compose.yaml").is_file()
-    aws_n = sum(1 for m in ("cdk.json", "samconfig.toml", "buildspec.yml",
-                ".elasticbeanstalk", "appspec.yml") if (root / m).exists())
-    if (root / "terraform").is_dir():
-        tf = "".join(_rd(f) for f in (root / "terraform").rglob("*.tf"))
-        if "aws" in tf.lower():
-            aws_n += 2
-    if aws_n >= 2:
-        return "aws", "high"
-    if aws_n == 1:
-        return "aws", "medium"
-    if (root / "azure-pipelines.yml").is_file() or (root / ".azure").is_dir():
-        return "azure", "medium"
-    if (root / "cloudbuild.yaml").is_file():
-        return "gcp", "medium"
-    if has_docker and not has_compose:
-        return "aws", "medium"
-    if has_compose:
-        return "on-prem", "high"
-    if (root / "Makefile").is_file() and not has_docker:
-        return "on-prem", "medium"
+    # Web indicators: Dockerfile, docker-compose, CI configs, web frameworks
+    if has_docker or has_compose:
+        return "web", "high"
+    web_markers = ("cdk.json", "samconfig.toml", "buildspec.yml",
+                   "azure-pipelines.yml", "cloudbuild.yaml", ".github/workflows")
+    if any((root / m).exists() for m in web_markers):
+        return "web", "medium"
     return "console", "high"
 
 
@@ -210,14 +195,6 @@ def analyze_project(repo: str) -> AnalysisResult:
     if lang == "Java" and ((root / "build.gradle").is_file()
                            or (root / "build.gradle.kts").is_file()):
         bimg = "gradle:8.5-jdk21-jammy"
-    aws_svc: tuple[str, ...] = ()
-    if strat == "aws":
-        parts = [_rd(root / n) for n in
-                 ("buildspec.yml", "appspec.yml", "samconfig.toml", "cdk.json")]
-        if (root / "terraform").is_dir():
-            parts.extend(_rd(f) for f in (root / "terraform").rglob("*.tf"))
-        low = "\n".join(parts).lower()
-        aws_svc = tuple(s for s in _AWS_SVC if s in low)
     desc = (f"{lang}/{fw} project" if fw
             else (f"{lang} project" if lang else "Unknown project"))
     return AnalysisResult(
@@ -228,7 +205,7 @@ def analyze_project(repo: str) -> AnalysisResult:
         source_dirs=_detect_source_dirs(root),
         test_dirs=_detect_test_dirs(root),
         has_web_server=fw in _WEB_FW, has_database=has_db,
-        has_iac=has_iac, aws_services=aws_svc)
+        has_iac=has_iac)
 
 
 def display_analysis_results(result: AnalysisResult) -> None:
@@ -253,16 +230,15 @@ def display_analysis_results(result: AnalysisResult) -> None:
         if val:
             w(f"  {lbl}:{' ' * (6 - len(lbl))}{val}\n")
     for lbl, seq in (("Tools", result.required_tools), ("Source", result.source_dirs),
-                     ("Tests", result.test_dirs), ("AWS", result.aws_services)):
+                     ("Tests", result.test_dirs)):
         if seq:
             w(f"  {lbl}:{' ' * (6 - len(lbl))}{', '.join(seq)}\n")
     w("  -----------------------------------------\n")
 
 
 _STRAT_MENU = (
-    ("1", "aws", "AWS         ECS/Fargate, Lambda, S3, CloudFront"),
-    ("2", "on-prem", "On-prem     Docker Compose, self-hosted"),
-    ("3", "console", "Console     CLI tool, no server deployment"))
+    ("1", "console", "Console     CLI tool, no server deployment"),
+    ("2", "web", "Web         Web app with Docker, CI/CD"))
 
 
 def _prompt_strategy(result: AnalysisResult) -> AnalysisResult:
@@ -275,7 +251,7 @@ def _prompt_strategy(result: AnalysisResult) -> AnalysisResult:
         choice = input("  Choice [1]: ").strip() or "1"
     except (EOFError, KeyboardInterrupt):
         choice = "1"
-    strat = next((s for n, s, _ in _STRAT_MENU if choice == n), "aws")
+    strat = next((s for n, s, _ in _STRAT_MENU if choice == n), "console")
     return replace(result, detected_strategy=strat, confidence="high")
 
 
@@ -293,7 +269,6 @@ def confirm_or_override_analysis(result: AnalysisResult) -> AnalysisResult:
         choice = input("  Choice: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return result
-    ok = ("aws", "on-prem", "console")
-    if choice not in ("o", "override") and result.detected_strategy in ok:
+    if choice not in ("o", "override") and result.detected_strategy in ("console", "web"):
         return result
     return _prompt_strategy(result)

@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 
-from factory.pipeline.runner import (
+from dark_factory.pipeline.runner import (
     PipelineResult,
     Stage,
     StoryContext,

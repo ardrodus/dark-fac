@@ -11,14 +11,14 @@ import logging
 import re
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.integrations.shell import docker
+from dark_factory.integrations.shell import docker
 
 if TYPE_CHECKING:
-    from factory.workspace.manager import Workspace
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _PROXY_PORT, _PROXY_IMAGE = 3128, "ubuntu/squid:latest"
@@ -194,7 +194,7 @@ def generate_proxy_config(policy: NetworkPolicy) -> str:
 def log_blocked_attempt(domain: str, workspace: Workspace, *, container: str = "unknown") -> None:
     """Append a blocked egress attempt to the security audit log."""
     log_file = _security_dir(workspace) / _BLOCKED_LOG
-    ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ts = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     with log_file.open("a", encoding="utf-8") as fh:
         fh.write(f"{ts} container={container} domain={domain} action=BLOCKED\n")
     logger.warning("Blocked egress attempt: container=%s domain=%s", container, domain)

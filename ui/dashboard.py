@@ -23,8 +23,15 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Label, ProgressBar, RichLog, Static
 
-from factory.ui.notifications import Notification, NotificationPanel, get_store
-from factory.ui.theme import PILLARS, THEME, build_css, stage_icon
+from dark_factory.ui.notifications import Notification, NotificationPanel, get_store
+from dark_factory.ui.theme import (
+    COMPACT_ICONS,
+    FULL_HEADER_BANNER,
+    PILLARS,
+    THEME,
+    build_css,
+    stage_icon,
+)
 
 if TYPE_CHECKING:
     from textual.timer import Timer
@@ -83,6 +90,7 @@ class DashboardState:
     notifications: tuple[Notification, ...] = ()
     queue_depth: int = 0
     refresh_interval: float = 2.0
+    human_gate_queue: Any = None  # Optional HumanGateQueue instance
 
 
 # ── Helper: state → colour ────────────────────────────────────────
@@ -106,11 +114,18 @@ def _colour_for(state: str) -> str:
 # ── Widgets ───────────────────────────────────────────────────────
 
 
+class BannerPanel(Static):
+    """Header banner with ASCII art and pillar subtitle bar."""
+
+    def compose(self) -> ComposeResult:
+        yield Static(FULL_HEADER_BANNER, id="banner-content")
+
+
 class PipelinePanel(Static):
     """Pipeline-stage progress table with a progress bar."""
 
     def compose(self) -> ComposeResult:
-        yield Label(f"[b][{PILLARS.dark_forge}]\u25a0[/] Pipeline Stages[/b]")
+        yield Label(f"[b][{PILLARS.dark_forge}]{COMPACT_ICONS['dark_forge']}[/] Pipeline Stages[/b]")
         yield DataTable(id="stage-table")
         yield ProgressBar(id="stage-progress", total=100, show_eta=False)
 
@@ -145,7 +160,7 @@ class AgentPanel(Static):
     """Table showing current agent activity."""
 
     def compose(self) -> ComposeResult:
-        yield Label(f"[b][{PILLARS.ouroboros}]\u25a0[/] Agent Activity[/b]")
+        yield Label(f"[b][{PILLARS.ouroboros}]{COMPACT_ICONS['ouroboros']}[/] Agent Activity[/b]")
         yield DataTable(id="agent-table")
 
     def on_mount(self) -> None:
@@ -166,7 +181,7 @@ class HealthPanel(Static):
     """Obelisk / infrastructure health and queue depth."""
 
     def compose(self) -> ComposeResult:
-        yield Label(f"[b][{PILLARS.obelisk}]\u25a0[/] System Health[/b]")
+        yield Label(f"[b][{PILLARS.obelisk}]{COMPACT_ICONS['obelisk']}[/] System Health[/b]")
         yield Horizontal(
             DataTable(id="health-table"),
             Vertical(
@@ -197,7 +212,7 @@ class GatePanel(Static):
     """Gate summary table showing pass/fail status for each gate."""
 
     def compose(self) -> ComposeResult:
-        yield Label(f"[b][{PILLARS.sentinel}]\u25a0[/] Gate Summary[/b]")
+        yield Label(f"[b][{PILLARS.sentinel}]{COMPACT_ICONS['sentinel']}[/] Gate Summary[/b]")
         yield DataTable(id="gate-table")
 
     def on_mount(self) -> None:
@@ -205,10 +220,23 @@ class GatePanel(Static):
         table.add_columns("Gate", "Status", "Checks", "Detail")
         table.cursor_type = "none"
 
-    def refresh_gates(self, gate_summaries: list[GateSummary]) -> None:
-        """Replace all rows in the gate table."""
+    def refresh_gates(
+        self,
+        gate_summaries: list[GateSummary],
+        human_gate_queue: Any = None,
+    ) -> None:
+        """Replace all rows in the gate table, including pending human gates."""
         table: DataTable[Any] = self.query_one("#gate-table", DataTable)
         table.clear()
+        # Pending human gates first (user attention needed)
+        if human_gate_queue is not None:
+            for req in human_gate_queue.pending:
+                table.add_row(
+                    f"{req.gate_type} #{req.issue_number}",
+                    f"[{THEME.warning}]\u23f3 PENDING[/]",
+                    "[a]pprove / [x]reject",
+                    req.title[:50],
+                )
         for gs in gate_summaries:
             colour = THEME.success if gs.passed else THEME.error
             icon = "\u2714 PASS" if gs.passed else "\u2718 FAIL"
@@ -246,6 +274,8 @@ class DashboardApp(App[None]):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "force_refresh", "Refresh"),
+        Binding("a", "approve_gate", "Approve Gate"),
+        Binding("x", "reject_gate", "Reject Gate"),
     ]
     DEFAULT_CSS = build_css()
 
@@ -266,6 +296,7 @@ class DashboardApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Vertical(
+            BannerPanel(id="banner-panel"),
             PipelinePanel(id="pipeline-panel"),
             Horizontal(
                 AgentPanel(id="agent-panel"),
@@ -316,6 +347,27 @@ class DashboardApp(App[None]):
         """Bound to the ``r`` key — manually trigger a repaint."""
         self._repaint()
 
+    def _respond_to_first_gate(self, approved: bool) -> None:
+        """Resolve the first pending human gate if one exists."""
+        queue = self._state.human_gate_queue
+        if queue is None or not queue.pending:
+            return
+        from dark_factory.gates.human_gate import HumanGateResponse  # noqa: PLC0415
+
+        request = queue.pending[0]
+        action = "Approved" if approved else "Rejected"
+        queue.respond(request, HumanGateResponse(approved=approved))
+        self.log_message(f"[bold]{action}[/bold] gate: {request.gate_type} #{request.issue_number}")
+        self._repaint()
+
+    def action_approve_gate(self) -> None:
+        """Bound to the ``a`` key — approve the first pending human gate."""
+        self._respond_to_first_gate(approved=True)
+
+    def action_reject_gate(self) -> None:
+        """Bound to the ``x`` key — reject the first pending human gate."""
+        self._respond_to_first_gate(approved=False)
+
     # ── Internal ──────────────────────────────────────────────
 
     def _repaint(self) -> None:
@@ -333,6 +385,7 @@ class DashboardApp(App[None]):
             )
             self.query_one("#gate-panel", GatePanel).refresh_gates(
                 self._state.gate_summaries,
+                human_gate_queue=self._state.human_gate_queue,
             )
             notifs = self._state.notifications or get_store().items
             self.query_one("#notification-panel", NotificationPanel).refresh_notifications(

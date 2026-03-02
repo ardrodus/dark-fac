@@ -10,7 +10,7 @@ import json
 import logging
 from dataclasses import dataclass
 
-from factory.integrations.shell import CommandError, gh
+from dark_factory.integrations.shell import CommandError, gh
 
 logger = logging.getLogger(__name__)
 
@@ -99,3 +99,14 @@ def remove_label(issue_number: int, label: str, *, repo: str | None = None, cwd:
         gh(args, check=True, cwd=cwd)
     except CommandError as exc:
         raise GhSafeError(f"Failed to remove label '{label}' from #{issue_number}: {exc}") from exc
+
+
+def comment_on_issue(issue_number: int, body: str, *, repo: str | None = None, cwd: str | None = None) -> None:
+    """Add a comment to an issue."""
+    args = ["issue", "comment", str(issue_number), "--body", body]
+    if repo:
+        args.extend(["--repo", repo])
+    try:
+        gh(args, check=True, cwd=cwd)
+    except CommandError as exc:
+        raise GhSafeError(f"Failed to comment on #{issue_number}: {exc}") from exc

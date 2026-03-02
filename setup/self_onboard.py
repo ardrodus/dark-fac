@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.setup.project_analyzer import AnalysisResult
+    from dark_factory.setup.project_analyzer import AnalysisResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +37,7 @@ def _detect_factory_repo(root: Path) -> bool:
 
 def _analyze_self(root: Path) -> AnalysisResult:
     """Run project analyzer with factory-specific overrides."""
-    from factory.setup.project_analyzer import analyze_project  # noqa: PLC0415
+    from dark_factory.setup.project_analyzer import analyze_project  # noqa: PLC0415
 
     result = analyze_project(str(root))
     return replace(
@@ -51,8 +51,8 @@ def _analyze_self(root: Path) -> AnalysisResult:
 
 def _write_config(root: Path, analysis: AnalysisResult) -> Path:
     """Write ``.dark-factory/config.json`` with self-onboarding metadata."""
-    from factory.core.config_manager import load_config, save_config  # noqa: PLC0415
-    from factory.setup.config_init import add_repo_to_config, init_config  # noqa: PLC0415
+    from dark_factory.core.config_manager import load_config, save_config  # noqa: PLC0415
+    from dark_factory.setup.config_init import add_repo_to_config, init_config  # noqa: PLC0415
 
     config_path = init_config(start=root)
     add_repo_to_config(
@@ -82,7 +82,7 @@ def _check_tools() -> list[tuple[str, bool]]:
 
 def _run_selftest_validation() -> bool:
     """Run the built-in selftest and return True if it passes."""
-    from factory.cli.handlers import run_selftest  # noqa: PLC0415
+    from dark_factory.cli.handlers import run_selftest  # noqa: PLC0415
 
     try:
         run_selftest()

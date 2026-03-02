@@ -11,12 +11,12 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from textual.app import ComposeResult
 from textual.widgets import Label, RichLog, Static
 
-from factory.ui.theme import PILLARS, THEME, format_relative_time
+from dark_factory.ui.theme import PILLARS, THEME, format_relative_time
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class Notification:
     detail: str
     level: str  # "info" | "success" | "error" | "warning"
     timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).strftime("%H:%M:%S"),
+        default_factory=lambda: datetime.now(UTC).strftime("%H:%M:%S"),
     )
     created_at: float = field(default_factory=time.monotonic)
 

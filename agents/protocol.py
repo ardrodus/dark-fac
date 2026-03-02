@@ -8,7 +8,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from factory.core.config_manager import ConfigData
+    from dark_factory.core.config_manager import ConfigData
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,12 @@ ROLE_CONTEXT: dict[str, str] = {
     "sa-performance": "summary", "sa-testing": "summary",
     "sa-dependencies": "summary", "sa-api-design": "summary",
     "sa-ux": "summary", "sa-lead": "summary",
+    "sa-frontend": "summary", "sa-backend": "summary",
+    "sa-database-web": "summary", "sa-security-web": "summary",
+    "sa-performance-web": "summary", "sa-integration-web": "summary",
+    "sa-lead-web": "summary",
+    "sa-security-console": "summary", "sa-performance-console": "summary",
+    "sa-integration-console": "summary", "sa-lead-console": "summary",
     "test-writer": "full", "eng-test-writer": "full",
     "feature-writer": "full", "eng-feature-writer": "full",
     "crucible": "full", "eng-crucible": "full", "code-review": "full",
@@ -160,7 +166,7 @@ _DEGRADED_EPILOGUE = (
 def _mem_available() -> bool:
     """Check if claude-mem is available. Returns True if unknown."""
     try:
-        from factory.integrations.health import is_up  # noqa: PLC0415
+        from dark_factory.integrations.health import is_up  # type: ignore[import-not-found]  # noqa: PLC0415
         return is_up("mem")  # type: ignore[no-any-return]
     except Exception:  # noqa: BLE001
         return True

@@ -26,12 +26,23 @@ _SCHEMA: dict[str, type] = {
     "migration": dict,
     "shell": dict,
     "project": dict,
+    "engine": dict,
+    "sentinel": dict,
 }
 
 _DEFAULTS: dict[str, Any] = {
     "migration": {"manifest_path": "factory/core/migration_manifest.yaml"},
     "shell": {"timeout": 60, "retries": 1},
     "project": {"name": "dark-factory", "version": "6.0.0-dev"},
+    "engine": {
+        "model": "",
+        "claude_path": "claude",
+        "deploy_strategy": "console",
+        "pipeline_timeout": 600,
+    },
+    "sentinel": {
+        "scan_mode": "standard",
+    },
 }
 
 

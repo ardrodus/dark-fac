@@ -1,44 +1,69 @@
-"""Route-to-engineering — full issue-to-PR pipeline orchestrator.
+"""Route-to-engineering -- thin facilitator delegating to DOT pipelines.
 
-Acquires workspace, generates specs, runs TDD pipeline, security review,
-and creates a PR linked to the issue.  On failure: labels issue as blocked.
+Acquires a workspace (Python), then delegates each pipeline stage to the
+:class:`~factory.pipeline.engine.FactoryPipelineEngine`:
+
+1. Sentinel Gate 1 (post-clone security scan) -- BLOCK exits early.
+2. Dark Forge (TDD build pipeline) -- handles specs, code gen, and tests.
+3. Crucible (validation) -- three-way verdict: GO / NO_GO / NEEDS_LIVE.
+4. Deploy pipeline -- on GO verdict only.
+5. Label issue and notify (Python).
+
+NO_GO feeds failure context back to Dark Forge for retry.
+NEEDS_LIVE queues for human validation (comment + tag on ticket).
 """
+
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.pipeline.tdd.orchestrator import TDDResult
-    from factory.pipeline.tdd.test_writer import SpecBundle
-    from factory.specs.design_generator import DesignResult
-    from factory.specs.prd_generator import PRDResult
-    from factory.workspace.manager import Workspace
+    from dark_factory.engine.runner import PipelineResult
+    from dark_factory.pipeline.engine import FactoryPipelineEngine
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
+
+# ── Crucible verdict detection ──────────────────────────────────────
+# The crucible.dot pipeline terminates at one of three Msquare exit
+# nodes.  We detect the verdict from the last completed node ID.
+
+_VERDICT_GO = "go"
+_VERDICT_NO_GO = "no_go"
+_VERDICT_NEEDS_LIVE = "needs_live"
+
+# ── Labels ──────────────────────────────────────────────────────────
+
+LABEL_NEEDS_LIVE = "factory:needs-live"
+
+
+# ── Value types ─────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True, slots=True)
 class PipelineMetrics:
     """Timing for each pipeline stage."""
+
     workspace_seconds: float = 0.0
-    specs_seconds: float = 0.0
-    tdd_seconds: float = 0.0
-    contract_seconds: float = 0.0
-    security_seconds: float = 0.0
-    pr_seconds: float = 0.0
+    sentinel_seconds: float = 0.0
+    forge_seconds: float = 0.0
+    crucible_seconds: float = 0.0
+    deploy_seconds: float = 0.0
     total_seconds: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
 class RouteResult:
     """Outcome of the full engineering route."""
+
     success: bool
-    pr_url: str = ""
+    verdict: str = ""
     error_message: str = ""
     pipeline_metrics: PipelineMetrics = field(default_factory=PipelineMetrics)
 
@@ -46,10 +71,17 @@ class RouteResult:
 @dataclass(frozen=True, slots=True)
 class RouteConfig:
     """Settings for the engineering pipeline."""
+
     repo: str = ""
-    tdd_max_rounds: int = 3
-    tdd_test_command: tuple[str, ...] = ("pytest", "-v", "--tb=short")
-    tdd_test_timeout: int = 120
+    max_forge_retries: int = 1
+
+    # Dependency injection hooks (for testing)
+    engine_factory: Callable[[], FactoryPipelineEngine] | None = None
+    acquire_workspace_fn: Callable[[str, int], Workspace] | None = None
+    git_rev_parse_fn: Callable[[str, str], str] | None = None
+
+
+# ── Helpers ─────────────────────────────────────────────────────────
 
 
 def _inum(issue: dict[str, object]) -> int:
@@ -64,11 +96,39 @@ def _ititle(issue: dict[str, object]) -> str:
 def _label_blocked(num: int, repo: str, reason: str) -> None:
     """Label issue as blocked."""
     try:
-        from factory.integrations.gh_safe import add_label  # noqa: PLC0415
+        from dark_factory.integrations.gh_safe import add_label  # noqa: PLC0415
+
         add_label(num, "blocked", repo=repo)
     except Exception:  # noqa: BLE001
         logger.warning("Failed to label issue #%d as blocked", num)
     logger.warning("Issue #%d blocked: %s", num, reason)
+
+
+def _notify_needs_live(num: int, repo: str) -> None:
+    """Comment on issue and add NEEDS_LIVE label for human validation."""
+    body = (
+        "**Dark Factory -- NEEDS_LIVE verdict**\n\n"
+        "Crucible produced a `NEEDS_LIVE` verdict for this issue.\n"
+        "Some tests require live/external services not available in CI.\n\n"
+        "Please validate manually in a live environment."
+    )
+    try:
+        from dark_factory.integrations.gh_safe import add_label, comment_on_issue  # noqa: PLC0415
+
+        comment_on_issue(num, body, repo=repo)
+        add_label(num, LABEL_NEEDS_LIVE, repo=repo)
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to notify NEEDS_LIVE for #%d", num)
+
+
+def _label_done(num: int, repo: str) -> None:
+    """Label issue as done after successful deploy."""
+    try:
+        from dark_factory.integrations.gh_safe import add_label  # noqa: PLC0415
+
+        add_label(num, "factory:done", repo=repo)
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to label issue #%d as done", num)
 
 
 def _fail(msg: str, num: int, repo: str, m: PipelineMetrics) -> RouteResult:
@@ -77,185 +137,228 @@ def _fail(msg: str, num: int, repo: str, m: PipelineMetrics) -> RouteResult:
     return RouteResult(success=False, error_message=msg, pipeline_metrics=m)
 
 
-def _acquire(repo: str, num: int) -> Workspace:
-    from factory.workspace.manager import acquire_workspace  # noqa: PLC0415
+def _default_acquire(repo: str, num: int) -> Workspace:
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
+
     return acquire_workspace(repo, num)
 
 
-def _gen_specs(
-    issue: dict[str, object], *, invoke_fn: Callable[[str], str] | None = None,
-) -> tuple[PRDResult, DesignResult]:
-    from factory.specs.design_generator import generate_design  # noqa: PLC0415
-    from factory.specs.prd_generator import generate_prd  # noqa: PLC0415
-    prd = generate_prd(issue, invoke_fn=invoke_fn)
-    design = generate_design(prd, None, invoke_fn=invoke_fn, issue_number=_inum(issue))
-    return prd, design
+def _default_engine() -> FactoryPipelineEngine:
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+
+    return FactoryPipelineEngine()
 
 
-def _make_bundle(prd: PRDResult, design: DesignResult) -> SpecBundle:
-    from factory.pipeline.tdd.test_writer import SpecBundle  # noqa: PLC0415
-    prd_text = prd.raw_output or f"{prd.title} - {prd.description}"
-    design_text = design.raw_output or "\n".join(design.architecture_decisions)
-    return SpecBundle(prd=prd_text, design_doc=design_text)
+def _default_rev_parse(ws_path: str, ref: str) -> str:
+    from dark_factory.integrations.shell import git  # noqa: PLC0415
+
+    result = git(["rev-parse", ref], cwd=ws_path)
+    return result.stdout.strip()
 
 
-def _run_tdd(
-    specs: SpecBundle, ws: Workspace, cfg: RouteConfig,
-    *, invoke_fn: Callable[[str], str] | None = None,
-) -> TDDResult:
-    from factory.pipeline.tdd.orchestrator import TDDConfig, run_tdd_pipeline  # noqa: PLC0415
-    tc = TDDConfig(max_rounds=cfg.tdd_max_rounds, test_command=cfg.tdd_test_command,
-                   test_timeout=cfg.tdd_test_timeout)
-    return run_tdd_pipeline(specs, ws, tc, invoke_fn=invoke_fn)
+def _extract_verdict(result: PipelineResult) -> str:
+    """Extract the crucible verdict from the pipeline result.
+
+    Checks the last completed node against known verdict exit nodes.
+    Falls back to the context ``verdict`` variable if set.
+    """
+    from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
+
+    if result.status == PipelineStatus.FAILED:
+        return _VERDICT_NO_GO
+
+    if result.completed_nodes:
+        last_node = result.completed_nodes[-1]
+        if last_node in {_VERDICT_GO, _VERDICT_NO_GO, _VERDICT_NEEDS_LIVE}:
+            return last_node
+
+    # Fallback: check context for explicit verdict variable
+    verdict = result.context.get("verdict", "")
+    if verdict in {_VERDICT_GO, _VERDICT_NO_GO, _VERDICT_NEEDS_LIVE}:
+        return verdict
+
+    return _VERDICT_NO_GO
 
 
-def _contract_validation(ws: Workspace, issue_num: int) -> bool:
-    from factory.gates.contract_validation import run_contract_validation  # noqa: PLC0415
-    from factory.gates.framework import CheckStatus  # noqa: PLC0415
-    from pathlib import Path  # noqa: PLC0415
-    specs_dir = str(Path(ws.path) / ".dark-factory" / "specs")
-    result = run_contract_validation(ws.path, specs_dir, str(issue_num))
-    if not result.passed:
-        for c in result.checks:
-            if c.status == CheckStatus.FAIL:
-                logger.warning("Contract violation [%s]: %s", c.name, c.details)
-    return result.passed
+def _is_pipeline_ok(result: PipelineResult) -> bool:
+    """Check if a pipeline result indicates success."""
+    from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
+
+    return result.status == PipelineStatus.COMPLETED
 
 
-def _security_review(ws_path: str) -> bool:
-    from factory.gates.framework import GateRunner  # noqa: PLC0415
-    from factory.integrations.shell import git  # noqa: PLC0415
-    runner = GateRunner("security-pre-pr", metrics_dir=ws_path)
-    runner.register_check("secret-scan-pre-pr",
-                          lambda: git(["log", "--oneline", "-1"], cwd=ws_path).returncode == 0)
-    return runner.run().passed
+# ── Main orchestrator ───────────────────────────────────────────────
 
 
-def _pr_body(num: int, title: str, m: PipelineMetrics, tdd: TDDResult) -> str:
-    files = tdd.files_changed
-    fl = "\n".join(f"- `{f}`" for f in files) if files else "N/A"
-    return (
-        f"## Summary\n\nAutomated implementation for issue #{num}.\n\n"
-        f"Closes #{num}\n\n## Pipeline Metrics\n\n"
-        f"- **Workspace**: {m.workspace_seconds:.1f}s\n"
-        f"- **Specs**: {m.specs_seconds:.1f}s\n"
-        f"- **TDD**: {m.tdd_seconds:.1f}s ({tdd.rounds} rounds)\n"
-        f"- **Security**: {m.security_seconds:.1f}s\n"
-        f"- **Total**: {m.total_seconds:.1f}s\n\n"
-        f"## Files Changed\n\n{fl}\n\n---\n*Generated by Dark Factory — {title}*"
-    )
-
-
-def _create_pr(
-    ws_path: str, repo: str, num: int, title: str,
-    branch: str, m: PipelineMetrics, tdd: TDDResult,
-) -> str:
-    from factory.integrations.shell import gh, git  # noqa: PLC0415
-    git(["add", "-A"], cwd=ws_path, check=False)
-    if git(["diff", "--cached", "--name-only"], cwd=ws_path).stdout.strip():
-        git(["commit", "-m", f"feat: implement issue #{num}\n\n"
-             "Generated by Dark Factory engineering pipeline."],
-            cwd=ws_path, check=False)
-    git(["push", "origin", branch], cwd=ws_path, check=False, timeout=120)
-    pr_title = f"feat: implement issue #{num} — {title}"
-    if len(pr_title) > 72:  # noqa: PLR2004
-        pr_title = pr_title[:69] + "..."
-    body = _pr_body(num, title, m, tdd)
-    r = gh(["pr", "create", "--repo", repo, "--head", branch,
-            "--base", "main", "--title", pr_title, "--body", body],
-           check=False, timeout=60)
-    url = r.stdout.strip()
-    if r.returncode != 0 or not url:
-        logger.warning("PR creation failed: %s", r.stderr.strip())
-        return ""
-    return url
-
-
-def route_to_engineering(
+async def route_to_engineering(
     issue: dict[str, object],
     config: RouteConfig,
-    *,
-    invoke_fn: Callable[[str], str] | None = None,
 ) -> RouteResult:
-    """Orchestrate the full issue-to-PR engineering pipeline.
+    """Orchestrate the full issue-to-deploy pipeline via DOT engine.
 
-    Sequence: acquire workspace -> generate specs -> run TDD pipeline ->
-    run security review -> create PR.
-    On failure: issue labeled blocked, DLQ entry created, Obelisk triage.
+    Sequence:
+        1. Acquire workspace (Python)
+        2. Sentinel Gate 1 -- BLOCK exits early
+        3. Dark Forge -- full TDD build pipeline
+        4. Crucible -- validation with three-way verdict
+        5. On GO: deploy pipeline
+        6. Label issue, notify (Python)
+
+    NO_GO feeds failure context back to forge for retry.
+    NEEDS_LIVE comments on the ticket and adds a label.
     """
     t0 = time.monotonic()
     num, repo = _inum(issue), config.repo
-    ws_s = spec_s = tdd_s = cvg_s = sec_s = pr_s = 0.0
+    ws_s = sen_s = forge_s = cruc_s = dep_s = 0.0
 
     def _m() -> PipelineMetrics:
-        return PipelineMetrics(workspace_seconds=ws_s, specs_seconds=spec_s,
-                               tdd_seconds=tdd_s, contract_seconds=cvg_s,
-                               security_seconds=sec_s, pr_seconds=pr_s,
-                               total_seconds=round(time.monotonic() - t0, 2))
+        return PipelineMetrics(
+            workspace_seconds=ws_s,
+            sentinel_seconds=sen_s,
+            forge_seconds=forge_s,
+            crucible_seconds=cruc_s,
+            deploy_seconds=dep_s,
+            total_seconds=round(time.monotonic() - t0, 2),
+        )
 
-    # Stage 1: Acquire workspace
+    # ── Step 1: Acquire workspace (Python) ──────────────────────
     logger.info("Routing issue #%d to engineering pipeline", num)
+    acquire_fn = config.acquire_workspace_fn or _default_acquire
     try:
         s = time.monotonic()
-        workspace = _acquire(repo, num)
+        workspace = acquire_fn(repo, num)
         ws_s = round(time.monotonic() - s, 2)
     except Exception as exc:  # noqa: BLE001
         return _fail(f"Workspace acquisition failed: {exc}", num, repo, _m())
-    ws_path, branch = workspace.path, workspace.branch
 
-    # Stage 2: Generate specs (PRD + design)
+    ws_path = workspace.path
+
+    # ── Step 2: Sentinel Gate 1 -- BLOCK exits early ────────────
+    engine_fn = config.engine_factory or _default_engine
+    engine = engine_fn()
+
     try:
         s = time.monotonic()
-        prd, design = _gen_specs(issue, invoke_fn=invoke_fn)
-        spec_s = round(time.monotonic() - s, 2)
+        sentinel_result = await engine.run_sentinel_gate(1, ws_path)
+        sen_s = round(time.monotonic() - s, 2)
     except Exception as exc:  # noqa: BLE001
-        return _fail(f"Spec generation failed: {exc}", num, repo, _m())
-    if prd.errors or design.errors:
-        errs = [*prd.errors, *design.errors]
-        return _fail(f"Spec errors: {'; '.join(errs)}", num, repo, _m())
+        return _fail(f"Sentinel Gate 1 failed: {exc}", num, repo, _m())
 
-    # Stage 3: Run TDD pipeline
-    bundle = _make_bundle(prd, design)
-    try:
-        s = time.monotonic()
-        tdd = _run_tdd(bundle, workspace, config, invoke_fn=invoke_fn)
-        tdd_s = round(time.monotonic() - s, 2)
-    except Exception as exc:  # noqa: BLE001
-        return _fail(f"TDD pipeline failed: {exc}", num, repo, _m())
-    if not tdd.success:
-        em = "; ".join(tdd.errors) if tdd.errors else "TDD failed"
-        return _fail(f"TDD pipeline failed: {em}", num, repo, _m())
+    if not _is_pipeline_ok(sentinel_result):
+        return _fail(
+            f"Sentinel Gate 1 BLOCK: {sentinel_result.error or 'security scan failed'}",
+            num, repo, _m(),
+        )
 
-    # Stage 4: Contract validation
-    try:
-        s = time.monotonic()
-        cvg_ok = _contract_validation(workspace, num)
-        cvg_s = round(time.monotonic() - s, 2)
-    except Exception as exc:  # noqa: BLE001
-        return _fail(f"Contract validation failed: {exc}", num, repo, _m())
-    if not cvg_ok:
-        return _fail("Contract validation gate failed", num, repo, _m())
+    # ── Step 3: Dark Forge -- handles TDD internally ────────────
+    issue_data: dict[str, Any] = dict(issue)
+    forge_attempts = 0
+    max_attempts = 1 + config.max_forge_retries
+    failure_context = ""
 
-    # Stage 5: Security review
-    try:
-        s = time.monotonic()
-        sec_ok = _security_review(ws_path)
-        sec_s = round(time.monotonic() - s, 2)
-    except Exception as exc:  # noqa: BLE001
-        return _fail(f"Security review failed: {exc}", num, repo, _m())
-    if not sec_ok:
-        return _fail("Security review failed", num, repo, _m())
+    rev_parse = config.git_rev_parse_fn or _default_rev_parse
 
-    # Stage 6: Create PR
-    title = _ititle(issue)
-    try:
-        s = time.monotonic()
-        pr_url = _create_pr(ws_path, repo, num, title, branch, _m(), tdd)
-        pr_s = round(time.monotonic() - s, 2)
-    except Exception as exc:  # noqa: BLE001
-        return _fail(f"PR creation failed: {exc}", num, repo, _m())
-    if not pr_url:
-        return _fail("PR creation returned empty URL", num, repo, _m())
+    for attempt in range(1, max_attempts + 1):
+        forge_attempts = attempt
+        logger.info("Dark Forge attempt %d/%d for #%d", attempt, max_attempts, num)
 
-    logger.info("Pipeline succeeded for #%d — PR: %s", num, pr_url)
-    return RouteResult(success=True, pr_url=pr_url, pipeline_metrics=_m())
+        # Record base SHA before forge runs
+        try:
+            base_sha = rev_parse(ws_path, "HEAD")
+        except Exception:  # noqa: BLE001
+            base_sha = ""
+
+        forge_ctx: dict[str, Any] = {}
+        if failure_context:
+            forge_ctx["crucible_failure"] = failure_context
+
+        try:
+            s = time.monotonic()
+            forge_result = await engine.run_forge(issue_data, ws_path, context=forge_ctx)
+            forge_s += round(time.monotonic() - s, 2)
+        except Exception as exc:  # noqa: BLE001
+            failure_context = f"Forge attempt {attempt} exception: {exc}"
+            logger.warning("Dark Forge exception (attempt %d/%d): %s", attempt, max_attempts, exc)
+            continue
+
+        if not _is_pipeline_ok(forge_result):
+            failure_context = f"Forge attempt {attempt} failed: {forge_result.error or 'unknown'}"
+            logger.warning("Dark Forge failed (attempt %d/%d) for #%d", attempt, max_attempts, num)
+            continue
+
+        # Get head SHA after forge
+        try:
+            head_sha = rev_parse(ws_path, "HEAD")
+        except Exception:  # noqa: BLE001
+            head_sha = ""
+
+        # ── Step 4: Crucible -- three-way verdict ───────────────
+        try:
+            s = time.monotonic()
+            crucible_result = await engine.run_crucible(ws_path, base_sha, head_sha)
+            cruc_s += round(time.monotonic() - s, 2)
+        except Exception as exc:  # noqa: BLE001
+            failure_context = f"Crucible exception: {exc}"
+            logger.warning("Crucible exception for #%d: %s", num, exc)
+            continue
+
+        verdict = _extract_verdict(crucible_result)
+
+        if verdict == _VERDICT_GO:
+            # ── Step 5: Deploy pipeline ─────────────────────────
+            try:
+                s = time.monotonic()
+                deploy_result = await engine.run_pipeline(
+                    "deploy",
+                    {"workspace": ws_path, "issue": issue_data, "branch": workspace.branch},
+                )
+                dep_s = round(time.monotonic() - s, 2)
+            except Exception as exc:  # noqa: BLE001
+                return _fail(f"Deploy pipeline failed: {exc}", num, repo, _m())
+
+            if not _is_pipeline_ok(deploy_result):
+                return _fail(
+                    f"Deploy pipeline failed: {deploy_result.error or 'unknown'}",
+                    num, repo, _m(),
+                )
+
+            # ── Step 6: Label issue, notify ─────────────────────
+            _label_done(num, repo)
+            logger.info("Pipeline succeeded for #%d (GO)", num)
+            return RouteResult(
+                success=True,
+                verdict=_VERDICT_GO,
+                pipeline_metrics=_m(),
+            )
+
+        if verdict == _VERDICT_NEEDS_LIVE:
+            _notify_needs_live(num, repo)
+            logger.info("Pipeline NEEDS_LIVE for #%d -- queued for human validation", num)
+            return RouteResult(
+                success=False,
+                verdict=_VERDICT_NEEDS_LIVE,
+                error_message="Crucible NEEDS_LIVE: queued for human validation",
+                pipeline_metrics=_m(),
+            )
+
+        # NO_GO -- feed failure context back to forge for retry
+        error_detail = crucible_result.error or "tests failed"
+        failure_context = f"Crucible NO_GO: {error_detail}"
+        logger.warning("Crucible NO_GO for #%d -- retrying forge (%d/%d)", num, attempt, max_attempts)
+
+    # All forge attempts exhausted
+    return _fail(
+        f"Dark Forge failed after {forge_attempts} attempt(s): {failure_context}",
+        num, repo, _m(),
+    )
+
+
+def route_to_engineering_sync(
+    issue: dict[str, object],
+    config: RouteConfig,
+) -> RouteResult:
+    """Synchronous wrapper around :func:`route_to_engineering`.
+
+    Convenience for callers that are not already in an async context.
+    """
+    return asyncio.run(route_to_engineering(issue, config))

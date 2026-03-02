@@ -13,14 +13,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from factory.cli.parser import ParsedCommand
+    from dark_factory.cli.parser import ParsedCommand
 
 logger = logging.getLogger(__name__)
 
 
 def dispatch_config(parsed: ParsedCommand) -> None:
     """Dispatch the ``config`` command."""
-    from factory.cli.handlers import run_config
+    from dark_factory.cli.handlers import run_config
 
     action = parsed.args[0] if parsed.args else ""
     key = parsed.args[1] if len(parsed.args) > 1 else ""
@@ -30,14 +30,14 @@ def dispatch_config(parsed: ParsedCommand) -> None:
 
 def dispatch_dashboard(parsed: ParsedCommand) -> None:
     """Dispatch the ``dashboard`` command."""
-    from factory.cli.handlers import run_dashboard
+    from dark_factory.cli.handlers import run_dashboard
 
     run_dashboard()
 
 
 def dispatch_doctor(parsed: ParsedCommand) -> None:
     """Dispatch the ``doctor`` command."""
-    from factory.cli.handlers import run_doctor
+    from dark_factory.cli.handlers import run_doctor
 
     run_doctor(
         modules=parsed.flags.get("modules", False),
@@ -49,7 +49,7 @@ def dispatch_doctor(parsed: ParsedCommand) -> None:
 
 def dispatch_ingest(parsed: ParsedCommand) -> None:
     """Dispatch the ``ingest`` command."""
-    from factory.cli.handlers import run_ingest
+    from dark_factory.cli.handlers import run_ingest
 
     prd_path = parsed.args[0] if parsed.args else ""
     repo = parsed.args[1] if len(parsed.args) > 1 else ""
@@ -64,7 +64,7 @@ def dispatch_ingest(parsed: ParsedCommand) -> None:
 
 def dispatch_gates(parsed: ParsedCommand) -> None:
     """Dispatch the ``gates`` command."""
-    from factory.cli.handlers import run_gates
+    from dark_factory.cli.handlers import run_gates
 
     run_name = parsed.args[0] if parsed.args else ""
     run_gates(
@@ -76,7 +76,7 @@ def dispatch_gates(parsed: ParsedCommand) -> None:
 
 def dispatch_smoke_test(parsed: ParsedCommand) -> None:
     """Dispatch the ``smoke-test`` command."""
-    from factory.cli.handlers import run_smoke_test
+    from dark_factory.cli.handlers import run_smoke_test
 
     title = parsed.args[0] if parsed.args else "trivial-python-story"
     run_smoke_test(title=title)
@@ -84,40 +84,55 @@ def dispatch_smoke_test(parsed: ParsedCommand) -> None:
 
 def dispatch_status(parsed: ParsedCommand) -> None:
     """Dispatch the ``status`` command."""
-    from factory.cli.handlers import run_status
+    from dark_factory.cli.handlers import run_status
 
     run_status(epics=parsed.flags.get("epics", False))
 
 
 def dispatch_onboard(parsed: ParsedCommand) -> None:
     """Dispatch the ``onboard`` command."""
-    from factory.cli.handlers import run_onboard
+    from dark_factory.cli.handlers import run_onboard
 
     run_onboard(self_onboard=parsed.flags.get("self", False))
 
 
 def dispatch_selftest(parsed: ParsedCommand) -> None:
     """Dispatch the ``selftest`` command."""
-    from factory.cli.handlers import run_selftest
+    from dark_factory.cli.handlers import run_selftest
 
     run_selftest()
 
 
 def dispatch_auto(parsed: ParsedCommand) -> None:
-    """Dispatch the ``auto`` command (``--auto`` / ``-a`` flag)."""
-    from factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
-    from factory.dispatch.issue_dispatcher import DispatcherState, auto_main_loop  # noqa: PLC0415
+    """Dispatch the ``auto`` command (``--auto`` / ``-a`` flag).
 
-    dev = parsed.flags.get("dev_mode", False)
+    Runs the full 4-pillar auto-mode loop: poll for issues → Dark Forge →
+    Crucible → Deploy → Ouroboros.
+    """
+    import os  # noqa: PLC0415
+
+    from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
+    from dark_factory.modes.auto import AutoModeConfig, run_auto_mode  # noqa: PLC0415
+
+    repo = os.environ.get("GITHUB_REPO", "")
+    if not repo:
+        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+        cfg = load_config()
+        repos = cfg.data.get("repos", [])
+        for r in repos:
+            if isinstance(r, dict) and r.get("active"):
+                repo = r.get("name", "")
+                break
 
     try:
         with instance_lock():
-            auto_main_loop(state=DispatcherState(dev_mode=dev))
+            run_auto_mode(AutoModeConfig(repo=repo))
     except InstanceLockError as exc:
         sys.stderr.write(f"[instance-lock] ERROR: {exc}\n")
         raise SystemExit(1) from None
     except KeyboardInterrupt:
-        sys.stderr.write("Dispatch interrupted\n")
+        sys.stderr.write("Auto mode interrupted\n")
         raise SystemExit(130) from None
 
 
@@ -125,9 +140,13 @@ def dispatch_test(parsed: ParsedCommand) -> None:
     """Dispatch the ``test`` command (``--test <PR>`` flag)."""
     import shutil  # noqa: PLC0415
 
-    from factory.crucible.orchestrator import CrucibleConfig, CrucibleVerdict, run_crucible  # noqa: PLC0415
-    from factory.ui.cli_colors import print_error  # noqa: PLC0415
-    from factory.workspace.manager import Workspace  # noqa: PLC0415
+    from dark_factory.crucible.orchestrator import (  # noqa: PLC0415
+        CrucibleConfig,
+        CrucibleVerdict,
+        run_crucible,
+    )
+    from dark_factory.ui.cli_colors import print_error  # noqa: PLC0415
+    from dark_factory.workspace.manager import Workspace  # noqa: PLC0415
 
     pr_number = int(parsed.args[0]) if parsed.args else 0
     if pr_number <= 0:
@@ -144,7 +163,7 @@ def dispatch_test(parsed: ParsedCommand) -> None:
         )
         raise SystemExit(1)
 
-    from factory.core.config_manager import load_config  # noqa: PLC0415
+    from dark_factory.core.config_manager import load_config  # noqa: PLC0415
 
     config = load_config()
     repo_root = config.data.get("project", {}).get("repo_root", "")
@@ -166,14 +185,170 @@ def dispatch_test(parsed: ParsedCommand) -> None:
         raise SystemExit(1)
 
 
+def _needs_onboarding() -> bool:
+    """Return True if onboarding hasn't completed yet.
+
+    Onboarding is considered complete when config.json exists AND contains
+    at least one repo entry in ``owner/repo`` format (not a local path).
+    """
+    import json  # noqa: PLC0415
+
+    from dark_factory.core.config_manager import resolve_config_path  # noqa: PLC0415
+
+    config_path = resolve_config_path()
+    if not config_path.is_file():
+        return True
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return True
+    repos = data.get("repos", [])
+    if not isinstance(repos, list) or not repos:
+        return True
+    # Check that at least one active repo is in owner/repo format
+    for repo in repos:
+        if isinstance(repo, dict) and repo.get("active"):
+            name = repo.get("name", "")
+            if isinstance(name, str) and "/" in name and ":\\" not in name:
+                return False
+    return True
+
+
+def _run_subsystem(key: str) -> None:
+    """Launch the subsystem selected from the interactive TUI menu."""
+    if key == "1":
+        # Dark Forge — run one dispatch cycle through the full pipeline
+        _run_forge_interactive()
+    elif key == "2":
+        # Crucible — prompt for PR number and validate
+        _run_crucible_interactive()
+    elif key == "3":
+        # Ouroboros — runs automatically in auto mode
+        sys.stdout.write(
+            "\n  Ouroboros runs automatically after each auto-mode cycle.\n"
+            "  Use 'dark-factory auto' to start the autonomous loop.\n\n"
+        )
+        input("  Press Enter to return to menu...")
+    elif key == "4":
+        # Foundry — workspace manager TUI
+        from dark_factory.modes.foundry import run_foundry_tui  # noqa: PLC0415
+
+        run_foundry_tui()
+    elif key == "5":
+        # Settings — config editor TUI
+        from dark_factory.modes.settings import run_settings_tui  # noqa: PLC0415
+
+        run_settings_tui()
+
+
+def _run_forge_interactive() -> None:
+    """Pick the next queued issue and run it through the full pipeline."""
+    import os  # noqa: PLC0415
+
+    from dark_factory.modes.auto import AutoModeConfig, run_cycle  # noqa: PLC0415
+
+    repo = os.environ.get("GITHUB_REPO", "")
+    if not repo:
+        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+        cfg = load_config()
+        for r in cfg.data.get("repos", []):
+            if isinstance(r, dict) and r.get("active"):
+                repo = r.get("name", "")
+                break
+
+    from dark_factory.dispatch.issue_dispatcher import select_next_issue  # noqa: PLC0415
+
+    sys.stdout.write("\n  Dark Forge: scanning for queued issues...\n")
+    issue = select_next_issue(repo=repo or None)
+    if issue is None:
+        sys.stdout.write("  No queued issues found.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    sys.stdout.write(f"  Processing #{issue.number}: {issue.title}\n")
+    result = run_cycle(issue, config=AutoModeConfig(repo=repo, max_forge_retries=2))
+    sys.stdout.write(
+        f"  Result: {result.outcome.value} ({result.duration_s:.1f}s, "
+        f"{result.forge_attempts} forge attempt(s))\n"
+        f"  {result.message}\n\n"
+    )
+    input("  Press Enter to return to menu...")
+
+
+def _run_crucible_interactive() -> None:
+    """Prompt for a PR number and run Crucible validation."""
+    import shutil  # noqa: PLC0415
+
+    sys.stdout.write("\n")
+    try:
+        raw = input("  Enter PR number to validate: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if not raw.isdigit() or int(raw) <= 0:
+        sys.stdout.write("  Invalid PR number.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    if not shutil.which("docker"):
+        sys.stdout.write("  Crucible requires Docker but 'docker' was not found.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    pr_number = int(raw)
+    from dark_factory.crucible.orchestrator import CrucibleConfig, run_crucible  # noqa: PLC0415
+    from dark_factory.workspace.manager import Workspace  # noqa: PLC0415
+
+    from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+    config = load_config()
+    repo_root = config.data.get("project", {}).get("repo_root", "")
+    if not repo_root:
+        from pathlib import Path  # noqa: PLC0415
+
+        repo_root = str(Path.cwd())
+
+    ws = Workspace(
+        name=f"crucible-pr-{pr_number}", path=repo_root,
+        repo_url="", branch=f"pr-{pr_number}",
+    )
+    sys.stdout.write(f"  Crucible: validating PR #{pr_number}...\n")
+    result = run_crucible(ws, CrucibleConfig(), issue_number=pr_number)
+    sys.stdout.write(
+        f"  Verdict: {result.verdict.value}\n"
+        f"  pass={result.pass_count} fail={result.fail_count} "
+        f"skip={result.skip_count} ({result.duration_s:.1f}s)\n"
+    )
+    if result.error:
+        sys.stdout.write(f"  Error: {result.error}\n")
+    sys.stdout.write("\n")
+    input("  Press Enter to return to menu...")
+
+
 def dispatch_interactive(parsed: ParsedCommand) -> None:
-    """Dispatch the ``interactive`` command (default when no args)."""
-    from factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
-    from factory.ui.interactive_menu import run_interactive  # noqa: PLC0415
+    """Dispatch the ``interactive`` command (default when no args).
+
+    On first run — or if a previous onboarding didn't complete — automatically
+    triggers onboarding before entering the Textual TUI menu loop.
+    """
+    if _needs_onboarding():
+        sys.stdout.write("First run detected \u2014 starting onboarding...\n\n")
+        from dark_factory.setup.orchestrator import run_onboarding  # noqa: PLC0415
+
+        rc = run_onboarding()
+        if rc != 0:
+            raise SystemExit(rc)
+
+    from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
+    from dark_factory.modes.interactive import run_interactive_tui  # noqa: PLC0415
 
     try:
         with instance_lock():
-            run_interactive()
+            while True:
+                selection = run_interactive_tui()
+                if selection is None:
+                    break
+                _run_subsystem(selection)
     except InstanceLockError as exc:
         sys.stderr.write(f"[instance-lock] ERROR: {exc}\n")
         raise SystemExit(1) from None
@@ -181,7 +356,7 @@ def dispatch_interactive(parsed: ParsedCommand) -> None:
 
 def dispatch_workspace(parsed: ParsedCommand) -> None:
     """Dispatch the ``workspace`` command."""
-    from factory.cli.handlers import run_workspace
+    from dark_factory.cli.handlers import run_workspace
 
     action = parsed.args[0] if parsed.args else ""
     name = parsed.args[1] if len(parsed.args) > 1 else ""
@@ -222,7 +397,7 @@ def dispatch(parsed: ParsedCommand) -> None:
     if handler is not None:
         handler(parsed)
     else:
-        from factory.ui.cli_colors import print_error  # noqa: PLC0415
+        from dark_factory.ui.cli_colors import print_error  # noqa: PLC0415
 
         known = ", ".join(sorted(DISPATCH_TABLE))
         print_error(

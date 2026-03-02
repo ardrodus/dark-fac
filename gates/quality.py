@@ -16,8 +16,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.gates.framework import GateRunner
-from factory.integrations.shell import CommandResult, run_command
+from dark_factory.gates.framework import GateRunner
+from dark_factory.integrations.shell import CommandResult, run_command
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -125,9 +125,16 @@ def create_runner(
     """Create a configured (but not executed) quality gate runner."""
     cwd = str(workspace)
     runner = GateRunner(GATE_NAME, metrics_dir=metrics_dir)
-    runner.register_check("ruff-check", lambda: _tool_check(["ruff", "check", "factory/"], "ruff check", cwd=cwd))
-    runner.register_check("mypy-strict", lambda: _tool_check(["mypy", "--strict", "factory/"], "mypy --strict", cwd=cwd))
-    runner.register_check("pytest", lambda: _tool_check(["pytest", "tests/", "-v", "--tb=short"], "pytest", timeout=300, cwd=cwd))
+    runner.register_check(
+        "ruff-check", lambda: _tool_check(["ruff", "check", "factory/"], "ruff check", cwd=cwd))
+    runner.register_check(
+        "mypy-strict",
+        lambda: _tool_check(["mypy", "--strict", "factory/"], "mypy --strict", cwd=cwd),
+    )
+    runner.register_check(
+        "pytest",
+        lambda: _tool_check(["pytest", "tests/", "-v", "--tb=short"], "pytest", timeout=300, cwd=cwd),
+    )
     return runner
 
 

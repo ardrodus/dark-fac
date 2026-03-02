@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 
-from factory.pipeline.arch_review.specialists import SpecialistResult
+from dark_factory.pipeline.arch_review.specialists import SpecialistResult
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ def _post_comment(issue: dict[str, object], body: str, *, repo: str | None = Non
         logger.warning("Cannot post comment: missing issue number")
         return
     try:
-        from factory.integrations.shell import gh  # noqa: PLC0415
+        from dark_factory.integrations.shell import gh  # noqa: PLC0415
         args = ["issue", "comment", str(int(num)), "--body", body]
         if repo:
             args.extend(["--repo", repo])

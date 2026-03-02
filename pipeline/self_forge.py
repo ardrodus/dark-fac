@@ -12,11 +12,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.gates.quality import gate_mypy, gate_pytest, gate_ruff
+from dark_factory.gates.quality import gate_mypy, gate_pytest, gate_ruff
 
 if TYPE_CHECKING:
-    from factory.core.config_manager import ConfigData
-    from factory.workspace.manager import Workspace
+    from dark_factory.core.config_manager import ConfigData
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ def _layer_tests(cwd: str) -> LayerResult:
 def _layer_pipeline_sim(cwd: str) -> LayerResult:
     """Verify all registered gates are discoverable and loadable."""
     try:
-        from factory.gates import discover_gates  # noqa: PLC0415
+        from dark_factory.gates import discover_gates  # noqa: PLC0415
         gates = discover_gates()
         return LayerResult(
             name=_LAYER_PIPELINE_SIM, passed=len(gates) > 0,

@@ -1,0 +1,76 @@
+// Architecture Review Pipeline -- Web Strategy
+//
+// 6 sequential domain specialists + Solutions Architect Lead.
+// For web applications -- frontend, backend, database, security,
+// performance, and integration concerns.
+//
+// Agents: factory/agents/sa-{frontend,backend,database-web,
+//         security-web,performance-web,integration-web}.md, sa-lead-web.md
+//
+// Called by: Dark Forge (dark_forge.dot) when DEPLOY_STRATEGY=web
+
+digraph arch_review_web {
+    graph [
+        goal="Review a GitHub issue across 6 web application domains and produce an Engineering Brief"
+    ]
+
+    // --- Entry ---
+    start [shape=Mdiamond, label="Approved Issue"]
+
+    // --- Stage 1: Frontend (UI, UX, accessibility, responsive design) ---
+    sa_frontend [
+        shape=box,
+        prompt="You are Stage 1/6 (Frontend) in Dark Factory's web architecture review pipeline.\n\nRead your role definition (factory/agents/sa-frontend.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: UI component architecture, state management, accessibility (WCAG), responsive design, client-side routing, bundle size, SSR/CSR strategy, design system consistency.\n\nIf not relevant, output 'N/A'. Output ONLY your stage section."
+    ]
+
+    // --- Stage 2: Backend (API design, server architecture, business logic) ---
+    sa_backend [
+        shape=box,
+        prompt="You are Stage 2/6 (Backend) in Dark Factory's web architecture review pipeline.\n\nRead your role definition (factory/agents/sa-backend.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: API design (REST/GraphQL), server architecture, business logic organization, middleware, error handling, logging, session management, authentication flow.\n\nIf not relevant, output 'N/A'. Output ONLY your stage section."
+    ]
+
+    // --- Stage 3: Database (data modeling, queries, migrations) ---
+    sa_database_web [
+        shape=box,
+        prompt="You are Stage 3/6 (Database) in Dark Factory's web architecture review pipeline.\n\nRead your role definition (factory/agents/sa-database-web.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: Data modeling, ORM usage, query optimization, migrations, indexing strategy, connection pooling, caching layer (Redis/Memcached), data validation.\n\nIf not relevant, output 'N/A'. Output ONLY your stage section."
+    ]
+
+    // --- Stage 4: Security (auth, OWASP, XSS, CSRF, secrets) ---
+    // CRITICAL: Reviews ALL prior recommendations
+    sa_security_web [
+        shape=box,
+        prompt="You are Stage 4/6 (Security) in Dark Factory's web architecture review pipeline.\n\nCRITICAL: Review ALL prior stage recommendations for security implications.\n\nRead your role definition (factory/agents/sa-security-web.md), the GitHub issue, and ALL cumulative guidance.\n\nEvaluate: Authentication/authorization, OWASP top 10, XSS prevention, CSRF protection, CSP headers, secrets management, input validation, output encoding, rate limiting, CORS policy.\n\nThis is a CRITICAL stage. Output ONLY your stage section."
+    ]
+
+    // --- Stage 5: Performance (load time, caching, optimization) ---
+    sa_performance_web [
+        shape=box,
+        prompt="You are Stage 5/6 (Performance) in Dark Factory's web architecture review pipeline.\n\nRead your role definition (factory/agents/sa-performance-web.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: Page load time, Core Web Vitals, caching strategy (CDN, browser, server), lazy loading, code splitting, image optimization, database query performance, API response time.\n\nIf not relevant, output 'N/A'. Output ONLY your stage section."
+    ]
+
+    // --- Stage 6: Integration (APIs, third-party services, deployment) ---
+    sa_integration_web [
+        shape=box,
+        prompt="You are Stage 6/6 (Integration) in Dark Factory's web architecture review pipeline.\n\nRead your role definition (factory/agents/sa-integration-web.md), the GitHub issue, and ALL cumulative guidance.\n\nEvaluate: Third-party API integrations, webhook handling, email/notification services, payment gateways, analytics, CI/CD pipeline, deployment strategy, environment configuration.\n\nOutput ONLY your stage section."
+    ]
+
+    // --- Solutions Architect Lead (final synthesis) ---
+    sa_lead_web [
+        shape=box,
+        prompt="You are the Solutions Architect performing final review of the web architecture pipeline.\n\nYou have L1/L2/L3 tiered output from 6 specialist stages.\n\nSynthesize all reviews into an Engineering Brief:\n- Approved architectural approach for the web application\n- Key constraints and risks\n- Implementation guidance per domain\n- Verdict: APPROVED | NEEDS_CHANGES | NEEDS_HUMAN\n\nIf critical stages (Backend, Security) failed, consider NEEDS_HUMAN."
+    ]
+
+    // --- Verdict ---
+    verdict [shape=diamond, label="SA Verdict?"]
+    approved [shape=Msquare, label="Engineering Brief\n(APPROVED)"]
+    needs_human [shape=house, label="Human Review Required"]
+
+    // --- Flow: Sequential ---
+    start -> sa_frontend -> sa_backend -> sa_database_web
+    sa_database_web -> sa_security_web -> sa_performance_web -> sa_integration_web
+    sa_integration_web -> sa_lead_web -> verdict
+
+    verdict -> approved [label="APPROVED"]
+    verdict -> sa_frontend [label="NEEDS_CHANGES\n(re-run pipeline)"]
+    verdict -> needs_human [label="NEEDS_HUMAN"]
+}

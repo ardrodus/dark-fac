@@ -9,8 +9,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from factory.core.config_manager import ConfigData
-from factory.integrations.shell import gh, git
+from dark_factory.core.config_manager import ConfigData
+from dark_factory.integrations.shell import gh, git
 
 logger = logging.getLogger(__name__)
 

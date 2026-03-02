@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import builtins
     from collections.abc import Callable
-    from factory.integrations.shell import CommandResult
+
+    from dark_factory.integrations.shell import CommandResult
 
 logger = logging.getLogger(__name__)
 _REGISTRY_REL = Path(".dark-factory") / "twins" / "registry.json"
@@ -41,11 +42,11 @@ class Twin:
 
     def __post_init__(self) -> None:
         if not self.created_at:
-            self.created_at = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+            self.created_at = datetime.now(tz=UTC).isoformat(timespec="seconds")
 
 
 def _default_docker(args: list[str]) -> CommandResult:
-    from factory.integrations.shell import docker  # noqa: PLC0415
+    from dark_factory.integrations.shell import docker  # noqa: PLC0415
     return docker(args)
 
 

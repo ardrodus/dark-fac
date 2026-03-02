@@ -25,21 +25,21 @@ def run_doctor(*, modules: bool, debug_modules: bool, deps: bool = False, lint: 
         Run file size compliance check.
     """
     if lint:
-        from factory.tools import lint_file_sizes
+        from dark_factory.tools import lint_file_sizes
 
         lint_result = lint_file_sizes.validate()
         sys.stdout.write(lint_file_sizes.format_report(lint_result) + "\n")
         if not lint_result.passed:
             raise SystemExit(1)
     elif deps:
-        from factory.tools import dependency_graph as depgraph
+        from dark_factory.tools import dependency_graph as depgraph
 
         dep_result = depgraph.validate()
         sys.stdout.write(depgraph.format_report(dep_result) + "\n")
         if not dep_result.passed:
             raise SystemExit(1)
     elif modules:
-        from factory.core.module_loader import (
+        from dark_factory.core.module_loader import (
             format_validation_report,
             validate_manifest,
         )
@@ -49,7 +49,7 @@ def run_doctor(*, modules: bool, debug_modules: bool, deps: bool = False, lint: 
         if not passed:
             raise SystemExit(1)
     elif debug_modules:
-        from factory.core.module_loader import format_debug_report
+        from dark_factory.core.module_loader import format_debug_report
 
         sys.stdout.write(format_debug_report() + "\n")
     else:
@@ -81,7 +81,7 @@ def run_ingest(
     """
     from pathlib import Path  # noqa: PLC0415
 
-    from factory.specs.prd_ingest import ingest_prd  # noqa: PLC0415
+    from dark_factory.specs.prd_ingest import ingest_prd  # noqa: PLC0415
 
     result = ingest_prd(
         path=Path(prd_path),
@@ -106,7 +106,7 @@ def run_onboard(*, self_onboard: bool) -> None:
         sys.stdout.write("Usage: dark-factory onboard --self\n")
         return
 
-    from factory.setup.self_onboard import run_onboard_self
+    from dark_factory.setup.self_onboard import run_onboard_self
 
     result = run_onboard_self()
     sys.stdout.write("\n--- Onboarding Summary ---\n")
@@ -125,11 +125,11 @@ def run_selftest() -> None:
     Runs all built-in validators (module manifest + dependency graph)
     and reports a combined pass/fail status.
     """
-    from factory.core.module_loader import (
+    from dark_factory.core.module_loader import (
         format_validation_report,
         validate_manifest,
     )
-    from factory.tools import dependency_graph as depgraph
+    from dark_factory.tools import dependency_graph as depgraph
 
     all_passed = True
 
@@ -162,7 +162,7 @@ def run_status(*, epics: bool) -> None:
     """
     import os  # noqa: PLC0415
 
-    from factory.ui.status_reporter import (
+    from dark_factory.ui.status_reporter import (
         show_epic_status,
         show_status,
     )
@@ -170,7 +170,7 @@ def run_status(*, epics: bool) -> None:
     if epics:
         repo = os.environ.get("DARK_FACTORY_REPO", os.environ.get("REPO", ""))
         if repo:
-            from factory.pipeline.epic_milestones import (  # noqa: PLC0415
+            from dark_factory.pipeline.epic_milestones import (  # noqa: PLC0415
                 epic_status_summary,
                 format_epic_summary,
             )
@@ -195,7 +195,7 @@ def run_gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
     run_name:
         Run a single gate by name.
     """
-    from factory.gates import (
+    from dark_factory.gates import (
         discover_gates,
         format_gate_list,
         format_unified_report,
@@ -212,7 +212,7 @@ def run_gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
         except KeyError as exc:
             sys.stderr.write(f"Error: {exc}\n")
             raise SystemExit(1) from None
-        from factory.gates import UnifiedReport
+        from dark_factory.gates import UnifiedReport
 
         unified = UnifiedReport(gate_reports=(report,))
         sys.stdout.write(format_unified_report(unified) + "\n")
@@ -229,7 +229,7 @@ def run_gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
 
 def run_dashboard() -> None:
     """Launch the Textual TUI dashboard."""
-    from factory.ui.dashboard import DashboardApp
+    from dark_factory.ui.dashboard import DashboardApp
 
     app = DashboardApp()
     app.run()
@@ -243,7 +243,7 @@ def run_smoke_test(*, title: str) -> None:
     title:
         Story title for the smoke test.
     """
-    from factory.pipeline.runner import StoryContext, run_pipeline
+    from dark_factory.pipeline.runner import StoryContext, run_pipeline
 
     story = StoryContext(
         title=title,
@@ -253,7 +253,7 @@ def run_smoke_test(*, title: str) -> None:
     )
     result = run_pipeline(story)
 
-    from factory.ui.cli_colors import cprint, print_stage_result  # noqa: PLC0415
+    from dark_factory.ui.cli_colors import cprint, print_stage_result  # noqa: PLC0415
 
     for stage_result in result.stages:
         state = "passed" if stage_result.passed else "failed"
@@ -331,7 +331,7 @@ def run_workspace(*, action: str, name: str = "") -> None:
     """
     import time  # noqa: PLC0415
 
-    from factory.workspace.manager import (  # noqa: PLC0415
+    from dark_factory.workspace.manager import (  # noqa: PLC0415
         clean_all_workspaces,
         clean_workspace,
         list_workspaces,
@@ -388,7 +388,7 @@ def run_config(*, action: str, key: str = "", value: str = "") -> None:
     """
     import json  # noqa: PLC0415
 
-    from factory.core.config_manager import resolve_config_path  # noqa: PLC0415
+    from dark_factory.core.config_manager import resolve_config_path  # noqa: PLC0415
 
     config_path = resolve_config_path()
 

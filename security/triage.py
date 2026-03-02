@@ -11,10 +11,10 @@ import time
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from factory.security.config import SecurityConfig
+from dark_factory.security.config import SecurityConfig
 
 logger = logging.getLogger(__name__)
 _STATE_DIR = Path(".dark-factory") / "security"
@@ -122,7 +122,7 @@ def _write_pending(findings: list[dict[str, object]], *, state_dir: Path | None 
 
 def _save_to_mem_log(text: str, *, state_dir: Path | None = None) -> None:
     d = _state_dir(state_dir)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     with (d / "security-mem-log.txt").open("a", encoding="utf-8") as fh:
         fh.write(f"{now}|{text}\n")
 

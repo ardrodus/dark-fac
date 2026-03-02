@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.security.scan_runner import create_scan_gate, run_tool
+from dark_factory.security.scan_runner import create_scan_gate, run_tool
 
 if TYPE_CHECKING:
-    from factory.gates.framework import GateRunner
-    from factory.workspace.manager import Workspace
+    from dark_factory.gates.framework import GateRunner
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 _SPDX, _CDX = "spdx-json", "cyclonedx-json"
@@ -83,8 +83,8 @@ def _run_syft(ws_path: str, fmt: str) -> list[Component]:
 
 def _check_vulns(components: tuple[Component, ...], ws_path: str) -> tuple[str, ...]:
     try:
-        from factory.security.dependency_scan import run_dependency_scan  # noqa: PLC0415
-        from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
+        from dark_factory.security.dependency_scan import run_dependency_scan  # noqa: PLC0415
+        from dark_factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = run_dependency_scan(Ws(name="sbom-vuln-check", path=ws_path, repo_url="", branch=""))
         vuln_names = {f.package.lower() for f in result.findings}
         return tuple(c.name for c in components if c.name.lower() in vuln_names)
@@ -146,7 +146,7 @@ GATE_NAME = "sbom-scan"
 def create_runner(workspace: str | Path, *, metrics_dir: str | Path | None = None) -> GateRunner:
     """Create a configured SBOM gate runner."""
     def _check(ws: str) -> tuple[bool, str]:
-        from factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
+        from dark_factory.workspace.manager import Workspace as Ws  # noqa: PLC0415
         result = generate_sbom(Ws(name="scan", path=ws, repo_url="", branch=""))
         if not result.passed:
             return False, f"New vulnerable dependencies: {', '.join(result.vulnerable_new_deps)}"

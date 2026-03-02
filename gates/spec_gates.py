@@ -13,7 +13,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from factory.gates.framework import (
+from dark_factory.gates.framework import (
     API_EXTS,
     IFACE_EXTS,
     SCHEMA_EXTS,
@@ -23,7 +23,7 @@ from factory.gates.framework import (
     find_typed_spec,
     read_file,
 )
-from factory.integrations.shell import run_command
+from dark_factory.integrations.shell import run_command
 
 logger = logging.getLogger(__name__)
 
@@ -469,7 +469,9 @@ def create_design_review_runner(
     design = read_file(design_files[0]) if design_files else ""
     m = re.search(r"(\d+)", design_files[0].stem) if design_files else None
     runner = GateRunner("design-review", metrics_dir=metrics_dir)
-    _register_design_checks(runner, design, sd, m.group(1) if m else "0", ws / ".dark-factory" / "architecture-guidance.md")
+    issue_id = m.group(1) if m else "0"
+    guidance = ws / ".dark-factory" / "architecture-guidance.md"
+    _register_design_checks(runner, design, sd, issue_id, guidance)
     return runner
 
 

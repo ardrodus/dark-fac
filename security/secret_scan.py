@@ -9,11 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from factory.security.scan_runner import create_scan_gate
+from dark_factory.security.scan_runner import create_scan_gate
 
 if TYPE_CHECKING:
-    from factory.gates.framework import GateRunner
-    from factory.workspace.manager import Workspace
+    from dark_factory.gates.framework import GateRunner
+    from dark_factory.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 

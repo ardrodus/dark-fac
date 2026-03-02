@@ -14,7 +14,13 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from factory.integrations.gh_safe import GhSafeError, IssueInfo, add_label, list_issues, remove_label
+from dark_factory.integrations.gh_safe import (
+    GhSafeError,
+    IssueInfo,
+    add_label,
+    list_issues,
+    remove_label,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable

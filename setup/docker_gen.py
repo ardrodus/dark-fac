@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.setup.project_analyzer import AnalysisResult
+    from dark_factory.setup.project_analyzer import AnalysisResult
 
 _DEP: dict[str, tuple[str, str]] = {
     "Rust": ("RUN cargo fetch", "# cargo test is built-in"),
@@ -135,7 +135,7 @@ def write_generated_files(
     *, start: Path | None = None,
 ) -> tuple[Path, Path]:
     """Write Dockerfile + docker-compose.yml to .dark-factory/generated/."""
-    from factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
+    from dark_factory.core.config_manager import resolve_config_dir  # noqa: PLC0415
     out = resolve_config_dir(start) / "generated"
     out.mkdir(parents=True, exist_ok=True)
     df = out / "Dockerfile"
