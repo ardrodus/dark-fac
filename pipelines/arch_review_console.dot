@@ -21,32 +21,32 @@ digraph arch_review_console {
     // --- Stage 1: Code Quality (patterns, maintainability, SOLID) ---
     sa_code_quality [
         shape=box,
-        prompt="You are Stage 1/4 (Code Quality) in Dark Factory's console architecture review pipeline.\n\nRead your role definition (factory/agents/sa-code-quality.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: Code patterns, SOLID principles, maintainability, testability, error handling patterns, dependency management, documentation.\n\nThis is a CRITICAL stage. Output ONLY your stage section."
+        prompt="You are Stage 1/4 (Code Quality) in Dark Factory's console architecture review pipeline.\n\nWorkspace: $workspace\nIssue: $issue\n\nExplore the codebase at $workspace to understand existing code patterns and architecture.\n\nEvaluate:\n- Code patterns and conventions used in the project\n- SOLID principles adherence\n- Maintainability and testability\n- Error handling patterns\n- Dependency management\n- Documentation coverage\n\nFor each concern, reference specific files and patterns from the workspace.\n\nOutput your findings as structured JSON:\n{\"findings\": [...], \"risk_level\": \"low|medium|high|critical\", \"recommendations\": [...], \"approval\": true|false}"
     ]
 
     // --- Stage 2: Security (input validation, secrets, OWASP) ---
     // CRITICAL: Reviews ALL prior recommendations
     sa_security_console [
         shape=box,
-        prompt="You are Stage 2/4 (Security) in Dark Factory's console architecture review pipeline.\n\nCRITICAL: Review ALL prior stage recommendations for security implications.\n\nRead your role definition (factory/agents/sa-security-console.md), the GitHub issue, and ALL cumulative guidance.\n\nEvaluate: Input validation, command injection prevention, secrets handling, file system safety, OWASP top 10 (adapted for CLI), dependency vulnerabilities.\n\nThis is a CRITICAL stage. Output ONLY your stage section."
+        prompt="You are Stage 2/4 (Security) in Dark Factory's console architecture review pipeline.\n\nWorkspace: $workspace\nIssue: $issue\n\nCRITICAL: Review ALL prior stage recommendations for security implications.\n\nExplore the codebase at $workspace and evaluate:\n- Input validation and sanitization\n- Command injection prevention\n- Secrets handling (no hardcoded credentials)\n- File system safety (path traversal prevention)\n- OWASP top 10 (adapted for CLI)\n- Dependency vulnerabilities\n\nFor each concern, reference specific files and code from the workspace.\n\nOutput your findings as structured JSON:\n{\"findings\": [...], \"risk_level\": \"low|medium|high|critical\", \"recommendations\": [...], \"approval\": true|false}"
     ]
 
     // --- Stage 3: Integration (CLI UX, piping, exit codes, config) ---
     sa_integration_console [
         shape=box,
-        prompt="You are Stage 3/4 (Integration) in Dark Factory's console architecture review pipeline.\n\nRead your role definition (factory/agents/sa-integration-console.md), the GitHub issue, and cumulative guidance.\n\nEvaluate: CLI argument parsing, stdin/stdout/stderr conventions, exit codes, piping compatibility, configuration file formats, environment variable handling.\n\nOutput ONLY your stage section."
+        prompt="You are Stage 3/4 (Integration) in Dark Factory's console architecture review pipeline.\n\nWorkspace: $workspace\nIssue: $issue\n\nExplore the codebase at $workspace and evaluate:\n- CLI argument parsing patterns\n- stdin/stdout/stderr conventions\n- Exit codes and error reporting\n- Piping compatibility\n- Configuration file formats\n- Environment variable handling\n\nFor each concern, reference specific files and code from the workspace.\n\nOutput your findings as structured JSON:\n{\"findings\": [...], \"risk_level\": \"low|medium|high|critical\", \"recommendations\": [...], \"approval\": true|false}"
     ]
 
     // --- Stage 4: Performance (runtime, memory, startup time) ---
     sa_performance_console [
         shape=box,
-        prompt="You are Stage 4/4 (Performance) in Dark Factory's console architecture review pipeline.\n\nRead your role definition (factory/agents/sa-performance-console.md), the GitHub issue, and ALL cumulative guidance.\n\nEvaluate: Runtime performance, memory usage, startup time, binary size, async I/O, caching strategies, algorithmic complexity.\n\nOutput ONLY your stage section."
+        prompt="You are Stage 4/4 (Performance) in Dark Factory's console architecture review pipeline.\n\nWorkspace: $workspace\nIssue: $issue\n\nExplore the codebase at $workspace and evaluate:\n- Runtime performance considerations\n- Memory usage patterns\n- Startup time\n- Async I/O usage\n- Caching strategies\n- Algorithmic complexity of key operations\n\nFor each concern, reference specific files and code from the workspace.\n\nOutput your findings as structured JSON:\n{\"findings\": [...], \"risk_level\": \"low|medium|high|critical\", \"recommendations\": [...], \"approval\": true|false}"
     ]
 
     // --- Solutions Architect Lead (final synthesis) ---
     sa_lead_console [
         shape=box,
-        prompt="You are the Solutions Architect performing final review of the console architecture pipeline.\n\nYou have L1/L2/L3 tiered output from 4 specialist stages.\n\nSynthesize all reviews into an Engineering Brief:\n- Approved architectural approach for CLI/console application\n- Key constraints and risks\n- Implementation guidance per domain\n- Verdict: APPROVED | NEEDS_CHANGES | NEEDS_HUMAN\n\nIf critical stages (Code Quality, Security) failed, consider NEEDS_HUMAN."
+        prompt="You are the Solutions Architect performing final review of the console architecture pipeline.\n\nWorkspace: $workspace\nIssue: $issue\n\nYou have output from 4 specialist stages. Read their findings from the pipeline context.\n\nSynthesize all reviews into an Engineering Brief:\n- Approved architectural approach for the CLI/console application\n- Key constraints and risks identified across all domains\n- Implementation guidance per domain\n- Verdict: APPROVED | NEEDS_CHANGES | NEEDS_HUMAN\n\nIf critical stages (Code Quality, Security) found high/critical risks, consider NEEDS_HUMAN.\n\nWrite the Engineering Brief to: $workspace/.dark-factory/specs/$issue_number/engineering-brief.md\n\nOutput your verdict as the final line: APPROVED, NEEDS_CHANGES, or NEEDS_HUMAN"
     ]
 
     // --- Verdict ---
