@@ -16,10 +16,13 @@ from __future__ import annotations
 import sys
 
 from factory.cli.commands import cli as cli  # noqa: F401
+from factory.cli.dispatch import dispatch_config as _dispatch_config  # noqa: F401
 from factory.cli.dispatch import dispatch_doctor as _dispatch_doctor  # noqa: F401
 from factory.cli.dispatch import dispatch_gates as _dispatch_gates  # noqa: F401
+from factory.cli.dispatch import dispatch_onboard as _dispatch_onboard  # noqa: F401
 from factory.cli.dispatch import dispatch_selftest as _dispatch_selftest  # noqa: F401
 from factory.cli.dispatch import dispatch_smoke_test as _dispatch_smoke_test  # noqa: F401
+from factory.cli.dispatch import dispatch_workspace as _dispatch_workspace  # noqa: F401
 
 
 def main() -> None:
@@ -35,7 +38,15 @@ def main() -> None:
         parsed = parse_cli_args(sys.argv[1:])
         dispatch(parsed)
     except KeyboardInterrupt:
+        sys.stderr.write("\n\033[33mInterrupted.\033[0m\n")
         raise SystemExit(130) from None
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        from factory.ui.cli_colors import print_error  # noqa: PLC0415
+
+        print_error(str(exc), hint="Run 'dark-factory doctor' to diagnose issues.")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

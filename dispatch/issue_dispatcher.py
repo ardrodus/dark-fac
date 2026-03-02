@@ -55,6 +55,7 @@ class DispatcherState:
     active_issues: set[int] = field(default_factory=set)
     lock: threading.Lock = field(default_factory=threading.Lock)
     max_concurrent: int = _DEFAULT_MAX_CONCURRENT
+    dev_mode: bool = False
 
 
 # ── Issue selection ───────────────────────────────────────────────────

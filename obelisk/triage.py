@@ -43,6 +43,7 @@ class TriageVerdict(Enum):
     SELF_HEAL_INFRA = "SELF_HEAL_INFRA"
     FACTORY_BUG = "FACTORY_BUG"
     ESCALATE_HUMAN = "ESCALATE_HUMAN"
+    SECURITY_BLOCK = "SECURITY_BLOCK"
     SKIP = "SKIP"
 
 
@@ -131,6 +132,15 @@ _CONTAINER_RE = re.compile(
 _AUTH_RE = re.compile(r"401\s+Unauthorized|403\s+Forbidden|authentication.*failed", re.IGNORECASE)
 _NETWORK_RE = re.compile(r"ECONNREFUSED|ETIMEDOUT|DNS.*failed|getaddrinfo.*ENOTFOUND", re.IGNORECASE)
 _OOM_RE = re.compile(r"out of memory|OOMKilled|Cannot allocate memory", re.IGNORECASE)
+_TWIN_CONFIG_RE = re.compile(
+    r"stale twin|twin outdated|twin mismatch|mock stale|stub mismatch"
+    r"|missing seed|seed data.*(?:not found|missing)|no seed", re.IGNORECASE,
+)
+_SECURITY_RE = re.compile(
+    r"sql injection|xss|cross-site scripting|CVE-\d{4}-\d+|secret leak"
+    r"|hardcoded (?:secret|credential|password|token)|dependency vulnerabilit"
+    r"|SECURITY_BLOCK|security violation", re.IGNORECASE,
+)
 _FACTORY_PATH_RE = re.compile(r"factory/(?:scripts|agents|templates)/")
 _FACTORY_TRACE_RE = re.compile(r"(?:File|at)\s+[\"']?factory/")
 
@@ -141,8 +151,12 @@ def _detect_pattern(
     """Run deterministic pattern matching: (verdict, category, reason, action)."""
     if exit_code == 0:
         return TriageVerdict.SKIP, "success", "Stage passed", "none"
+    if _SECURITY_RE.search(output):
+        return TriageVerdict.SECURITY_BLOCK, "security", "Security violation detected", "block-and-escalate"
     if _FACTORY_PATH_RE.search(output) or _FACTORY_TRACE_RE.search(output):
         return TriageVerdict.FACTORY_BUG, "factory", "Error in factory code", "route-to-factory-pipeline"
+    if _TWIN_CONFIG_RE.search(output):
+        return TriageVerdict.SELF_HEAL_INFRA, "twin-config", "Twin configuration issue", "refresh-twin"
     if _CLAUDE_API_RE.search(output):
         return TriageVerdict.RETRY, "api-transient", "Claude API error", "retry"
     if _RATE_LIMIT_RE.search(output):
@@ -172,6 +186,18 @@ def triage(
     )
     _log_triage(result, state_dir=state_dir)
     return result
+
+
+def obelisk_triage(error: str, context: dict[str, object]) -> TriageVerdict:
+    """Classify a failure into an actionable verdict (AC entry point).
+
+    Pure pattern matching — no AI invocation.  Falls through to
+    ``ESCALATE_HUMAN`` when no pattern matches, signalling Layer 2.
+    """
+    raw_exit = context.get("exit_code", 1)
+    exit_code = int(raw_exit) if isinstance(raw_exit, (int, float, str)) else 1
+    verdict, _cat, _reason, _action = _detect_pattern(exit_code, error)
+    return verdict
 
 
 def _log_triage(result: TriageResult, *, state_dir: Path | None = None) -> None:
@@ -442,6 +468,8 @@ def run_triage(
 
     triage_result = triage(stage, exit_code, output, state_dir=state_dir)
 
+    if triage_result.verdict == TriageVerdict.SECURITY_BLOCK:
+        return False
     if triage_result.verdict == TriageVerdict.SKIP:
         return True
     if triage_result.verdict in (TriageVerdict.RETRY, TriageVerdict.HEAL_AND_RETRY):

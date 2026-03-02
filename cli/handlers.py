@@ -73,6 +73,69 @@ def run_doctor(*, migration: bool, modules: bool, debug_modules: bool, deps: boo
         sys.stdout.write("dark-factory doctor: all checks passed.\n")
 
 
+def run_ingest(
+    *,
+    prd_path: str,
+    repo: str = "",
+    validate_only: bool = False,
+    force: bool = False,
+    auto_split: bool = False,
+) -> None:
+    """Execute the ``ingest`` command logic.
+
+    Parameters
+    ----------
+    prd_path:
+        Path to the PRD file (JSON or Markdown).
+    repo:
+        GitHub repo (owner/name) for issue creation.
+    validate_only:
+        If True, validate without creating issues.
+    force:
+        If True, skip confirmation prompts.
+    auto_split:
+        If True, auto-split oversized stories.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    from factory.specs.prd_ingest import ingest_prd  # noqa: PLC0415
+
+    result = ingest_prd(
+        path=Path(prd_path),
+        repo=repo,
+        validate_only=validate_only,
+        force=force,
+        auto_split=auto_split,
+    )
+    if result.errors:
+        raise SystemExit(1)
+
+
+def run_onboard(*, self_onboard: bool) -> None:
+    """Execute the ``onboard`` command logic.
+
+    Parameters
+    ----------
+    self_onboard:
+        If True, run the factory self-onboarding flow.
+    """
+    if not self_onboard:
+        sys.stdout.write("Usage: dark-factory onboard --self\n")
+        return
+
+    from factory.setup.self_onboard import run_onboard_self
+
+    result = run_onboard_self()
+    sys.stdout.write("\n--- Onboarding Summary ---\n")
+    for step in result.steps:
+        sys.stdout.write(f"  {step}\n")
+    if result.passed:
+        sys.stdout.write("\nonboard --self: PASS\n")
+    else:
+        sys.stdout.write("\nonboard --self: FAIL\n")
+        raise SystemExit(1)
+
+
 def run_selftest() -> None:
     """Execute the ``selftest`` command logic.
 
@@ -119,6 +182,8 @@ def run_status(*, epics: bool, bootstrap: bool) -> None:
     bootstrap:
         Show bootstrap pipeline status.
     """
+    import os  # noqa: PLC0415
+
     from factory.ui.status_reporter import (
         show_bootstrap_status,
         show_epic_status,
@@ -126,7 +191,17 @@ def run_status(*, epics: bool, bootstrap: bool) -> None:
     )
 
     if epics:
-        sys.stdout.write(show_epic_status() + "\n")
+        repo = os.environ.get("DARK_FACTORY_REPO", os.environ.get("REPO", ""))
+        if repo:
+            from factory.pipeline.epic_milestones import (  # noqa: PLC0415
+                epic_status_summary,
+                format_epic_summary,
+            )
+
+            statuses = epic_status_summary(repo)
+            sys.stdout.write(format_epic_summary(statuses) + "\n")
+        else:
+            sys.stdout.write(show_epic_status() + "\n")
     elif bootstrap:
         sys.stdout.write(show_bootstrap_status() + "\n")
     else:
@@ -177,6 +252,14 @@ def run_gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
         sys.stdout.write("Usage: dark-factory gates [--run-all | --list | --run <name>]\n")
 
 
+def run_dashboard() -> None:
+    """Launch the Textual TUI dashboard."""
+    from factory.ui.dashboard import DashboardApp
+
+    app = DashboardApp()
+    app.run()
+
+
 def run_smoke_test(*, title: str) -> None:
     """Execute the ``smoke-test`` command logic.
 
@@ -195,14 +278,217 @@ def run_smoke_test(*, title: str) -> None:
     )
     result = run_pipeline(story)
 
+    from factory.ui.cli_colors import cprint, print_stage_result  # noqa: PLC0415
+
     for stage_result in result.stages:
-        status = "PASS" if stage_result.passed else "FAIL"
-        sys.stdout.write(
-            f"  [{status}] {stage_result.stage.value}: {stage_result.detail}\n"
-        )
+        state = "passed" if stage_result.passed else "failed"
+        print_stage_result(stage_result.stage.value, state, stage_result.detail)
 
     if result.passed:
-        sys.stdout.write("smoke-test: PASS\n")
+        cprint("\nsmoke-test: PASS", "success")
     else:
-        sys.stdout.write("smoke-test: FAIL\n")
+        cprint("\nsmoke-test: FAIL", "error")
         raise SystemExit(1)
+
+
+def run_update(
+    *,
+    check: bool,
+    apply_tag: str,
+    rollback: bool,
+    enable: bool,
+    disable: bool,
+) -> None:
+    """Execute the ``update`` command logic."""
+    from factory.core.auto_update import (
+        apply_update,
+        check_for_update,
+        interactive_update_prompt,
+        is_update_enabled,
+        rollback_update,
+        set_update_enabled,
+    )
+
+    if enable:
+        set_update_enabled(True)
+        sys.stdout.write("Auto-update checks enabled.\n")
+        return
+    if disable:
+        set_update_enabled(False)
+        sys.stdout.write("Auto-update checks disabled.\n")
+        return
+    if rollback:
+        if rollback_update():
+            sys.stdout.write("Rollback successful.\n")
+        else:
+            sys.stdout.write("Rollback failed.\n")
+            raise SystemExit(1)
+        return
+    if apply_tag:
+        if apply_update(apply_tag):
+            sys.stdout.write(f"Update to {apply_tag} applied.\n")
+        else:
+            sys.stdout.write(f"Update to {apply_tag} failed.\n")
+            raise SystemExit(1)
+        return
+    # Default: check for updates
+    sys.stdout.write(f"Auto-update: {'enabled' if is_update_enabled() else 'disabled'}\n")
+    info = check_for_update()
+    if info is None:
+        sys.stdout.write("No update available.\n")
+        return
+    interactive_update_prompt(info)
+
+
+# ── Config helpers ───────────────────────────────────────────────
+
+
+def _cfg_apply(data: dict, key: str, val: object) -> None:  # type: ignore[type-arg]
+    """Set a value in a nested dict using a dotted key."""
+    parts = key.split(".")
+    cur = data
+    for p in parts[:-1]:
+        if p not in cur or not isinstance(cur[p], dict):
+            cur[p] = {}
+        cur = cur[p]
+    cur[parts[-1]] = val
+
+
+def _cfg_get(data: dict, key: str) -> object:  # type: ignore[type-arg]
+    """Get a value from a nested dict using a dotted key."""
+    cur: object = data
+    for p in key.split("."):
+        if not isinstance(cur, dict) or p not in cur:
+            return None
+        cur = cur[p]
+    return cur
+
+
+def _cfg_coerce(raw: str) -> int | float | bool | str:
+    """Best-effort coercion of a CLI string to a typed value."""
+    low = raw.lower()
+    if low in ("true", "yes"):
+        return True
+    if low in ("false", "no"):
+        return False
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        return raw
+
+
+def _cfg_flatten(data: dict, prefix: str = "") -> list[str]:  # type: ignore[type-arg]
+    """Flatten a nested dict to ``dotted.key = value`` lines."""
+    lines: list[str] = []
+    for k, v in sorted(data.items()):
+        full = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            lines.extend(_cfg_flatten(v, full))
+        else:
+            lines.append(f"{full} = {v!r}")
+    return lines
+
+
+def run_workspace(*, action: str, name: str = "") -> None:
+    """Execute the ``workspace`` command logic.
+
+    Parameters
+    ----------
+    action:
+        One of ``"list"``, ``"clean"``, ``"purge"``, or ``"stats"``.
+    name:
+        Workspace name (only used with ``action="clean"``).
+    """
+    import time  # noqa: PLC0415
+
+    from factory.workspace.manager import (  # noqa: PLC0415
+        clean_all_workspaces,
+        clean_workspace,
+        list_workspaces,
+    )
+
+    if action == "list":
+        workspaces = list_workspaces()
+        if not workspaces:
+            sys.stdout.write("No workspaces found.\n")
+            return
+        for ws in workspaces:
+            wt = " [worktree]" if ws.is_worktree else ""
+            sys.stdout.write(f"  {ws.name}  {ws.path}  ({ws.branch}){wt}\n")
+    elif action == "clean":
+        if not name:
+            sys.stderr.write("Error: workspace name required.\n")
+            raise SystemExit(2)
+        result = clean_workspace(name)
+        if result.success:
+            sys.stdout.write(f"Cleaned workspace '{name}'.\n")
+        else:
+            sys.stderr.write(f"Error: {result.message}\n")
+            raise SystemExit(1)
+    elif action == "purge":
+        count = clean_all_workspaces()
+        sys.stdout.write(f"Purged {count} workspace(s).\n")
+    elif action == "stats":
+        workspaces = list_workspaces()
+        now = time.time()
+        total = len(workspaces)
+        worktrees = sum(1 for ws in workspaces if ws.is_worktree)
+        clones = total - worktrees
+        oldest_age = max((now - ws.created_at for ws in workspaces), default=0.0)
+        sys.stdout.write(f"Total workspaces: {total}\n")
+        sys.stdout.write(f"  Clones:    {clones}\n")
+        sys.stdout.write(f"  Worktrees: {worktrees}\n")
+        if total:
+            sys.stdout.write(f"  Oldest:    {oldest_age / 3600:.1f}h ago\n")
+    else:
+        sys.stdout.write("Usage: dark-factory workspace [list|clean|purge|stats]\n")
+
+
+def run_config(*, action: str, key: str = "", value: str = "") -> None:
+    """Execute the ``config`` command logic.
+
+    Parameters
+    ----------
+    action:
+        One of ``"set"``, ``"get"``, or ``"list"``.
+    key:
+        Dotted config key (e.g. ``"analysis.language"``).
+    value:
+        Value to set (only used with ``action="set"``).
+    """
+    import json  # noqa: PLC0415
+
+    from factory.core.config_manager import resolve_config_path  # noqa: PLC0415
+
+    config_path = resolve_config_path()
+
+    # Read existing JSON (empty dict if file missing)
+    if config_path.is_file():
+        raw = config_path.read_text(encoding="utf-8")
+        data: dict = json.loads(raw) if raw.strip() else {}  # type: ignore[type-arg]
+    else:
+        data = {}
+
+    if action == "set":
+        _cfg_apply(data, key, _cfg_coerce(value))
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps(data, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif action == "get":
+        val = _cfg_get(data, key)
+        if val is None:
+            sys.stderr.write(f"Key not found: {key}\n")
+            raise SystemExit(1)
+        sys.stdout.write(f"{val}\n")
+    else:  # list
+        if not data:
+            sys.stdout.write("(no config values set)\n")
+            return
+        for line in _cfg_flatten(data):
+            sys.stdout.write(f"{line}\n")

@@ -6,8 +6,10 @@ after one release cycle.
 """
 
 from factory.workspace.manager import (
+    Workspace,
     WorkspaceInfo,
     WorkspaceResult,
+    acquire_workspace,
     cache_workspace,
     clean_all_workspaces,
     clean_workspace,
@@ -17,8 +19,10 @@ from factory.workspace.manager import (
 )
 
 __all__ = [
+    "Workspace",
     "WorkspaceInfo",
     "WorkspaceResult",
+    "acquire_workspace",
     "cache_workspace",
     "clean_all_workspaces",
     "clean_workspace",

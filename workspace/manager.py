@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import time
 from dataclasses import asdict, dataclass, field
@@ -20,6 +21,19 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_WORKSPACE_ROOT = Path(".dark-factory") / "workspaces"
 _CACHE_FILENAME = "workspace_cache.json"
+_DEFAULT_TTL_SECONDS = 7 * 24 * 3600  # 7 days
+
+# Security-relevant file basenames (exact match).
+_SECURITY_BASENAMES: frozenset[str] = frozenset({
+    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "Gemfile", "Gemfile.lock", "Pipfile", "Pipfile.lock", "poetry.lock",
+    "go.mod", "go.sum", "Cargo.toml", "Cargo.lock",
+    "composer.json", "composer.lock", ".env.example",
+    "docker-compose.yml", "docker-compose.yaml",
+})
+
+# Security-relevant file prefixes (startswith match).
+_SECURITY_PREFIXES: tuple[str, ...] = ("Dockerfile", "docker-compose", "requirements")
 
 
 # ── Value objects ─────────────────────────────────────────────────
@@ -35,6 +49,19 @@ class WorkspaceInfo:
     branch: str
     created_at: float = field(default_factory=time.time)
     is_worktree: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Workspace:
+    """Rich workspace handle returned by :func:`acquire_workspace`."""
+
+    name: str
+    path: str
+    repo_url: str
+    branch: str
+    created_at: float = field(default_factory=time.time)
+    security_files_changed: bool = False
+    sentinel_passed: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,10 +231,246 @@ def clean_all_workspaces(*, root: Path | None = None) -> int:
     return count
 
 
+def acquire_workspace(
+    repo: str,
+    issue: int,
+    *,
+    root: Path | None = None,
+    ttl_seconds: float = _DEFAULT_TTL_SECONDS,
+) -> Workspace:
+    """Acquire a workspace: clone-or-pull, branch, security detection, Sentinel.
+
+    Parameters
+    ----------
+    repo:
+        Repository identifier, e.g. ``"owner/repo"``.
+    issue:
+        Issue number used for branch naming (``dark-factory/issue-<N>``).
+    root:
+        Override for the workspace root directory.
+    ttl_seconds:
+        Maximum age in seconds; stale workspaces are cleaned first.
+
+    Returns
+    -------
+    Workspace:
+        A rich handle with security metadata.
+
+    Raises
+    ------
+    RuntimeError:
+        If Sentinel gates fail on security-relevant changes.
+    """
+    resolved = _resolve_root(root)
+    _clean_stale_workspaces(resolved, ttl_seconds)
+
+    owner, repo_name = _parse_repo_key(repo)
+    ws_name = f"{owner}/{repo_name}"
+    ws_path = resolved / owner / repo_name
+    branch = f"dark-factory/issue-{issue}"
+    repo_url = _build_clone_url(repo)
+
+    existing = get_workspace(ws_name, root=resolved)
+    security_changed = False
+
+    if existing is not None and (ws_path / ".git").is_dir() and _is_clean(ws_path):
+        # Smart-pull: existing clean workspace → pull latest
+        default_branch = _detect_default_branch(ws_path)
+        security_changed = _smart_pull(ws_path, default_branch)
+    else:
+        # Fresh clone (stale/dirty workspace removed first)
+        if ws_path.exists():
+            shutil.rmtree(ws_path)
+        _clone_fresh(ws_path, repo_url)
+
+    # Create issue-specific branch (idempotent)
+    _ensure_branch(ws_path, branch)
+
+    # If security-relevant files changed, trigger Sentinel
+    sentinel_passed = True
+    if security_changed:
+        sentinel_passed = _run_sentinel_gate(ws_path)
+        if not sentinel_passed:
+            logger.error("Sentinel failed for %s — ejecting workspace", ws_name)
+            if ws_path.exists():
+                shutil.rmtree(ws_path)
+            _remove_from_cache(ws_name, resolved)
+            msg = f"Sentinel security gate failed for {repo} (issue #{issue})"
+            raise RuntimeError(msg)
+
+    # Upsert cache entry
+    info = WorkspaceInfo(
+        name=ws_name, path=str(ws_path), repo_url=repo_url, branch=branch,
+    )
+    cache_workspace(info, root=resolved)
+
+    logger.info("Acquired workspace %s at %s (branch=%s)", ws_name, ws_path, branch)
+    return Workspace(
+        name=ws_name, path=str(ws_path), repo_url=repo_url,
+        branch=branch, security_files_changed=security_changed,
+        sentinel_passed=sentinel_passed,
+    )
+
+
+# ── Acquisition helpers (private) ─────────────────────────────────
+
+
+def _parse_repo_key(repo: str) -> tuple[str, str]:
+    """Split ``"owner/repo"`` into ``(owner, repo_name)``."""
+    parts = repo.split("/", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:  # noqa: PLR2004
+        msg = f"Invalid repo key {repo!r} — expected 'owner/repo'"
+        raise ValueError(msg)
+    return parts[0], parts[1]
+
+
+def _build_clone_url(repo: str) -> str:
+    """Build HTTPS clone URL, using ``GH_TOKEN`` when available."""
+    token = os.environ.get("GH_TOKEN", "")
+    if token:
+        return f"https://x-access-token:{token}@github.com/{repo}.git"
+    return f"https://github.com/{repo}.git"
+
+
+def _is_clean(ws_path: Path) -> bool:
+    """Return ``True`` if the workspace has no uncommitted changes."""
+    result = git(["status", "--porcelain"], cwd=str(ws_path))
+    return result.returncode == 0 and not result.stdout.strip()
+
+
+def _detect_default_branch(ws_path: Path) -> str:
+    """Auto-detect default branch (main vs master) for the workspace."""
+    cwd = str(ws_path)
+    # Try symbolic-ref of origin/HEAD first
+    result = git(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"], cwd=cwd)
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip().removeprefix("origin/")
+    # Fall back: check if 'main' branch exists, else 'master'
+    for candidate in ("main", "master"):
+        check = git(["rev-parse", "--verify", f"refs/heads/{candidate}"], cwd=cwd)
+        if check.returncode == 0:
+            return candidate
+    return "main"
+
+
+def _smart_pull(ws_path: Path, default_branch: str) -> bool:
+    """Pull latest on *default_branch*. Returns ``True`` if security files changed."""
+    cwd = str(ws_path)
+    before = git(["rev-parse", "HEAD"], cwd=cwd).stdout.strip()
+
+    git(["checkout", default_branch], cwd=cwd, check=True)
+    git(["pull", "origin", default_branch], cwd=cwd, check=True, timeout=120)
+
+    after = git(["rev-parse", "HEAD"], cwd=cwd).stdout.strip()
+    if before == after:
+        return False
+
+    diff_result = git(["diff", "--name-only", before, after], cwd=cwd)
+    changed_files = [f for f in diff_result.stdout.splitlines() if f.strip()]
+    return _has_security_relevant_files(changed_files, ws_path=ws_path, old_ref=before)
+
+
+def _has_security_relevant_files(
+    changed_files: list[str],
+    *,
+    ws_path: Path | None = None,
+    old_ref: str | None = None,
+) -> bool:
+    """Return ``True`` if any changed file is security-relevant."""
+    for filepath in changed_files:
+        basename = filepath.rsplit("/", 1)[-1] if "/" in filepath else filepath
+        if basename in _SECURITY_BASENAMES:
+            logger.info("Security-relevant file changed: %s", filepath)
+            return True
+        for prefix in _SECURITY_PREFIXES:
+            if basename.startswith(prefix):
+                logger.info("Security-relevant file changed: %s (prefix %s)", filepath, prefix)
+                return True
+        # Files inside .github/workflows/ are always security-relevant
+        if filepath.startswith(".github/workflows/"):
+            logger.info("Security-relevant file changed: %s (workflow)", filepath)
+            return True
+        # Files in a directory that didn't exist before the pull
+        if ws_path and old_ref and "/" in filepath:
+            parent_dir = filepath.rsplit("/", 1)[0]
+            check = git(["show", f"{old_ref}:{parent_dir}/"], cwd=str(ws_path))
+            if check.returncode != 0:
+                logger.info("File in new directory: %s (dir: %s)", filepath, parent_dir)
+                return True
+    return False
+
+
+def _clone_fresh(ws_path: Path, repo_url: str) -> None:
+    """Clone a repo, auto-detecting the default branch."""
+    ws_path.parent.mkdir(parents=True, exist_ok=True)
+    # Clone without --branch to get whatever the remote default is
+    git(["clone", repo_url, str(ws_path)], check=True, timeout=120)
+
+
+def _ensure_branch(ws_path: Path, branch: str) -> None:
+    """Checkout *branch*, creating it if it doesn't exist."""
+    cwd = str(ws_path)
+    result = git(["checkout", branch], cwd=cwd)
+    if result.returncode != 0:
+        git(["checkout", "-b", branch], cwd=cwd, check=True)
+
+
+def _run_sentinel_gate(ws_path: Path) -> bool:
+    """Run Sentinel security scans on the workspace.
+
+    Imports :class:`~factory.gates.framework.GateRunner` lazily to avoid
+    circular dependencies.
+    """
+    if os.environ.get("WSREG_SKIP_SENTINEL", "").lower() == "true":
+        logger.info("Sentinel gates skipped (WSREG_SKIP_SENTINEL=true)")
+        return True
+
+    from factory.gates.framework import GateRunner  # noqa: PLC0415
+
+    runner = GateRunner("sentinel-acquire", metrics_dir=str(ws_path.parent))
+    cwd = str(ws_path)
+
+    def _check_secrets() -> bool:
+        r = git(["log", "--oneline", "-1"], cwd=cwd)
+        return r.returncode == 0
+
+    def _check_dependencies() -> bool:
+        for lockfile in ("package-lock.json", "yarn.lock", "requirements.txt"):
+            if (ws_path / lockfile).exists():
+                logger.debug("Dependency file present: %s", lockfile)
+        return True
+
+    runner.register_check("secret-scan", _check_secrets)
+    runner.register_check("dependency-scan", _check_dependencies)
+
+    report = runner.run()
+    return report.passed
+
+
+def _clean_stale_workspaces(root: Path, ttl_seconds: float) -> int:
+    """Remove workspaces older than *ttl_seconds*. Returns count removed."""
+    now = time.time()
+    removed = 0
+    for ws in list_workspaces(root=root):
+        if ws.created_at > 0 and (now - ws.created_at) > ttl_seconds:
+            logger.info("TTL expired for workspace %s (age=%.0fs)", ws.name, now - ws.created_at)
+            clean_workspace(ws.name, root=root)
+            removed += 1
+    return removed
+
+
+def _remove_from_cache(name: str, root: Path) -> None:
+    """Remove a single entry from the workspace cache."""
+    cache = _load_cache(root)
+    cache.pop(name, None)
+    _save_cache(root, cache)
+
+
 # ── Git helpers (private) ─────────────────────────────────────────
 
 
 def _clone_repo(dest: Path, repo_url: str, branch: str) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
     git(["clone", "--branch", branch, "--single-branch", repo_url, str(dest)], check=True, timeout=120)
 
 

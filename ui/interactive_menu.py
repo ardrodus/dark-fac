@@ -10,6 +10,7 @@ user enters interactive mode.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -48,10 +49,13 @@ class MenuCommand:
 # ── Menu banner / rendering ────────────────────────────────────────
 
 _BANNER = f"""\
-╔══════════════════════════════════════╗
-║        Dark Factory  v{__version__:<13s}║
-║     Automated Issue-Dispatch CLI     ║
-╚══════════════════════════════════════╝"""
+\033[35m╔══════════════════════════════════════════╗\033[0m
+\033[35m║\033[0m  \033[1;35m\u2593\u2593\033[0m \033[1mDark Factory\033[0m  v{__version__:<17s}\033[35m║\033[0m
+\033[35m║\033[0m     Automated Issue-Dispatch Pipeline    \033[35m║\033[0m
+\033[35m║\033[0m                                          \033[35m║\033[0m
+\033[35m║\033[0m  \033[34m\u25cf\033[0m Sentinel  \033[33m\u25cf\033[0m Forge  \033[33m\u25cf\033[0m Crucible       \033[35m║\033[0m
+\033[35m║\033[0m  \033[32m\u25cf\033[0m Obelisk   \033[35m\u25cf\033[0m Ouroboros              \033[35m║\033[0m
+\033[35m╚══════════════════════════════════════════╝\033[0m"""
 
 
 def render_banner() -> str:
@@ -72,16 +76,17 @@ def render_menu(commands: tuple[MenuCommand, ...]) -> str:
     str
         Formatted menu text ready for printing.
     """
-    lines: list[str] = ["", "Commands:"]
+    lines: list[str] = ["", "\033[1mCommands:\033[0m"]
     for cmd in commands:
-        lines.append(f"  [{cmd.key}] {cmd.label:<16s} {cmd.description}")
+        key_hint = f"\033[1;36m[{cmd.key}]\033[0m"
+        lines.append(f"  {key_hint} {cmd.label:<14s}  {cmd.description}")
     lines.append("")
     return "\n".join(lines)
 
 
 def render_prompt() -> str:
     """Return the input prompt string."""
-    return "dark-factory> "
+    return "\033[1;35mdark-factory\033[0m> "
 
 
 # ── Command handlers (delegates to extracted modules) ──────────────
@@ -111,10 +116,17 @@ def _handle_status() -> None:
 
 
 def _handle_status_epics() -> None:
-    """Show epic-level status."""
-    from factory.ui.status_reporter import show_epic_status
+    """Show epic-level status via GitHub Milestones."""
+    from factory.pipeline.epic_milestones import epic_status_summary, format_epic_summary
 
-    sys.stdout.write(show_epic_status() + "\n")
+    repo = os.environ.get("DARK_FACTORY_REPO", os.environ.get("REPO", ""))
+    if repo:
+        statuses = epic_status_summary(repo)
+        sys.stdout.write(format_epic_summary(statuses) + "\n")
+    else:
+        from factory.ui.status_reporter import show_epic_status
+
+        sys.stdout.write(show_epic_status() + "\n")
 
 
 def _handle_status_bootstrap() -> None:
@@ -125,15 +137,10 @@ def _handle_status_bootstrap() -> None:
 
 
 def _handle_obelisk() -> None:
-    """Display the Obelisk sub-menu."""
-    sys.stdout.write(
-        "\nObelisk — Long-term Memory\n"
-        "==========================\n"
-        "  [s] Search memory\n"
-        "  [i] Ingest document\n"
-        "  [b] Back to main menu\n\n"
-    )
-    sys.stdout.write("(Obelisk module not yet migrated — returning to main menu.)\n")
+    """Launch the Obelisk interactive diagnostic sub-menu."""
+    from factory.obelisk.menu import obelisk_menu
+
+    obelisk_menu()
 
 
 # ── Default command table ──────────────────────────────────────────
@@ -156,7 +163,7 @@ def build_default_commands() -> tuple[MenuCommand, ...]:
         MenuCommand(key="s", label="Status", description="Show pipeline status", handler=_handle_status),
         MenuCommand(key="e", label="Epics", description="Show epic progress", handler=_handle_status_epics),
         MenuCommand(key="b", label="Bootstrap", description="Show bootstrap status", handler=_handle_status_bootstrap),
-        MenuCommand(key="o", label="Obelisk", description="Open Obelisk memory menu", handler=_handle_obelisk),
+        MenuCommand(key="o", label="Obelisk", description="Open Obelisk diagnostics menu", handler=_handle_obelisk),
         MenuCommand(key="h", label="Help", description="Show this menu", handler=_noop_help),
         MenuCommand(key="q", label="Quit", description="Exit interactive mode", handler=_noop_help),
     )
@@ -244,13 +251,16 @@ def menu_loop(
 
         matched = cmd_map.get(key)
         if matched is None:
-            _output(f"Unknown command: '{key}'. Press [h] for help.\n")
+            _output(f"\033[33mUnknown command: '{key}'\033[0m — press \033[1;36m[h]\033[0m for help.\n")
             continue
 
         try:
             matched.handler()
+        except KeyboardInterrupt:
+            _output("\n\033[33mInterrupted.\033[0m\n")
         except Exception as exc:  # noqa: BLE001
-            _output(f"Error: {exc}\n")
+            _output(f"\033[31mError:\033[0m {exc}\n")
+            _output("\033[90m  Hint: try running again or use [h] for help.\033[0m\n")
 
     return 0
 

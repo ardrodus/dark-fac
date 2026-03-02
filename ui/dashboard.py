@@ -23,7 +23,9 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Label, ProgressBar, RichLog, Static
 
-from factory.ui.theme import THEME, build_css
+from factory.security.dashboard import SecurityPanel, SecurityPosture
+from factory.ui.notifications import Notification, NotificationPanel, get_store
+from factory.ui.theme import PILLARS, THEME, build_css, stage_icon
 
 if TYPE_CHECKING:
     from textual.timer import Timer
@@ -79,6 +81,8 @@ class DashboardState:
     agents: list[AgentInfo] = field(default_factory=list)
     health: list[HealthStatus] = field(default_factory=list)
     gate_summaries: list[GateSummary] = field(default_factory=list)
+    security_posture: SecurityPosture | None = None
+    notifications: tuple[Notification, ...] = ()
     queue_depth: int = 0
     refresh_interval: float = 2.0
 
@@ -108,13 +112,13 @@ class PipelinePanel(Static):
     """Pipeline-stage progress table with a progress bar."""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]Pipeline Stages[/b]")
+        yield Label(f"[b][{PILLARS.dark_forge}]\u25a0[/] Pipeline Stages[/b]")
         yield DataTable(id="stage-table")
         yield ProgressBar(id="stage-progress", total=100, show_eta=False)
 
     def on_mount(self) -> None:
         table: DataTable[Any] = self.query_one("#stage-table", DataTable)
-        table.add_columns("Stage", "State", "Detail", "Time (ms)")
+        table.add_columns("", "Stage", "State", "Detail", "Time (ms)")
         table.cursor_type = "none"
 
     def refresh_stages(self, stages: list[StageStatus]) -> None:
@@ -124,7 +128,9 @@ class PipelinePanel(Static):
         completed = 0
         for s in stages:
             colour = _colour_for(s.state)
+            icon = stage_icon(s.state)
             table.add_row(
+                f"[{colour}]{icon}[/]",
                 s.name,
                 f"[{colour}]{s.state}[/]",
                 s.detail[:60],
@@ -141,7 +147,7 @@ class AgentPanel(Static):
     """Table showing current agent activity."""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]Agent Activity[/b]")
+        yield Label(f"[b][{PILLARS.ouroboros}]\u25a0[/] Agent Activity[/b]")
         yield DataTable(id="agent-table")
 
     def on_mount(self) -> None:
@@ -162,7 +168,7 @@ class HealthPanel(Static):
     """Obelisk / infrastructure health and queue depth."""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]System Health[/b]")
+        yield Label(f"[b][{PILLARS.obelisk}]\u25a0[/] System Health[/b]")
         yield Horizontal(
             DataTable(id="health-table"),
             Vertical(
@@ -184,7 +190,7 @@ class HealthPanel(Static):
         table.clear()
         for h in health:
             colour = THEME.success if h.healthy else THEME.error
-            icon = "OK" if h.healthy else "FAIL"
+            icon = "\u2714" if h.healthy else "\u2718"
             table.add_row(h.component, f"[{colour}]{icon}[/]", h.detail[:40])
         self.query_one("#queue-label", Label).update(str(queue_depth))
 
@@ -193,7 +199,7 @@ class GatePanel(Static):
     """Gate summary table showing pass/fail status for each gate."""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]Gate Summary[/b]")
+        yield Label(f"[b][{PILLARS.sentinel}]\u25a0[/] Gate Summary[/b]")
         yield DataTable(id="gate-table")
 
     def on_mount(self) -> None:
@@ -207,7 +213,7 @@ class GatePanel(Static):
         table.clear()
         for gs in gate_summaries:
             colour = THEME.success if gs.passed else THEME.error
-            icon = "PASS" if gs.passed else "FAIL"
+            icon = "\u2714 PASS" if gs.passed else "\u2718 FAIL"
             table.add_row(
                 gs.name,
                 f"[{colour}]{icon}[/]",
@@ -220,7 +226,7 @@ class LogPanel(Static):
     """Scrollable live-log area backed by :class:`RichLog`."""
 
     def compose(self) -> ComposeResult:
-        yield Label("[b]Live Logs[/b]")
+        yield Label("[b]\u25b6 Live Logs[/b]")
         yield RichLog(id="live-log", highlight=True, markup=True, max_lines=500)
 
     def write_log(self, message: str) -> None:
@@ -268,6 +274,8 @@ class DashboardApp(App[None]):
                 HealthPanel(id="health-panel"),
             ),
             GatePanel(id="gate-panel"),
+            SecurityPanel(id="security-panel"),
+            NotificationPanel(id="notification-panel"),
             LogPanel(id="log-panel"),
         )
         yield Footer()
@@ -328,6 +336,14 @@ class DashboardApp(App[None]):
             )
             self.query_one("#gate-panel", GatePanel).refresh_gates(
                 self._state.gate_summaries,
+            )
+            if self._state.security_posture is not None:
+                self.query_one("#security-panel", SecurityPanel).refresh_posture(
+                    self._state.security_posture,
+                )
+            notifs = self._state.notifications or get_store().items
+            self.query_one("#notification-panel", NotificationPanel).refresh_notifications(
+                notifs,
             )
         except Exception:  # noqa: BLE001
             # Widgets may not be mounted yet during early startup.

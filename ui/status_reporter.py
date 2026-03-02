@@ -220,26 +220,29 @@ def load_dispatch_metrics(cwd: Path | None = None) -> DispatchMetrics:
 
 
 def format_stage_table(stages: Sequence[StageMetric]) -> str:
-    """Format stages as a text table."""
+    """Format stages as a text table with visual icons."""
     if not stages:
         return "  (no stages recorded)"
+    from factory.ui.theme import stage_icon  # noqa: PLC0415
+
     lines: list[str] = []
     for s in stages:
-        icon = "PASS" if s.state == "passed" else s.state.upper()
+        icon = stage_icon(s.state)
+        label = s.state.upper()
         dur = f"{s.duration_ms:.1f}ms"
-        detail = f" — {s.detail}" if s.detail else ""
-        lines.append(f"  [{icon:>7}] {s.name:<15} {dur:>10}{detail}")
+        detail = f" \u2014 {s.detail}" if s.detail else ""
+        lines.append(f"  {icon} {label:>7}  {s.name:<15} {dur:>10}{detail}")
     return "\n".join(lines)
 
 
 def format_progress_bar(completed: int, total: int, width: int = 30) -> str:
-    """Render a simple ASCII progress bar."""
+    """Render a Unicode progress bar."""
     if total == 0:
-        return "[" + "." * width + "] 0/0 (0.0%)"
+        return "\u2595" + "\u2591" * width + "\u258f 0/0 (0.0%)"
     pct = completed / total
     filled = int(pct * width)
-    bar = "#" * filled + "." * (width - filled)
-    return f"[{bar}] {completed}/{total} ({pct * 100:.1f}%)"
+    bar = "\u2588" * filled + "\u2591" * (width - filled)
+    return f"\u2595{bar}\u258f {completed}/{total} ({pct * 100:.1f}%)"
 
 
 def show_status(cwd: Path | None = None) -> str:
@@ -274,8 +277,8 @@ def show_epic_status(cwd: Path | None = None) -> str:
         lines.append(f"Epic: {epic.title}")
         lines.append(f"  {format_progress_bar(epic.completed, epic.total)}")
         for story in epic.stories:
-            icon = "x" if story.state == "completed" else " "
-            lines.append(f"  [{icon}] {story.title} ({story.state})")
+            icon = "\u2714" if story.state == "completed" else "\u2504"
+            lines.append(f"  {icon} {story.title} ({story.state})")
         grand_completed += epic.completed
         grand_total += epic.total
     lines.append("")

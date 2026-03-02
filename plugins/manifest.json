@@ -1,0 +1,13 @@
+{
+  "plugins": {},
+  "events": [
+    "pipeline_start",
+    "pipeline_end",
+    "stage_start",
+    "stage_end",
+    "issue_dispatched",
+    "pr_created",
+    "security_scan_complete",
+    "crucible_complete"
+  ]
+}
