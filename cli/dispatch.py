@@ -276,10 +276,17 @@ def _forge_event_printer(event: object) -> None:
 
 
 def _run_forge_interactive() -> None:
-    """Pick the next queued issue and run it through the full pipeline."""
-    import os  # noqa: PLC0415
+    """Pick the next queued issue and run it through Dark Forge only.
 
-    from dark_factory.modes.auto import AutoModeConfig, run_cycle  # noqa: PLC0415
+    The interactive forge command runs ONLY the Dark Forge pipeline
+    (architecture review + TDD).  It does NOT run Crucible, Deploy,
+    or Ouroboros -- those are separate phases triggered via auto mode
+    or their own menu entries.
+    """
+    import os  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    from dark_factory.modes.auto import run_dark_forge  # noqa: PLC0415
 
     repo = os.environ.get("GITHUB_REPO", "")
     if not repo:
@@ -300,17 +307,27 @@ def _run_forge_interactive() -> None:
         input("  Press Enter to return to menu...")
         return
 
+    # Acquire a workspace for the issue
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
+
     sys.stdout.write(f"  Processing #{issue.number}: {issue.title}\n")
-    result = run_cycle(
+    try:
+        workspace = acquire_workspace(repo, issue.number)
+    except Exception as exc:
+        sys.stdout.write(f"  Failed to acquire workspace: {exc}\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    t0 = time.monotonic()
+    passed = run_dark_forge(
         issue,
-        config=AutoModeConfig(repo=repo, max_forge_retries=2),
+        workspace.path,
         on_event=_forge_event_printer,
     )
-    sys.stdout.write(
-        f"  Result: {result.outcome.value} ({result.duration_s:.1f}s, "
-        f"{result.forge_attempts} forge attempt(s))\n"
-        f"  {result.message}\n\n"
-    )
+    elapsed = time.monotonic() - t0
+
+    status = "PASSED" if passed else "FAILED"
+    sys.stdout.write(f"  Dark Forge {status} ({elapsed:.1f}s)\n\n")
     input("  Press Enter to return to menu...")
 
 

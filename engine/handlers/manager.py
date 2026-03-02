@@ -201,8 +201,11 @@ class ManagerHandler:
 
         Resolution order for file references (suffix .dot):
         1. Absolute or CWD-relative path
-        2. Relative to the built-in pipelines directory
-        3. Pipeline name stem via discover_pipelines()
+        2. Filename match in the built-in pipelines directory
+        3. Full relative path from the package root
+        4. Stem name lookup via discover_pipelines()
+
+        If none of these resolve, the source is treated as inline DOT.
 
         Security: file paths must not contain traversal (.. components).
         Variable expansion is limited to $goal only to prevent injection.
@@ -215,9 +218,12 @@ class ManagerHandler:
                 raise ValueError(f"Path traversal in child_graph: {source}")
 
             path = Path(source)
-            if path.exists():
+            if path.is_absolute() and path.exists():
                 resolved_path = path.resolve()
-            else:
+            elif not path.is_absolute() and path.exists():
+                resolved_path = path.resolve()
+
+            if resolved_path is None:
                 # Try relative to the built-in pipelines directory
                 from dark_factory.pipeline.loader import _BUILTINS_DIR  # noqa: PLC0415
 
@@ -226,12 +232,34 @@ class ManagerHandler:
                 builtin_candidate = _BUILTINS_DIR / path.name
                 if builtin_candidate.exists():
                     resolved_path = builtin_candidate.resolve()
-                else:
-                    # Try the full relative path from package root
-                    pkg_root = _BUILTINS_DIR.parent
-                    pkg_candidate = pkg_root / source
-                    if pkg_candidate.exists():
-                        resolved_path = pkg_candidate.resolve()
+
+            if resolved_path is None:
+                # Try the full relative path from package root
+                from dark_factory.pipeline.loader import _BUILTINS_DIR  # noqa: PLC0415
+
+                pkg_root = _BUILTINS_DIR.parent
+                pkg_candidate = pkg_root / source
+                if pkg_candidate.exists():
+                    resolved_path = pkg_candidate.resolve()
+
+            if resolved_path is None:
+                # Final fallback: look up by stem name via discover_pipelines()
+                from dark_factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
+
+                stem = path.stem
+                pipelines = discover_pipelines()
+                if stem in pipelines:
+                    resolved_path = pipelines[stem]
+
+            if resolved_path is None:
+                raise FileNotFoundError(
+                    f"Child graph not found: '{source}'. "
+                    f"Searched CWD-relative, built-in pipelines dir, "
+                    f"and discover_pipelines(). "
+                    f"Check that the file exists and the 'strategy' variable "
+                    f"was expanded (unexpanded variables like ${{strategy}} "
+                    f"produce invalid filenames)."
+                )
 
         if resolved_path is not None:
             dot_text = resolved_path.read_text(encoding="utf-8")
