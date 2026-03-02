@@ -286,17 +286,15 @@ def acquire_workspace(
     # Create issue-specific branch (idempotent)
     _ensure_branch(ws_path, branch)
 
-    # If security-relevant files changed, trigger Sentinel
-    sentinel_passed = True
-    if security_changed:
-        sentinel_passed = _run_sentinel_gate(ws_path)
-        if not sentinel_passed:
-            logger.error("Sentinel failed for %s — ejecting workspace", ws_name)
-            if ws_path.exists():
-                _force_rmtree(ws_path)
-            _remove_from_cache(ws_name, resolved)
-            msg = f"Sentinel security gate failed for {repo} (issue #{issue})"
-            raise RuntimeError(msg)
+    # Always run Sentinel Gate 1 after clone or pull
+    sentinel_passed = _run_sentinel_gate(ws_path)
+    if not sentinel_passed:
+        logger.error("Sentinel failed for %s — ejecting workspace", ws_name)
+        if ws_path.exists():
+            _force_rmtree(ws_path)
+        _remove_from_cache(ws_name, resolved)
+        msg = f"Sentinel security gate failed for {repo} (issue #{issue})"
+        raise RuntimeError(msg)
 
     # Upsert cache entry
     info = WorkspaceInfo(
