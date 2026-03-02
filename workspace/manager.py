@@ -210,7 +210,7 @@ def clean_workspace(name: str, *, root: Path | None = None) -> WorkspaceResult:
     if info.is_worktree:
         _remove_worktree(ws_path)
     elif ws_path.exists():
-        shutil.rmtree(ws_path)
+        _force_rmtree(ws_path)
 
     cache = _load_cache(resolved)
     cache.pop(name, None)
@@ -280,7 +280,7 @@ def acquire_workspace(
     else:
         # Fresh clone (stale/dirty workspace removed first)
         if ws_path.exists():
-            shutil.rmtree(ws_path)
+            _force_rmtree(ws_path)
         _clone_fresh(ws_path, repo_url)
 
     # Create issue-specific branch (idempotent)
@@ -293,7 +293,7 @@ def acquire_workspace(
         if not sentinel_passed:
             logger.error("Sentinel failed for %s — ejecting workspace", ws_name)
             if ws_path.exists():
-                shutil.rmtree(ws_path)
+                _force_rmtree(ws_path)
             _remove_from_cache(ws_name, resolved)
             msg = f"Sentinel security gate failed for {repo} (issue #{issue})"
             raise RuntimeError(msg)
@@ -398,6 +398,18 @@ def _has_security_relevant_files(
                 logger.info("File in new directory: %s (dir: %s)", filepath, parent_dir)
                 return True
     return False
+
+
+def _force_rmtree(path: Path) -> None:
+    """Remove a directory tree, handling Windows file-lock errors on .git pack files."""
+    def _onerror(_fn: object, fpath: str, _exc_info: object) -> None:
+        try:
+            os.chmod(fpath, 0o777)
+            os.unlink(fpath)
+        except OSError:
+            pass
+
+    shutil.rmtree(path, onerror=_onerror)
 
 
 def _clone_fresh(ws_path: Path, repo_url: str) -> None:
