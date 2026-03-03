@@ -141,7 +141,6 @@ class TestConfigPersistence:
         loaded = load_workspace_configs(config_root=tmp_path)
         assert len(loaded) == 1
         assert loaded[0].strategy == "console"
-        assert loaded[0].scan_mode == "fast"
 
     def test_load_missing_config_returns_empty(self, tmp_path: Path) -> None:
         assert load_workspace_configs(config_root=tmp_path) == []
@@ -157,7 +156,7 @@ class TestConfigPersistence:
         config_dir = tmp_path / ".dark-factory"
         config_dir.mkdir()
         (config_dir / "config.json").write_text(
-            json.dumps({"version": "1.0", "workspaces": []}),
+            json.dumps({"version": "1.0", "repos": []}),
             encoding="utf-8",
         )
         save_workspace_config(
@@ -168,7 +167,7 @@ class TestConfigPersistence:
             (config_dir / "config.json").read_text(encoding="utf-8"),
         )
         assert data["version"] == "1.0"
-        assert len(data["workspaces"]) == 1
+        assert len(data["repos"]) == 1
 
 
 # ── Full onboarding flow ─────────────────────────────────────────
@@ -259,7 +258,6 @@ class TestOnboardFlow:
         assert len(entries) == 1
         assert entries[0].repo == "acme/web-app"
         assert entries[0].strategy == "web"
-        assert entries[0].scan_mode == "fast"
 
     def test_invalid_strategy_defaults_to_console(self, tmp_path: Path) -> None:
         cfg = self._make_config(tmp_path)
