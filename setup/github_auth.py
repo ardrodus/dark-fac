@@ -19,7 +19,6 @@ from dark_factory.core.config_manager import (
     save_config,
     set_config_value,
 )
-from dark_factory.integrations.shell import gh, run_command
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +36,8 @@ def suppress_prompts() -> None:
 
 def auth_github_cli() -> bool:
     """Validate ``gh auth status`` and cache *GH_TOKEN*."""
+    from dark_factory.integrations.shell import gh, run_command  # noqa: PLC0415
+
     result = gh(["auth", "status"], timeout=15)
     if result.returncode == 0:
         logger.info("Already authenticated via GitHub CLI")
@@ -91,6 +92,8 @@ def auth_github_pat() -> bool:
 
 def auth_github_ssh() -> bool:
     """Validate SSH key access to ``github.com``."""
+    from dark_factory.integrations.shell import run_command  # noqa: PLC0415
+
     result = run_command(
         ["ssh", "-T", "-o", "StrictHostKeyChecking=accept-new", "git@github.com"],
         timeout=15,
@@ -116,6 +119,8 @@ def auth_github_ssh() -> bool:
 
 def auth_github_app() -> bool:
     """Configure GitHub App installation auth (placeholder)."""
+    from dark_factory.integrations.shell import gh, run_command  # noqa: PLC0415
+
     if not sys.stdin.isatty():
         return False
     print("\n  GitHub App Authentication\n\n  GitHub App auth is not yet fully implemented.\n")
@@ -169,6 +174,8 @@ def connect_github() -> bool:
 
 def auto_connect_github() -> bool:
     """Use cached credentials without prompting."""
+    from dark_factory.integrations.shell import gh  # noqa: PLC0415
+
     suppress_prompts()
     if gh(["auth", "status"], timeout=15).returncode != 0:
         logger.error("GitHub CLI not authenticated. Run: gh auth login")
