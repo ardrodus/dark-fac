@@ -148,11 +148,11 @@ def load_workspace_configs(
 ) -> list[WorkspaceEntry]:
     """Load all workspace entries from ``.dark-factory/config.json``.
 
-    Reads from the ``repos`` array (main onboarding).  Strategy and other
-    workspace-scoped fields are resolved from the repo entry's
-    ``workspace_config`` staging key, or from the workspace-level
-    ``.dark-factory/config.json`` if the workspace has already been
-    bootstrapped.
+    Reads from the ``repos`` array (main onboarding) and falls back to
+    the legacy ``workspaces`` array.  Strategy and other workspace-scoped
+    fields are resolved from the repo entry's ``workspace_config`` staging
+    key, or from the workspace-level ``.dark-factory/config.json`` if the
+    workspace has already been bootstrapped.
 
     Returns an empty list if the file doesn't exist or is corrupted.
     """
@@ -169,6 +169,7 @@ def load_workspace_configs(
         return []
 
     entries: list[WorkspaceEntry] = []
+    seen_repos: set[str] = set()
 
     # Primary source: repos array (from main onboarding)
     raw_repos = data.get("repos", [])
@@ -179,6 +180,7 @@ def load_workspace_configs(
             repo_name = str(item.get("name", ""))
             if not repo_name:
                 continue
+            seen_repos.add(repo_name)
 
             # Resolve strategy from workspace_config staging key
             ws_cfg = item.get("workspace_config", {})
@@ -203,6 +205,28 @@ def load_workspace_configs(
                 )
             )
 
+    # Legacy fallback: workspaces array
+    raw_workspaces = data.get("workspaces", [])
+    if isinstance(raw_workspaces, list):
+        for item in raw_workspaces:
+            if isinstance(item, dict):
+                repo = str(item.get("repo", ""))
+                if repo in seen_repos:
+                    continue
+                entries.append(
+                    WorkspaceEntry(
+                        repo=repo,
+                        strategy=str(item.get("strategy", "console")),
+                        scan_mode=str(item.get("scan_mode", "full")),
+                        status=str(item.get("status", "active")),
+                        webhook_status=str(
+                            item.get("webhook_status", "disabled"),
+                        ),
+                        watched_branch=str(
+                            item.get("watched_branch", "main"),
+                        ),
+                    )
+                )
     return entries
 
 
@@ -229,9 +253,8 @@ def save_workspace_config(
 ) -> Path:
     """Append or update a workspace entry in config.json.
 
-    Writes to the ``repos`` array with workspace-scoped settings in the
-    ``workspace_config`` staging key.  Creates the config file and
-    directory if they don't exist.  Returns the path to the config file.
+    Creates the config file and directory if they don't exist.
+    Returns the path to the config file.
     """
     root = config_root or Path(".")
     path = _config_path(root)
@@ -247,33 +270,31 @@ def save_workspace_config(
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Get or create repos list
-    raw_repos = data.get("repos", [])
-    repos: list[dict[str, object]] = (
-        raw_repos if isinstance(raw_repos, list) else []
+    # Get or create workspaces list
+    raw_workspaces = data.get("workspaces", [])
+    workspaces: list[dict[str, str]] = (
+        raw_workspaces if isinstance(raw_workspaces, list) else []
     )
 
-    # Build repo entry with workspace_config staging key
-    repo_entry: dict[str, object] = {
-        "name": entry.repo,
-        "active": entry.status == "active",
-    }
-    ws_config: dict[str, object] = {
-        "strategy": entry.strategy,
-    }
-    repo_entry["workspace_config"] = ws_config
-
     # Upsert: update existing or append new
+    entry_dict = {
+        "repo": entry.repo,
+        "strategy": entry.strategy,
+        "scan_mode": entry.scan_mode,
+        "status": entry.status,
+        "webhook_status": entry.webhook_status,
+        "watched_branch": entry.watched_branch,
+    }
     updated = False
-    for i, r in enumerate(repos):
-        if isinstance(r, dict) and r.get("name") == entry.repo:
-            repos[i] = repo_entry
+    for i, ws in enumerate(workspaces):
+        if isinstance(ws, dict) and ws.get("repo") == entry.repo:
+            workspaces[i] = entry_dict
             updated = True
             break
     if not updated:
-        repos.append(repo_entry)
+        workspaces.append(entry_dict)
 
-    data["repos"] = repos
+    data["workspaces"] = workspaces
     path.write_text(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
