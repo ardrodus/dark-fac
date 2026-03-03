@@ -9,8 +9,6 @@ from __future__ import annotations
 import logging
 import sys
 
-from dark_factory.integrations.shell import gh
-
 logger = logging.getLogger(__name__)
 
 # ── Label definitions ─────────────────────────────────────────────
@@ -95,6 +93,8 @@ assignees: ''
 
 def provision_labels(repo: str) -> int:
     """Create all pipeline labels on *repo*. Returns count created."""
+    from dark_factory.integrations.shell import gh  # noqa: PLC0415
+
     w = sys.stdout.write
     created = 0
     for name, color, desc in LABELS:
@@ -115,6 +115,8 @@ def provision_labels(repo: str) -> int:
 def provision_issue_template(repo: str) -> bool:
     """Create ``.github/ISSUE_TEMPLATE/factory-task.md`` via the API."""
     import base64  # noqa: PLC0415
+
+    from dark_factory.integrations.shell import gh  # noqa: PLC0415
 
     content = base64.b64encode(_ISSUE_TEMPLATE.encode()).decode()
     path = ".github/ISSUE_TEMPLATE/factory-task.md"
@@ -139,6 +141,8 @@ def provision_ci_workflow(repo: str) -> bool:
     """Create ``.github/workflows/factory-ci.yml`` via the API."""
     import base64  # noqa: PLC0415
 
+    from dark_factory.integrations.shell import gh  # noqa: PLC0415
+
     content = base64.b64encode(_CI_WORKFLOW.encode()).decode()
     path = ".github/workflows/factory-ci.yml"
     result = gh(
@@ -159,6 +163,8 @@ def provision_ci_workflow(repo: str) -> bool:
 
 def provision_branch_protection(repo: str, branch: str = "main") -> bool:
     """Set branch protection: require CI, enable auto-merge, no force push."""
+    from dark_factory.integrations.shell import gh  # noqa: PLC0415
+
     result = gh(
         ["api", f"repos/{repo}/branches/{branch}/protection",
          "-X", "PUT",

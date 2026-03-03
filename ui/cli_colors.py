@@ -111,6 +111,81 @@ def print_stage_result(name: str, state: str, detail: str = "") -> None:
         sys.stdout.write(f"  {icon} {state.upper():>7}  {name}{suffix}\n")
 
 
+def phase_header(
+    step: int,
+    total: int,
+    title: str,
+    *,
+    pillar: str = "",
+    width: int = 60,
+) -> str:
+    """Return a styled phase header with ``[step/total] title`` and a divider.
+
+    Uses :func:`pillar_styled` when *pillar* is non-empty, otherwise
+    :func:`styled` with ``level='info'``.  Falls back to plain ASCII
+    when Rich is unavailable.
+    """
+    counter = f"[{step}/{total}]"
+    label = f"{counter} {title}"
+
+    try:
+        from rich.markup import escape  # noqa: PLC0415
+
+        safe_counter = escape(counter)
+        safe_label = f"{safe_counter} {title}"
+
+        if pillar:
+            header_line = pillar_styled(safe_label, pillar)
+        else:
+            header_line = styled(safe_label, "info")
+
+        rule = f"[dim]{'─' * width}[/]"
+        return f"{header_line}\n{rule}\n"
+    except ImportError:
+        divider = "─" * width
+        return f"{label}\n{divider}\n"
+
+
+def completion_panel(repo: str, strategy: str, label_count: int) -> str:
+    """Return a styled onboarding completion summary.
+
+    Preserves machine-parseable ``Onboarding complete!`` and
+    ``GITHUB_REPO=owner/repo`` lines.  Escapes *repo* and *strategy*
+    with :func:`rich.markup.escape` when Rich is available (SEC-001).
+    """
+    try:
+        from rich.markup import escape  # noqa: PLC0415
+
+        safe_repo = escape(repo)
+        safe_strategy = escape(strategy)
+
+        body = (
+            f"Onboarding complete!\n"
+            f"\n"
+            f"  Repository: {safe_repo}\n"
+            f"  Strategy:   {safe_strategy}\n"
+            f"  Labels:     {label_count} created\n"
+            f"  GITHUB_REPO={safe_repo}"
+        )
+
+        border = f"[green]{'─' * 40}[/]"
+        header = "[bold green]  Onboarding Summary[/]"
+        return f"{border}\n{header}\n{border}\n{body}\n{border}\n"
+    except ImportError:
+        sep = "─" * 30
+        return (
+            f"Onboarding complete!\n"
+            f"\n"
+            f"  Onboarding Summary\n"
+            f"  {sep}\n"
+            f"  Repository: {repo}\n"
+            f"  Strategy:   {strategy}\n"
+            f"  Labels:     {label_count} created\n"
+            f"  GITHUB_REPO={repo}\n"
+            f"  {sep}\n"
+        )
+
+
 def print_error(message: str, *, hint: str = "") -> None:
     """Print a human-friendly error message with optional next-step hint."""
     cprint(f"Error: {message}", "error", file=sys.stderr)
