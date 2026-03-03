@@ -7,12 +7,12 @@
 //   2. If all tests pass → ALL_PASS → done (loop exits)
 //   3. If failures exist → creates a small targeted fix-prd.json
 //      focused ONLY on the failing tests
-//   4. ralph-tui implements the targeted fixes
+//   4. Agent implements the targeted fixes
 //
 // Key constraints:
 //   - Tests are NEVER modified — only feature/implementation code
 //   - Each iteration's fix PRD is smaller than the last
-//   - Agent provides root-cause guidance so ralph-tui doesn't guess
+//   - Agent provides root-cause guidance in the fix PRD
 
 digraph feature_tdd {
     graph [
@@ -32,9 +32,9 @@ digraph feature_tdd {
 
     // --- Step 3: Apply targeted fixes ---
     run_fixes [
-        shape=parallelogram,
-        label="Targeted Fixes\n(ralph-tui --headless)",
-        prompt="cd $workspace && ralph-tui run --prd .dark-factory/specs/$issue_number/tasks/fix-prd.json --headless"
+        shape=box,
+        label="Targeted Fixes",
+        prompt="You are the Fix Writer agent.\n\nWorkspace: $workspace\n\nRead the fix PRD at: $workspace/.dark-factory/specs/$issue_number/tasks/fix-prd.json\n\nThis PRD contains targeted fix stories created by the failure analysis agent. Each story includes the specific failing test(s), root cause analysis, files to modify, and guidance on the expected fix.\n\nFor each story, in order:\n\n1. Read the story and its guidance carefully\n2. Read the failing test to understand exactly what it expects\n3. Read the implementation file(s) identified in files_to_modify\n4. Apply the minimal fix described in the guidance\n\nDo NOT modify files under tests/ — only fix implementation code.\nDo NOT make changes beyond what the story describes.\n\nAfter completing all fixes, run: cd $workspace && python -m pytest tests/ -x --tb=short 2>&1\n\nOutput a summary of fixes applied and test results."
     ]
 
     done [shape=Msquare, label="All Tests Pass"]

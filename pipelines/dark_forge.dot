@@ -1,13 +1,13 @@
 // Dark Forge: TDD Pipeline
 //
 // The build engine of Dark Factory. Takes an approved issue through
-// spec generation, PRD splitting, and ralph-tui driven TDD execution.
+// spec generation, PRD splitting, and agent-driven TDD execution.
 //
 // Flow:
 //   1. Spec generation: design → api → schema → interfaces → test strategy
 //   2. gen_prd: separates specs into test + feature, generates PRD JSON for each
-//   3. test_writer: ralph-tui run test PRD (completes first)
-//   4. feature_writer_loop: ralph-tui run feature PRD, loop until tests pass
+//   3. test_writer: agent implements tests from test PRD
+//   4. feature_writer: agent implements features from feature PRD, then fix loop
 
 digraph dark_forge {
     graph [
@@ -81,35 +81,35 @@ digraph dark_forge {
     // PRD Generation -- Separates into Test + Feature PRDs
     //
     // Reads all spec artifacts, separates test vs feature concerns,
-    // then generates ralph-tui PRD JSON for each:
+    // then generates PRD JSON for each:
     //   tasks/test-prd.json    -- test PRD (stories for test writer)
     //   tasks/feature-prd.json -- feature PRD (stories for feature writer)
     // ===========================================
 
     gen_prd [
         shape=box,
-        prompt="You are the PRD Generator. Your workspace is: $workspace\n\nGitHub Issue:\n$issue\n\nRead all technical spec artifacts:\n- Design: $gen_design_path\n- API Contract: $gen_api_contract_path\n- Schema: $gen_schema_path\n- Interfaces: $gen_interfaces_path\n- Test Strategy: $gen_test_strategy_path\n\nYou must perform these steps:\n\n## Step 1: Separate test vs feature concerns\n\nCreate TWO spec documents:\n- .dark-factory/specs/$issue_number/test-spec.md -- all test-related content: test strategy, acceptance criteria, test cases, fixtures, mocks, coverage targets, edge cases.\n- .dark-factory/specs/$issue_number/feature-spec.md -- all feature/implementation content: architecture, component changes, API endpoints, database schema, interfaces, implementation steps.\n\nBoth documents must be complete and self-contained.\n\n## Step 2: Generate PRD JSON files\n\nFor EACH spec document (test-spec.md and feature-spec.md):\n1. If the document is larger than 22KB, split it into 22KB chunk files under .dark-factory/specs/$issue_number/chunks/test/ (or chunks/feature/)\n2. For each chunk (or the whole doc if small enough), generate a PRD JSON with user stories, acceptance criteria, and dependencies\n3. Merge all chunk PRDs into a single master PRD JSON\n\nWrite the final PRD files to:\n- .dark-factory/specs/$issue_number/tasks/test-prd.json\n- .dark-factory/specs/$issue_number/tasks/feature-prd.json\n\nEach PRD JSON must follow this structure:\n{\n  \"stories\": [\n    {\n      \"title\": \"story title\",\n      \"description\": \"what to implement\",\n      \"acceptance_criteria\": [\"criterion 1\", \"criterion 2\"],\n      \"dependencies\": []\n    }\n  ]\n}\n\nOutput a summary of what you created (file paths and story counts)."
+        prompt="You are the PRD Generator. Your workspace is: $workspace\n\nGitHub Issue:\n$issue\n\nRead all technical spec artifacts:\n- Design: $gen_design_path\n- API Contract: $gen_api_contract_path\n- Schema: $gen_schema_path\n- Interfaces: $gen_interfaces_path\n- Test Strategy: $gen_test_strategy_path\n\nYou must perform these steps:\n\n## Step 1: Separate test vs feature concerns\n\nCreate TWO spec documents:\n- .dark-factory/specs/$issue_number/test-spec.md -- all test-related content: test strategy, acceptance criteria, test cases, fixtures, mocks, coverage targets, edge cases.\n- .dark-factory/specs/$issue_number/feature-spec.md -- all feature/implementation content: architecture, component changes, API endpoints, database schema, interfaces, implementation steps.\n\nBoth documents must be complete and self-contained.\n\n## Step 2: Generate PRD JSON files\n\nFor EACH spec document (test-spec.md and feature-spec.md):\n1. If the document is larger than 22KB, split it into 22KB chunk files under .dark-factory/specs/$issue_number/chunks/test/ (or chunks/feature/)\n2. For each chunk (or the whole doc if small enough), generate a PRD JSON with user stories, acceptance criteria, and dependencies\n3. Merge all chunk PRDs into a single master PRD JSON\n\nWrite the final PRD files to:\n- .dark-factory/specs/$issue_number/tasks/test-prd.json\n- .dark-factory/specs/$issue_number/tasks/feature-prd.json\n\nOutput a summary of what you created (file paths and story counts)."
     ]
 
     // ===========================================
     // Execution: TDD — Tests first, then features, then fix loop
     //
-    // 1. test_writer: ralph-tui writes all tests from test PRD
-    // 2. feature_writer: ralph-tui implements features from full feature PRD (first pass)
+    // 1. test_writer: agent implements all tests from test PRD
+    // 2. feature_writer: agent implements features from feature PRD (first pass)
     // 3. feature_fix_loop: iterates — analyze failures, create targeted fix PRD,
-    //    ralph-tui fixes only what's broken. Exits when all tests pass.
+    //    agent fixes only what's broken. Exits when all tests pass.
     // ===========================================
 
     test_writer [
-        shape=parallelogram,
-        label="Test Writer\n(ralph-tui --headless)",
-        prompt="cd $workspace && ralph-tui run --prd .dark-factory/specs/$issue_number/tasks/test-prd.json --headless"
+        shape=box,
+        label="Test Writer",
+        prompt="You are the Test Writer agent.\n\nWorkspace: $workspace\n\nRead the test PRD at: $workspace/.dark-factory/specs/$issue_number/tasks/test-prd.json\n\nThis PRD contains user stories describing tests to write. For each story, in dependency order:\n\n1. Read the story title, description, and acceptance criteria\n2. Explore the existing codebase at $workspace to understand the modules being tested\n3. Write the test files following existing test patterns and conventions in $workspace/tests/\n4. Ensure each acceptance criterion is covered by at least one test assertion\n\nDo NOT write implementation code — only test code.\nDo NOT modify existing tests unless a story explicitly requires it.\n\nAfter completing all stories, run: cd $workspace && python -m pytest tests/ --collect-only 2>&1\n\nOutput a summary of files created and test count."
     ]
 
     feature_writer [
-        shape=parallelogram,
-        label="Feature Writer\n(ralph-tui --headless, full first pass)",
-        prompt="cd $workspace && ralph-tui run --prd .dark-factory/specs/$issue_number/tasks/feature-prd.json --headless"
+        shape=box,
+        label="Feature Writer",
+        prompt="You are the Feature Writer agent.\n\nWorkspace: $workspace\n\nRead the feature PRD at: $workspace/.dark-factory/specs/$issue_number/tasks/feature-prd.json\n\nThis PRD contains user stories describing features to implement. For each story, in dependency order:\n\n1. Read the story title, description, and acceptance criteria\n2. Explore the existing codebase at $workspace to understand current patterns and conventions\n3. Implement the feature following existing code style and architecture\n4. Ensure each acceptance criterion is addressed by the implementation\n\nDo NOT modify files under tests/ — only implement feature/production code.\n\nAfter completing all stories, run: cd $workspace && python -m pytest tests/ -x --tb=short 2>&1\n\nOutput a summary of files modified and test results."
     ]
 
     feature_fix_loop [
