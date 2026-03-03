@@ -40,7 +40,7 @@ digraph crucible {
     detect_frameworks [
         shape=box,
         label="Framework Detection\nAgent",
-        prompt="$eng_crucible_framework\n\nYou are the Crucible Framework Analyst. Examine the target app at $workspace to determine which test frameworks are needed for end-to-end validation.\n\nApp workspace: $workspace\nCrucible test repo: $workspace/.dark-factory/crucible-tests/\n\nAnalysis steps:\n1. Examine the app technology stack (language, framework, runtime)\n2. Identify testable surfaces: web UI, REST API, GraphQL, CLI, WebSocket\n3. For each surface, recommend a test framework (max 3):\n   - Web UI: Playwright (preferred), Cypress\n   - REST API: supertest (Node), httpx (Python)\n   - CLI: subprocess-based testing\n4. Check what already exists in the crucible repo\n5. Install missing frameworks\n\nWrite detection results to: $workspace/.dark-factory/crucible/framework-detection.json"
+        prompt="$eng_crucible_framework_agent\n\nExamine the target app at $workspace to determine which E2E/integration test frameworks are needed for Crucible validation.\n\nApp workspace: $workspace\nCrucible test repo: $workspace/.dark-factory/crucible-tests/\n\nIMPORTANT: Recommend SCENARIO/E2E frameworks, NOT unit test runners.\n- Web UI: Playwright (preferred), Cypress (NOT Jest or Mocha alone)\n- REST API: supertest (Node), httpx (Python) (NOT pytest alone)\n- pytest and Jest are test RUNNERS, not E2E frameworks\n\nAnalysis steps:\n1. Examine the app technology stack (language, framework, runtime)\n2. Identify testable surfaces: web UI, REST API, GraphQL, CLI, WebSocket\n3. For each surface, recommend ONE E2E/integration framework (max 3 total)\n4. Check what already exists in the crucible repo\n5. Install missing frameworks\n\nWrite detection results to: $workspace/.dark-factory/crucible/framework-detection.json"
     ]
 
     // --- Phase 3: Containerization + Twins ---
@@ -57,7 +57,7 @@ digraph crucible {
     generate_scenarios [
         shape=box,
         label="Scenario Test\nGeneration Agent",
-        prompt="$eng_crucible_scenario\n\nYou are the Crucible Scenario Generator. Read the PR diff and generate end-to-end scenario tests.\n\nWorkspace: $workspace\nPR number: $pr_number\nPR branch: $pr_branch\nBase SHA: $base_sha\nHead SHA: $head_sha\nCrucible tests: $workspace/.dark-factory/crucible-tests/\n\nSteps:\n1. Run: git diff $base_sha...$head_sha in $workspace\n2. Identify changed files, new endpoints, modified UI components\n3. Generate 1-5 test files using detected framework patterns\n4. Write to: crucible-tests/tests/pr-$pr_number-<feature>.spec.<ext>\n\nRules:\n- Each test exercises a USER-VISIBLE behavior change\n- Tests must be self-contained and deterministic\n- Use detected framework idioms\n- Max 500 lines total"
+        prompt="$eng_crucible_scenario_agent\n\nRead the PR diff and generate end-to-end scenario tests.\n\nWorkspace: $workspace\nPR number: $pr_number\nPR branch: $pr_branch\nBase SHA: $base_sha\nHead SHA: $head_sha\nCrucible tests: $workspace/.dark-factory/crucible-tests/\n\nSteps:\n1. Run: git diff $base_sha...$head_sha in $workspace\n2. Identify changed files, new endpoints, modified UI components\n3. Generate 1-5 test files using detected framework patterns\n4. Write to: crucible-tests/tests/pr-$pr_number-<feature>.spec.<ext>\n\nRules:\n- Each test exercises a USER-VISIBLE behavior change\n- Tests must be self-contained and deterministic\n- Use detected framework idioms\n- Max 500 lines total"
     ]
 
     // --- Phase 5: Round 1 -- Smoke (PR tests only) ---
@@ -83,7 +83,7 @@ digraph crucible {
     graduate_tests [
         shape=box,
         label="Graduate Tests\n(PR to crucible repo)",
-        prompt="$eng_crucible_graduation\n\nYou are the Crucible Graduation Agent. Tests passed both rounds — time to make them permanent.\n\nCrucible repo: $workspace/.dark-factory/crucible-tests/\nApp repo: $app_repo\nPR number: $pr_number\n\nSteps:\n1. Rename test files: remove 'pr-$pr_number-' prefix\n2. Check for naming conflicts with existing tests\n3. Create branch: crucible/graduate-pr-$pr_number\n4. Commit: 'feat(crucible): graduate tests from PR #$pr_number'\n5. Push and create PR to crucible repo\n\nThe bill becomes law."
+        prompt="$eng_crucible_graduation_agent\n\nTests passed both rounds — time to make them permanent.\n\nCrucible repo: $workspace/.dark-factory/crucible-tests/\nApp repo: $app_repo\nPR number: $pr_number\n\nSteps:\n1. Rename test files: remove 'pr-$pr_number-' prefix\n2. Check for naming conflicts with existing tests\n3. Create branch: crucible/graduate-pr-$pr_number\n4. Commit: 'feat(crucible): graduate tests from PR #$pr_number'\n5. Push and create PR to crucible repo\n\nThe bill becomes law."
     ]
 
     // --- Terminals ---

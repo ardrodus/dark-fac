@@ -9,6 +9,7 @@ from dark_factory.crucible.coordinator import (
 from dark_factory.crucible.framework_detect import (
     DetectionResult,
     FrameworkProfile,
+    build_detection_result,
     detect_frameworks,
     ensure_frameworks,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "CrucibleRepoResult",
     "CrucibleVerdict",
     "DetectionResult",
+    "build_detection_result",
     "FailureClass",
     "FrameworkProfile",
     "GraduationResult",

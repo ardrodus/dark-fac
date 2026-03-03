@@ -1,4 +1,4 @@
-"""Tests for crucible/framework_detect.py — framework detection and installation."""
+"""Tests for crucible/framework_detect.py — deterministic utilities."""
 from __future__ import annotations
 
 import json
@@ -9,151 +9,204 @@ import pytest
 from dark_factory.crucible.framework_detect import (
     DetectionResult,
     FrameworkProfile,
-    _detect_api,
-    _detect_cli,
-    _detect_web_ui,
-    _scan_existing,
+    _parse_agent_response,
+    _resolve_profile,
+    _scan_existing_simple,
+    build_detection_result,
     detect_frameworks,
+    ensure_frameworks,
 )
 
 
-@pytest.fixture()
-def app_dir(tmp_path: Path) -> Path:
-    d = tmp_path / "app"
-    d.mkdir()
-    return d
+# ── Response Parsing ─────────────────────────────────────────
 
 
-@pytest.fixture()
-def crucible_dir(tmp_path: Path) -> Path:
-    d = tmp_path / "crucible"
-    d.mkdir()
-    return d
+class TestParseAgentResponse:
+    def test_parses_valid_response(self) -> None:
+        response = '''Here's my analysis...
+
+<<<FRAMEWORK_DETECTION>>>
+{
+  "app_language": "TypeScript",
+  "app_framework": "Next.js",
+  "has_web_ui": true,
+  "has_api": true,
+  "has_cli": false,
+  "recommended": [
+    {"name": "playwright", "language": "TypeScript", "reason": "Web UI"},
+    {"name": "supertest", "language": "TypeScript", "reason": "API"}
+  ],
+  "already_installed": ["playwright"],
+  "to_install": ["supertest"]
+}
+<<<END_FRAMEWORK_DETECTION>>>'''
+        data = _parse_agent_response(response)
+        assert data["app_language"] == "TypeScript"
+        assert len(data["recommended"]) == 2
+        assert data["recommended"][0]["name"] == "playwright"
+
+    def test_fallback_to_raw_json(self) -> None:
+        response = '{"app_language": "Python", "recommended": []}'
+        data = _parse_agent_response(response)
+        assert data["app_language"] == "Python"
+
+    def test_unparseable_returns_empty(self) -> None:
+        data = _parse_agent_response("I don't know what frameworks to use.")
+        assert data == {}
 
 
-class TestDetectWebUI:
-    def test_react_app(self, app_dir: Path) -> None:
-        (app_dir / "src").mkdir()
-        (app_dir / "src" / "App.tsx").touch()
-        assert _detect_web_ui(app_dir) is True
+class TestResolveProfile:
+    def test_known_framework(self) -> None:
+        profile = _resolve_profile("playwright")
+        assert profile.name == "playwright"
+        assert "npx playwright" in profile.run_cmd
 
-    def test_vue_app(self, app_dir: Path) -> None:
-        (app_dir / "src").mkdir()
-        (app_dir / "src" / "App.vue").touch()
-        assert _detect_web_ui(app_dir) is True
-
-    def test_next_in_package_json(self, app_dir: Path) -> None:
-        (app_dir / "package.json").write_text(
-            json.dumps({"dependencies": {"next": "^14.0.0"}}), encoding="utf-8")
-        assert _detect_web_ui(app_dir) is True
-
-    def test_no_web_ui(self, app_dir: Path) -> None:
-        (app_dir / "main.py").write_text("print('hello')", encoding="utf-8")
-        assert _detect_web_ui(app_dir) is False
+    def test_unknown_framework_uses_default(self) -> None:
+        profile = _resolve_profile("some-unknown-fw")
+        assert profile.name == "playwright"  # default fallback
 
 
-class TestDetectAPI:
-    def test_express_in_package(self, app_dir: Path) -> None:
-        (app_dir / "package.json").write_text(
-            json.dumps({"dependencies": {"express": "^4.0.0"}}), encoding="utf-8")
-        assert _detect_api(app_dir) is True
-
-    def test_fastapi_in_requirements(self, app_dir: Path) -> None:
-        (app_dir / "requirements.txt").write_text("fastapi\nuvicorn\n", encoding="utf-8")
-        assert _detect_api(app_dir) is True
-
-    def test_routes_directory(self, app_dir: Path) -> None:
-        (app_dir / "routes").mkdir()
-        assert _detect_api(app_dir) is True
-
-    def test_openapi_spec(self, app_dir: Path) -> None:
-        (app_dir / "openapi.yaml").touch()
-        assert _detect_api(app_dir) is True
-
-    def test_no_api(self, app_dir: Path) -> None:
-        assert _detect_api(app_dir) is False
-
-
-class TestDetectCLI:
-    def test_argparse_in_pyproject(self, app_dir: Path) -> None:
-        (app_dir / "pyproject.toml").write_text(
-            '[project]\ndependencies = ["click"]\n', encoding="utf-8")
-        assert _detect_cli(app_dir) is True
-
-    def test_main_py(self, app_dir: Path) -> None:
-        (app_dir / "__main__.py").write_text("", encoding="utf-8")
-        assert _detect_cli(app_dir) is True
-
-    def test_no_cli(self, app_dir: Path) -> None:
-        assert _detect_cli(app_dir) is False
-
-
-class TestScanExisting:
-    def test_playwright_detected(self, crucible_dir: Path) -> None:
-        (crucible_dir / "package.json").write_text(
-            json.dumps({"devDependencies": {"@playwright/test": "^1.40.0"}}),
+class TestScanExistingSimple:
+    def test_detects_playwright(self, tmp_path: Path) -> None:
+        (tmp_path / "package.json").write_text(
+            json.dumps({"devDependencies": {"@playwright/test": "^1"}}),
             encoding="utf-8")
-        assert "playwright" in _scan_existing(crucible_dir)
+        assert "playwright" in _scan_existing_simple(tmp_path)
 
-    def test_pytest_detected(self, crucible_dir: Path) -> None:
-        (crucible_dir / "requirements.txt").write_text("pytest\n", encoding="utf-8")
-        assert "pytest" in _scan_existing(crucible_dir)
+    def test_detects_httpx(self, tmp_path: Path) -> None:
+        (tmp_path / "requirements.txt").write_text("httpx\npytest\n", encoding="utf-8")
+        assert "httpx" in _scan_existing_simple(tmp_path)
 
-    def test_empty_crucible(self, crucible_dir: Path) -> None:
-        assert _scan_existing(crucible_dir) == []
+    def test_empty_crucible(self, tmp_path: Path) -> None:
+        assert _scan_existing_simple(tmp_path) == []
+
+
+# ── Build DetectionResult from agent output ──────────────────
+
+
+class TestBuildDetectionResult:
+    def test_parses_agent_output(self, tmp_path: Path) -> None:
+        response = '''<<<FRAMEWORK_DETECTION>>>
+{
+  "app_language": "TypeScript",
+  "app_framework": "Next.js",
+  "has_web_ui": true,
+  "has_api": true,
+  "has_cli": false,
+  "recommended": [
+    {"name": "playwright", "language": "TypeScript", "reason": "Web UI E2E"},
+    {"name": "supertest", "language": "TypeScript", "reason": "API testing"}
+  ],
+  "already_installed": [],
+  "to_install": ["playwright", "supertest"]
+}
+<<<END_FRAMEWORK_DETECTION>>>'''
+        result = build_detection_result(response, tmp_path)
+        assert result.app_language == "TypeScript"
+        assert result.has_web_ui is True
+        assert result.has_api is True
+        assert any(f.name == "playwright" for f in result.recommended_frameworks)
+        assert any(f.name == "supertest" for f in result.recommended_frameworks)
+
+    def test_unparseable_uses_defaults(self, tmp_path: Path) -> None:
+        result = build_detection_result("garbage", tmp_path, language="Python")
+        assert len(result.recommended_frameworks) >= 1
+
+    def test_max_three_frameworks(self, tmp_path: Path) -> None:
+        response = '''<<<FRAMEWORK_DETECTION>>>
+{
+  "app_language": "TypeScript", "app_framework": "Next.js",
+  "has_web_ui": true, "has_api": true, "has_cli": false,
+  "recommended": [
+    {"name": "playwright", "language": "TypeScript", "reason": "UI"},
+    {"name": "cypress", "language": "TypeScript", "reason": "UI alt"},
+    {"name": "supertest", "language": "TypeScript", "reason": "API"},
+    {"name": "httpx", "language": "Python", "reason": "backup"}
+  ],
+  "already_installed": [], "to_install": []
+}
+<<<END_FRAMEWORK_DETECTION>>>'''
+        result = build_detection_result(response, tmp_path)
+        assert len(result.recommended_frameworks) <= 3
+
+    def test_existing_not_in_missing(self, tmp_path: Path) -> None:
+        (tmp_path / "package.json").write_text(
+            json.dumps({"devDependencies": {"@playwright/test": "^1"}}),
+            encoding="utf-8")
+        response = '''<<<FRAMEWORK_DETECTION>>>
+{
+  "app_language": "TypeScript", "app_framework": "Next.js",
+  "has_web_ui": true, "has_api": false, "has_cli": false,
+  "recommended": [{"name": "playwright", "language": "TypeScript", "reason": "UI"}],
+  "already_installed": ["playwright"], "to_install": []
+}
+<<<END_FRAMEWORK_DETECTION>>>'''
+        result = build_detection_result(response, tmp_path)
+        assert "playwright" not in result.missing_frameworks
+
+
+# ── Deterministic Fallback ───────────────────────────────────
 
 
 class TestDetectFrameworks:
-    def test_node_web_app(self, app_dir: Path, crucible_dir: Path) -> None:
-        (app_dir / "package.json").write_text(
-            json.dumps({"dependencies": {"next": "^14", "react": "^18"}}),
-            encoding="utf-8")
-        (app_dir / "src").mkdir()
-        (app_dir / "src" / "App.tsx").touch()
-        result = detect_frameworks(
-            app_dir, crucible_dir, language="TypeScript", framework="Next.js",
-        )
-        assert result.has_web_ui is True
-        assert any(f.name == "playwright" for f in result.recommended_frameworks)
-
-    def test_python_api(self, app_dir: Path, crucible_dir: Path) -> None:
-        (app_dir / "requirements.txt").write_text("fastapi\nuvicorn\n", encoding="utf-8")
-        result = detect_frameworks(
-            app_dir, crucible_dir, language="Python", framework="FastAPI",
-        )
-        assert result.has_api is True
-        assert any(f.name == "httpx" for f in result.recommended_frameworks)
-
-    def test_missing_frameworks_identified(self, app_dir: Path, crucible_dir: Path) -> None:
-        (app_dir / "package.json").write_text(
-            json.dumps({"dependencies": {"express": "^4"}}), encoding="utf-8")
-        (app_dir / "routes").mkdir()
-        result = detect_frameworks(
-            app_dir, crucible_dir, language="TypeScript",
-        )
-        assert len(result.missing_frameworks) > 0
-
-    def test_existing_framework_not_missing(self, app_dir: Path, crucible_dir: Path) -> None:
-        (app_dir / "package.json").write_text(
-            json.dumps({"devDependencies": {"@playwright/test": "^1"}}),
-            encoding="utf-8")
-        (app_dir / "src").mkdir()
-        (app_dir / "src" / "App.tsx").touch()
-        (crucible_dir / "package.json").write_text(
-            json.dumps({"devDependencies": {"@playwright/test": "^1.40.0"}}),
-            encoding="utf-8")
-        result = detect_frameworks(
-            app_dir, crucible_dir, language="TypeScript",
-        )
-        assert "playwright" not in result.missing_frameworks
-
-    def test_max_three_frameworks(self, app_dir: Path, crucible_dir: Path) -> None:
-        result = detect_frameworks(
-            app_dir, crucible_dir, language="TypeScript",
-            has_web_server=True,
-        )
-        assert len(result.recommended_frameworks) <= 3
-
-    def test_default_when_nothing_detected(self, app_dir: Path, crucible_dir: Path) -> None:
-        result = detect_frameworks(app_dir, crucible_dir, language="")
+    def test_fallback_typescript(self, tmp_path: Path) -> None:
+        app = tmp_path / "app"
+        app.mkdir()
+        (app / "package.json").write_text("{}", encoding="utf-8")
+        cruc = tmp_path / "cruc"
+        cruc.mkdir()
+        result = detect_frameworks(app, cruc, language="TypeScript")
         assert len(result.recommended_frameworks) >= 1
+        assert result.recommended_frameworks[0].name == "playwright"
+
+    def test_fallback_python(self, tmp_path: Path) -> None:
+        app = tmp_path / "app"
+        app.mkdir()
+        cruc = tmp_path / "cruc"
+        cruc.mkdir()
+        result = detect_frameworks(app, cruc, language="Python")
+        assert len(result.recommended_frameworks) >= 1
+        assert result.recommended_frameworks[0].name == "httpx"
+
+    def test_default_when_nothing_detected(self, tmp_path: Path) -> None:
+        app = tmp_path / "app"
+        app.mkdir()
+        cruc = tmp_path / "cruc"
+        cruc.mkdir()
+        result = detect_frameworks(app, cruc, language="")
+        assert len(result.recommended_frameworks) >= 1
+
+
+# ── Install ──────────────────────────────────────────────────
+
+
+class TestEnsureFrameworks:
+    def test_nothing_to_install(self, tmp_path: Path) -> None:
+        result = DetectionResult(
+            app_language="TypeScript", app_framework="Next.js",
+            has_web_ui=True, has_api=False, has_cli=False,
+            recommended_frameworks=(), missing_frameworks=(),
+            install_actions=(),
+        )
+        assert ensure_frameworks(tmp_path, result) is True
+
+    def test_install_called(self, tmp_path: Path) -> None:
+        calls: list[tuple] = []
+
+        class FakeResult:
+            returncode = 0
+
+        def mock_shell(args, cwd=""):
+            calls.append((args, cwd))
+            return FakeResult()
+
+        result = DetectionResult(
+            app_language="TypeScript", app_framework="Next.js",
+            has_web_ui=True, has_api=False, has_cli=False,
+            recommended_frameworks=(),
+            missing_frameworks=("playwright",),
+            install_actions=("npm install @playwright/test",),
+        )
+        ok = ensure_frameworks(tmp_path, result, shell_fn=mock_shell)
+        assert ok is True
+        assert len(calls) == 1

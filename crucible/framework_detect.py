@@ -1,15 +1,10 @@
-"""Framework detection — analyze apps and determine test frameworks needed.
-
-Examines a target application to determine which test frameworks are needed
-for end-to-end Crucible validation, then ensures those frameworks exist in
-the crucible test workspace.
-"""
+"""Framework detection utilities for Crucible."""
 from __future__ import annotations
 
 import json
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +18,7 @@ _MAX_FRAMEWORKS = 3
 class FrameworkProfile:
     """Detected test framework configuration."""
 
-    name: str  # e.g. "playwright", "cypress", "pytest", "jest"
+    name: str  # e.g. "playwright", "cypress", "supertest", "httpx"
     language: str  # e.g. "TypeScript", "Python", "JavaScript"
     install_cmd: str  # e.g. "npm install @playwright/test"
     run_cmd: str  # e.g. "npx playwright test"
@@ -46,79 +41,50 @@ class DetectionResult:
     install_actions: tuple[str, ...] = ()
 
 
-# ── Framework Profiles ──────────────────────────────────────────
-
-_PLAYWRIGHT = FrameworkProfile(
-    name="playwright",
-    language="TypeScript",
-    install_cmd="npm install @playwright/test && npx playwright install",
-    run_cmd="npx playwright test",
-    config_file="playwright.config.ts",
-    reporter_json="--reporter=json",
-)
-
-_CYPRESS = FrameworkProfile(
-    name="cypress",
-    language="TypeScript",
-    install_cmd="npm install cypress",
-    run_cmd="npx cypress run",
-    config_file="cypress.config.ts",
-    reporter_json="--reporter json",
-)
-
-_PYTEST = FrameworkProfile(
-    name="pytest",
-    language="Python",
-    install_cmd="pip install pytest pytest-json-report",
-    run_cmd="pytest",
-    config_file="pytest.ini",
-    reporter_json="--json-report --json-report-file=report.json",
-)
-
-_JEST = FrameworkProfile(
-    name="jest",
-    language="JavaScript",
-    install_cmd="npm install jest",
-    run_cmd="npx jest",
-    config_file="jest.config.js",
-    reporter_json="--json --outputFile=report.json",
-)
-
-_SUPERTEST = FrameworkProfile(
-    name="supertest",
-    language="TypeScript",
-    install_cmd="npm install supertest @types/supertest",
-    run_cmd="npx jest --testPathPattern=api",
-    config_file="jest.config.js",
-    reporter_json="--json",
-)
-
-_HTTPX = FrameworkProfile(
-    name="httpx",
-    language="Python",
-    install_cmd="pip install httpx pytest",
-    run_cmd="pytest tests/api/",
-    config_file="pytest.ini",
-    reporter_json="--json-report",
-)
+# ── Known Framework Profiles (E2E/integration only) ──────────
 
 _PROFILES: dict[str, FrameworkProfile] = {
-    "playwright": _PLAYWRIGHT,
-    "cypress": _CYPRESS,
-    "pytest": _PYTEST,
-    "jest": _JEST,
-    "supertest": _SUPERTEST,
-    "httpx": _HTTPX,
+    "playwright": FrameworkProfile(
+        name="playwright", language="TypeScript",
+        install_cmd="npm install @playwright/test && npx playwright install",
+        run_cmd="npx playwright test",
+        config_file="playwright.config.ts",
+        reporter_json="--reporter=json",
+    ),
+    "cypress": FrameworkProfile(
+        name="cypress", language="TypeScript",
+        install_cmd="npm install cypress",
+        run_cmd="npx cypress run",
+        config_file="cypress.config.ts",
+        reporter_json="--reporter json",
+    ),
+    "supertest": FrameworkProfile(
+        name="supertest", language="TypeScript",
+        install_cmd="npm install supertest @types/supertest jest",
+        run_cmd="npx jest --testPathPattern=api",
+        config_file="jest.config.js",
+        reporter_json="--json",
+    ),
+    "httpx": FrameworkProfile(
+        name="httpx", language="Python",
+        install_cmd="pip install httpx pytest pytest-json-report",
+        run_cmd="pytest tests/api/",
+        config_file="pytest.ini",
+        reporter_json="--json-report",
+    ),
+    "selenium": FrameworkProfile(
+        name="selenium", language="Python",
+        install_cmd="pip install selenium pytest",
+        run_cmd="pytest tests/e2e/",
+        config_file="pytest.ini",
+        reporter_json="--json-report",
+    ),
 }
 
+# Fallback profile when agent recommends something we don't have a profile for
+_DEFAULT_PROFILE = _PROFILES["playwright"]
 
 # ── Detection Patterns ─────────────────────────────────────────
-
-_WEB_UI_MARKERS = re.compile(
-    r"react|vue|angular|svelte|next|nuxt|gatsby|remix|astro"
-    r"|\.html|\.ejs|\.hbs|\.pug|\.jinja|templates/",
-    re.I,
-)
 
 _API_MARKERS = re.compile(
     r"express|fastapi|flask|django|gin|actix|spring.*boot"
@@ -131,32 +97,43 @@ _CLI_MARKERS = re.compile(
     re.I,
 )
 
-# ── Framework selection based on app language ───────────────────
 
-_LANG_WEB_FW: dict[str, str] = {
-    "TypeScript": "playwright",
-    "JavaScript": "playwright",
-    "Python": "playwright",
-    "Go": "playwright",
-    "Rust": "playwright",
-    "Java": "playwright",
-    "C#": "playwright",
-}
+# ── Response Parsing (deterministic) ─────────────────────────
 
-_LANG_API_FW: dict[str, str] = {
-    "TypeScript": "supertest",
-    "JavaScript": "supertest",
-    "Python": "httpx",
-    "Go": "httpx",
-    "Rust": "httpx",
-    "Java": "httpx",
-    "C#": "httpx",
-}
+_DETECTION_PATTERN = re.compile(
+    r"<<<FRAMEWORK_DETECTION>>>\s*\n?(.*?)\n?<<<END_FRAMEWORK_DETECTION>>>",
+    re.S,
+)
 
 
-def _rd(path: Path) -> str:
+def _parse_agent_response(response: str) -> dict[str, Any]:
+    """Extract the structured JSON from the agent's response."""
+    m = _DETECTION_PATTERN.search(response)
+    if not m:
+        # Try to find raw JSON as fallback
+        try:
+            start = response.index("{")
+            return json.loads(response[start:])
+        except (ValueError, json.JSONDecodeError):
+            return {}
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
+        return json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _resolve_profile(name: str, language: str = "") -> FrameworkProfile:
+    """Look up a known framework profile by name."""
+    if name in _PROFILES:
+        return _PROFILES[name]
+    # Agent recommended something we don't have a profile for — use default
+    logger.warning("Unknown framework '%s', using default profile", name)
+    return _DEFAULT_PROFILE
+
+
+def _read_safe(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[:5000]
     except OSError:
         return ""
 
@@ -168,8 +145,8 @@ def _detect_web_ui(root: Path) -> bool:
                     "src/pages/", "app/page.tsx", "app/page.jsx"):
         if (root / marker).exists():
             return True
-    pkg = _rd(root / "package.json").lower()
-    if _WEB_UI_MARKERS.search(pkg):
+    pkg = _read_safe(root / "package.json").lower()
+    if pkg and re.search(r"next|nuxt|gatsby|remix|astro|react|vue|angular|svelte", pkg):
         return True
     return False
 
@@ -182,59 +159,131 @@ def _detect_api(root: Path) -> bool:
             return True
     for cfg in ("package.json", "pyproject.toml", "requirements.txt",
                 "Cargo.toml", "go.mod"):
-        if _API_MARKERS.search(_rd(root / cfg)):
+        if _API_MARKERS.search(_read_safe(root / cfg)):
             return True
     return False
 
 
 def _detect_cli(root: Path) -> bool:
-    """Check for argparse, clap, commander patterns."""
+    """Check for argparse, click, typer, clap, commander patterns."""
     for cfg in ("package.json", "pyproject.toml", "Cargo.toml"):
-        if _CLI_MARKERS.search(_rd(root / cfg)):
+        if _CLI_MARKERS.search(_read_safe(root / cfg)):
             return True
     if (root / "__main__.py").is_file() or (root / "src" / "__main__.py").is_file():
         return True
     return False
 
 
-def _scan_existing(crucible_path: Path) -> list[str]:
-    """Check what frameworks already exist in the crucible repo."""
+def _scan_existing(cruc: Path) -> list[str]:
+    """Quick check of what frameworks exist in the crucible repo."""
     found: list[str] = []
-    pkg = _rd(crucible_path / "package.json")
+    pkg = _read_safe(cruc / "package.json")
     if "@playwright/test" in pkg:
         found.append("playwright")
     if "cypress" in pkg:
         found.append("cypress")
-    if "jest" in pkg or "@jest" in pkg:
-        found.append("jest")
     if "supertest" in pkg:
         found.append("supertest")
-    # Python
-    reqs = _rd(crucible_path / "requirements.txt")
-    pyproj = _rd(crucible_path / "pyproject.toml")
+    reqs = _read_safe(cruc / "requirements.txt")
+    pyproj = _read_safe(cruc / "pyproject.toml")
+    combined = reqs + pyproj
+    if "httpx" in combined:
+        found.append("httpx")
     if "pytest" in reqs or "pytest" in pyproj:
         found.append("pytest")
-    if "httpx" in reqs or "httpx" in pyproj:
-        found.append("httpx")
     return found
 
 
-def _app_own_framework(root: Path) -> str | None:
-    """Prefer the test framework the app team already uses."""
-    pkg = _rd(root / "package.json")
-    if "@playwright/test" in pkg:
-        return "playwright"
-    if "cypress" in pkg:
-        return "cypress"
-    if "jest" in pkg:
-        return "jest"
-    reqs = _rd(root / "requirements.txt") + _rd(root / "pyproject.toml")
-    if "pytest" in reqs:
-        return "pytest"
-    return None
+# Keep backward-compatible alias
+_scan_existing_simple = _scan_existing
 
 
-# ── Public API ──────────────────────────────────────────────────
+# ── Build DetectionResult from agent output ──────────────────
+
+
+def build_detection_result(
+    response: str,
+    crucible_path: str | Path,
+    *,
+    language: str = "",
+    framework: str = "",
+) -> DetectionResult:
+    """Parse an agent's framework detection response into a DetectionResult.
+
+    Called after the pipeline engine runs the detect_frameworks node and
+    captures the agent output.  This function handles only deterministic
+    post-processing: JSON parsing, profile lookup, install resolution.
+    """
+    cruc = Path(crucible_path)
+    data = _parse_agent_response(response)
+    if not data:
+        logger.warning("Could not parse agent response, using defaults")
+        return _detect_fallback_simple(cruc, language, framework)
+
+    app_lang = str(data.get("app_language", language or "Unknown"))
+    app_fw = str(data.get("app_framework", framework or "Unknown"))
+    has_web = bool(data.get("has_web_ui", False))
+    has_api = bool(data.get("has_api", False))
+    has_cli = bool(data.get("has_cli", False))
+
+    # Resolve recommended frameworks to profiles
+    recommended: list[FrameworkProfile] = []
+    for rec in data.get("recommended", []):
+        if isinstance(rec, dict):
+            name = str(rec.get("name", ""))
+            lang = str(rec.get("language", ""))
+            if name:
+                recommended.append(_resolve_profile(name, lang))
+    recommended = recommended[:_MAX_FRAMEWORKS]
+
+    if not recommended:
+        recommended.append(_DEFAULT_PROFILE)
+
+    # Cross-check with actual crucible repo
+    existing = _scan_existing_simple(cruc)
+    rec_names = [f.name for f in recommended]
+    missing = [n for n in rec_names if n not in existing]
+    install = [_PROFILES[n].install_cmd for n in missing if n in _PROFILES]
+
+    return DetectionResult(
+        app_language=app_lang, app_framework=app_fw,
+        has_web_ui=has_web, has_api=has_api, has_cli=has_cli,
+        recommended_frameworks=tuple(recommended),
+        existing_frameworks=tuple(existing),
+        missing_frameworks=tuple(missing),
+        install_actions=tuple(install),
+    )
+
+
+# ── Fallback (when no agent available) ───────────────────────
+
+
+def _detect_fallback_simple(
+    cruc: Path, language: str, framework: str,
+) -> DetectionResult:
+    """Minimal defaults when parsing fails."""
+    lang = language or "Unknown"
+    rec: list[FrameworkProfile] = []
+    if lang in ("TypeScript", "JavaScript"):
+        rec.append(_PROFILES["playwright"])
+    elif lang == "Python":
+        rec.append(_PROFILES["httpx"])
+    else:
+        rec.append(_PROFILES["playwright"])
+
+    existing = _scan_existing_simple(cruc)
+    rec_names = [f.name for f in rec]
+    missing = [n for n in rec_names if n not in existing]
+    install = [_PROFILES[n].install_cmd for n in missing if n in _PROFILES]
+
+    return DetectionResult(
+        app_language=lang, app_framework=framework,
+        has_web_ui=lang != "Python", has_api=lang == "Python", has_cli=False,
+        recommended_frameworks=tuple(rec),
+        existing_frameworks=tuple(existing),
+        missing_frameworks=tuple(missing),
+        install_actions=tuple(install),
+    )
 
 
 def detect_frameworks(
@@ -244,87 +293,58 @@ def detect_frameworks(
     language: str = "",
     framework: str = "",
     has_web_server: bool | None = None,
+    agent_fn: None = None,
 ) -> DetectionResult:
-    """Analyze app in workspace, compare against crucible repo frameworks.
+    """Deterministic framework detection fallback.
 
-    Args:
-        workspace_path: Path to the application workspace.
-        crucible_path: Path to the crucible test repository.
-        language: Override language detection (from project_analyzer).
-        framework: Override framework detection (from project_analyzer).
-        has_web_server: Override web server detection.
+    When called via the pipeline engine, the agent runs in crucible.dot
+    and the response is parsed by ``build_detection_result()``.
+    This function provides the deterministic fallback for the coordinator
+    path (no agent available).
     """
     root = Path(workspace_path)
     cruc = Path(crucible_path)
-
-    # Use project_analyzer if language not provided
-    app_lang = language
-    app_fw = framework
-    if not app_lang:
-        try:
-            from dark_factory.setup.project_analyzer import analyze_project  # noqa: PLC0415
-            analysis = analyze_project(str(root))
-            app_lang = analysis.language
-            app_fw = app_fw or analysis.framework
-            if has_web_server is None:
-                has_web_server = analysis.has_web_server
-        except Exception:  # noqa: BLE001
-            app_lang = ""
+    lang = language or "Unknown"
 
     has_web = has_web_server if has_web_server is not None else _detect_web_ui(root)
     has_api = _detect_api(root)
     has_cli = _detect_cli(root)
 
-    # Build recommended frameworks list
-    recommended: list[FrameworkProfile] = []
+    rec: list[FrameworkProfile] = []
 
-    # Prefer app's own test framework
-    own_fw = _app_own_framework(root)
-    if own_fw and own_fw in _PROFILES:
-        recommended.append(_PROFILES[own_fw])
+    # Web UI -> Playwright
+    if has_web:
+        if lang in ("TypeScript", "JavaScript"):
+            rec.append(_PROFILES["playwright"])
+        else:
+            rec.append(_PROFILES["playwright"])
 
-    # Web UI -> Playwright (unless app uses Cypress)
-    if has_web and not any(f.name in ("playwright", "cypress") for f in recommended):
-        fw_name = _LANG_WEB_FW.get(app_lang, "playwright")
-        recommended.append(_PROFILES[fw_name])
-
-    # API -> supertest/httpx
-    if has_api and not any(f.name in ("supertest", "httpx") for f in recommended):
-        fw_name = _LANG_API_FW.get(app_lang, "httpx")
-        recommended.append(_PROFILES[fw_name])
+    # API -> supertest (TS/JS) or httpx (Python)
+    if has_api and not any(f.name in ("supertest", "httpx") for f in rec):
+        if lang in ("TypeScript", "JavaScript"):
+            rec.append(_PROFILES["supertest"])
+        else:
+            rec.append(_PROFILES["httpx"])
 
     # If nothing detected, default to language's standard runner
-    if not recommended:
-        if app_lang in ("TypeScript", "JavaScript"):
-            recommended.append(_PLAYWRIGHT)
-        elif app_lang == "Python":
-            recommended.append(_PYTEST)
+    if not rec:
+        if lang in ("TypeScript", "JavaScript"):
+            rec.append(_PROFILES["playwright"])
+        elif lang == "Python":
+            rec.append(_PROFILES["httpx"])
         else:
-            recommended.append(_PLAYWRIGHT)  # universal fallback
+            rec.append(_PROFILES["playwright"])
 
-    # Cap at MAX_FRAMEWORKS
-    recommended = recommended[:_MAX_FRAMEWORKS]
-
-    # Compare against existing crucible frameworks
+    rec = rec[:_MAX_FRAMEWORKS]
     existing = _scan_existing(cruc)
-    rec_names = [f.name for f in recommended]
+    rec_names = [f.name for f in rec]
     missing = [n for n in rec_names if n not in existing]
     install = [_PROFILES[n].install_cmd for n in missing if n in _PROFILES]
 
-    logger.info(
-        "Framework detection: lang=%s fw=%s web=%s api=%s cli=%s "
-        "recommended=%s existing=%s missing=%s",
-        app_lang, app_fw, has_web, has_api, has_cli,
-        rec_names, existing, missing,
-    )
-
     return DetectionResult(
-        app_language=app_lang,
-        app_framework=app_fw,
-        has_web_ui=has_web,
-        has_api=has_api,
-        has_cli=has_cli,
-        recommended_frameworks=tuple(recommended),
+        app_language=lang, app_framework=framework,
+        has_web_ui=has_web, has_api=has_api, has_cli=has_cli,
+        recommended_frameworks=tuple(rec),
         existing_frameworks=tuple(existing),
         missing_frameworks=tuple(missing),
         install_actions=tuple(install),

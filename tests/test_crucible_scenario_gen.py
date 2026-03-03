@@ -25,10 +25,10 @@ _PLAYWRIGHT = FrameworkProfile(
     reporter_json="--reporter=json",
 )
 
-_PYTEST = FrameworkProfile(
-    name="pytest", language="Python",
-    install_cmd="pip install pytest",
-    run_cmd="pytest",
+_HTTPX = FrameworkProfile(
+    name="httpx", language="Python",
+    install_cmd="pip install httpx pytest pytest-json-report",
+    run_cmd="pytest tests/api/",
     config_file="pytest.ini",
     reporter_json="--json-report",
 )
@@ -132,11 +132,12 @@ class TestGenerateFallback:
         assert "SCENARIO_TEST" in response
         assert "playwright" in response.lower() or "expect" in response
 
-    def test_pytest_fallback(self) -> None:
-        response = _generate_fallback(7, _PYTEST, ["main.py"])
+    def test_httpx_fallback(self) -> None:
+        response = _generate_fallback(7, _HTTPX, ["main.py"])
         assert "pr-7" in response
         assert ".py" in response
         assert "def test_" in response
+        assert "httpx" in response
 
 
 class TestGenerateScenarios:
