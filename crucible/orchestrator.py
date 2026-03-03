@@ -140,10 +140,29 @@ def _parse_ps(raw: str) -> list[dict[str, Any]]:
                 out.append(p)
     return out
 
-def _exec_tests(ws: Workspace, cfg: CrucibleConfig) -> tuple[int, str]:
-    ctr = f"{cfg.project_name}-app-1"
+def _exec_tests(
+    ws: Workspace,
+    cfg: CrucibleConfig,
+    *,
+    run_cmd: str = "",
+    test_files: list[str] | None = None,
+    container: str = "",
+) -> tuple[int, str]:
+    """Execute tests inside the container.
+
+    Args:
+        ws: Application workspace.
+        cfg: Crucible configuration.
+        run_cmd: Override test command (default: ``npx playwright test --reporter=json``).
+        test_files: Specific test files to run (appended to command).
+        container: Override container name (default: ``{project}-app-1``).
+    """
+    ctr = container or f"{cfg.project_name}-app-1"
+    cmd = run_cmd or "npx playwright test --reporter=json"
+    if test_files:
+        cmd = f"{cmd} {' '.join(test_files)}"
     r = (cfg.docker_fn or _dk)(["exec", ctr, "sh", "-c",
-         "cd /workspace && npx playwright test --reporter=json 2>&1 || true"],
+         f"cd /workspace && {cmd} 2>&1 || true"],
          timeout=float(cfg.test_timeout), cwd=ws.path)
     return r.returncode, r.stdout
 

@@ -248,10 +248,18 @@ def run_dark_forge(
 
 
 def _default_crucible(workspace: Workspace, issue_number: int) -> CrucibleResult:
-    """Run the Crucible test suite."""
-    from dark_factory.crucible.orchestrator import run_crucible  # noqa: PLC0415
+    """Run the Crucible test suite via the two-round coordinator."""
+    from dark_factory.crucible.coordinator import (  # noqa: PLC0415
+        CrucibleCoordinatorConfig,
+        run_crucible_pipeline,
+        to_crucible_result,
+    )
 
-    return run_crucible(workspace, issue_number=issue_number)
+    config = CrucibleCoordinatorConfig(
+        pr_number=issue_number,
+    )
+    two_round = run_crucible_pipeline(workspace, config)
+    return to_crucible_result(two_round)
 
 
 def run_crucible_phase(

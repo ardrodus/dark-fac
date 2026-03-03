@@ -386,6 +386,8 @@ class FactoryPipelineEngine:
         head_sha: str,
         *,
         issue_number: int = 0,
+        pr_number: int = 0,
+        pr_branch: str = "",
         context: dict[str, Any] | None = None,
     ) -> Any:
         """Run Crucible with the given SHAs.
@@ -395,6 +397,8 @@ class FactoryPipelineEngine:
             base_sha: Base commit SHA for diff comparison.
             head_sha: Head commit SHA for diff comparison.
             issue_number: Optional issue number for log naming.
+            pr_number: PR number for scenario generation + graduation.
+            pr_branch: PR branch name for checkout.
             context: Extra context variables.
 
         Returns:
@@ -406,6 +410,10 @@ class FactoryPipelineEngine:
             "head_sha": head_sha,
             **(context or {}),
         }
+        if pr_number:
+            ctx["pr_number"] = str(pr_number)
+        if pr_branch:
+            ctx["pr_branch"] = pr_branch
 
         if issue_number:
             ctx["issue_number"] = str(issue_number)
