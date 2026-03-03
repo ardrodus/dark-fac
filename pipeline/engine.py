@@ -114,6 +114,10 @@ class FactoryPipelineEngine:
         ctx = dict(context or {})
         ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
 
+        # Load agent persona files into context so DOT prompts can
+        # reference them as $sa_security_console_agent etc.
+        self._load_agent_personas(ctx)
+
         # Derive logs_dir so the runner writes per-node artifacts to disk
         logs_dir = self._derive_logs_dir(name, ctx)
 
@@ -188,6 +192,25 @@ class FactoryPipelineEngine:
         )
 
     # ── Helpers ────────────────────────────────────────────────
+
+    @staticmethod
+    def _load_agent_personas(ctx: dict[str, Any]) -> None:
+        """Load agent .md files into context for $variable expansion in prompts.
+
+        Scans the ``agents/`` directory next to the ``pipelines/`` directory.
+        Each file ``agents/sa-security-console.md`` becomes context key
+        ``sa_security_console_agent`` (hyphens to underscores, stem + _agent).
+        """
+        agents_dir = Path(__file__).resolve().parent.parent / "agents"
+        if not agents_dir.is_dir():
+            return
+        for md_file in agents_dir.glob("*.md"):
+            key = md_file.stem.replace("-", "_") + "_agent"
+            if key not in ctx:
+                try:
+                    ctx[key] = md_file.read_text(encoding="utf-8")
+                except OSError:
+                    pass
 
     @staticmethod
     def _derive_logs_dir(name: str, ctx: dict[str, Any]) -> str | None:
