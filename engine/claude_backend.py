@@ -75,9 +75,16 @@ class ClaudeCodeBackend:
         if system_prompt:
             cmd.extend(["--system-prompt", system_prompt])
 
+        # Resolve workspace for subprocess cwd so the agent operates
+        # in the target workspace, not the dark_factory source repo.
+        import os  # noqa: PLC0415
+
+        workspace = context.get("workspace", "")
+        cwd = workspace if workspace and os.path.isdir(workspace) else None
+
         logger.info(
-            "[claude-backend] node=%s cmd=%s prompt_len=%d",
-            node.id, " ".join(cmd), len(prompt),
+            "[claude-backend] node=%s cmd=%s prompt_len=%d cwd=%s",
+            node.id, " ".join(cmd), len(prompt), cwd or "(inherit)",
         )
 
         sem = self._limiter.get_async_semaphore() if self._limiter else None
@@ -85,8 +92,6 @@ class ClaudeCodeBackend:
             await sem.acquire()
         try:
             # Strip CLAUDECODE env var so nested claude --print doesn't refuse to run
-            import os  # noqa: PLC0415
-
             env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
             proc = await asyncio.create_subprocess_exec(
@@ -95,6 +100,7 @@ class ClaudeCodeBackend:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                cwd=cwd,
             )
 
             stdout_bytes, stderr_bytes = await proc.communicate(
