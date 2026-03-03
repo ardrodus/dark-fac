@@ -148,6 +148,12 @@ def load_workspace_configs(
 ) -> list[WorkspaceEntry]:
     """Load all workspace entries from ``.dark-factory/config.json``.
 
+    Reads from the ``repos`` array (main onboarding) and falls back to
+    the legacy ``workspaces`` array.  Strategy and other workspace-scoped
+    fields are resolved from the repo entry's ``workspace_config`` staging
+    key, or from the workspace-level ``.dark-factory/config.json`` if the
+    workspace has already been bootstrapped.
+
     Returns an empty list if the file doesn't exist or is corrupted.
     """
     root = config_root or Path(".")
@@ -161,26 +167,66 @@ def load_workspace_configs(
         return []
     if not isinstance(data, dict):
         return []
-    raw_workspaces = data.get("workspaces", [])
-    if not isinstance(raw_workspaces, list):
-        return []
+
     entries: list[WorkspaceEntry] = []
-    for item in raw_workspaces:
-        if isinstance(item, dict):
+    seen_repos: set[str] = set()
+
+    # Primary source: repos array (from main onboarding)
+    raw_repos = data.get("repos", [])
+    if isinstance(raw_repos, list):
+        for item in raw_repos:
+            if not isinstance(item, dict):
+                continue
+            repo_name = str(item.get("name", ""))
+            if not repo_name:
+                continue
+            seen_repos.add(repo_name)
+
+            # Resolve strategy from workspace_config staging key
+            ws_cfg = item.get("workspace_config", {})
+            if not isinstance(ws_cfg, dict):
+                ws_cfg = {}
+            strategy = str(ws_cfg.get("strategy", "console"))
+
+            # Try workspace-level config for latest values
+            ws_path = root / _CONFIG_DIR / "workspaces" / repo_name
+            ws_settings = load_workspace_settings(ws_path) if ws_path.is_dir() else {}
+            if ws_settings.get("strategy"):
+                strategy = str(ws_settings["strategy"])
+
             entries.append(
                 WorkspaceEntry(
-                    repo=str(item.get("repo", "")),
-                    strategy=str(item.get("strategy", "console")),
-                    scan_mode=str(item.get("scan_mode", "full")),
-                    status=str(item.get("status", "active")),
-                    webhook_status=str(
-                        item.get("webhook_status", "disabled"),
-                    ),
-                    watched_branch=str(
-                        item.get("watched_branch", "main"),
-                    ),
+                    repo=repo_name,
+                    strategy=strategy,
+                    scan_mode="full",
+                    status="active" if item.get("active") else "paused",
+                    webhook_status="disabled",
+                    watched_branch="main",
                 )
             )
+
+    # Legacy fallback: workspaces array
+    raw_workspaces = data.get("workspaces", [])
+    if isinstance(raw_workspaces, list):
+        for item in raw_workspaces:
+            if isinstance(item, dict):
+                repo = str(item.get("repo", ""))
+                if repo in seen_repos:
+                    continue
+                entries.append(
+                    WorkspaceEntry(
+                        repo=repo,
+                        strategy=str(item.get("strategy", "console")),
+                        scan_mode=str(item.get("scan_mode", "full")),
+                        status=str(item.get("status", "active")),
+                        webhook_status=str(
+                            item.get("webhook_status", "disabled"),
+                        ),
+                        watched_branch=str(
+                            item.get("watched_branch", "main"),
+                        ),
+                    )
+                )
     return entries
 
 

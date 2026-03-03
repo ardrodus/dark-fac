@@ -157,6 +157,40 @@ def get_workspace(name: str, *, root: Path | None = None) -> WorkspaceInfo | Non
     return None
 
 
+def _bootstrap_workspace_config(ws_path: Path, name: str) -> None:
+    """Create workspace-level ``.dark-factory/config.json`` from global repo entry.
+
+    Reads the ``workspace_config`` staging key from the matching global repo
+    entry and writes it to ``{workspace}/.dark-factory/config.json``.
+    """
+    import json as _json  # noqa: PLC0415
+
+    try:
+        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+        global_cfg = load_config()
+        # Find repo entry matching this workspace name (owner/repo format)
+        staged: dict[str, object] = {}
+        for entry in global_cfg.data.get("repos", []):
+            if isinstance(entry, dict) and entry.get("name") == name:
+                staged = entry.get("workspace_config", {})
+                if not isinstance(staged, dict):
+                    staged = {}
+                break
+
+        if not staged:
+            return
+
+        config_dir = ws_path / ".dark-factory"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "config.json").write_text(
+            _json.dumps(staged, indent=2) + "\n", encoding="utf-8",
+        )
+        logger.info("Bootstrapped workspace config at %s", config_dir / "config.json")
+    except Exception:  # noqa: BLE001
+        logger.debug("Could not bootstrap workspace config", exc_info=True)
+
+
 def create_workspace(
     name: str,
     repo_url: str,
@@ -185,6 +219,9 @@ def create_workspace(
             _clone_repo(ws_path, repo_url, branch)
     except CommandError as exc:
         return WorkspaceResult(success=False, message=f"git failed: {exc}")
+
+    # Bootstrap workspace config from global repo entry
+    _bootstrap_workspace_config(ws_path, name)
 
     info = WorkspaceInfo(
         name=name,

@@ -312,15 +312,23 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
 
             if want_crucible:
                 from dark_factory.crucible.repo_provision import provision_crucible_repo  # noqa: PLC0415
-                from dark_factory.core.config_manager import load_config as _load_cfg  # noqa: PLC0415
+                from dark_factory.core.config_manager import load_config as _load_cfg, save_config  # noqa: PLC0415
 
-                cr_result = provision_crucible_repo(repo, _load_cfg(start).data)
+                global_cfg = _load_cfg(start)
+                cr_result = provision_crucible_repo(repo, global_cfg.data)
                 if cr_result.error:
                     dl.info(f"crucible-repo: {cr_result.error} (non-fatal)")
                     w(f"  Crucible repo: {cr_result.error}\n")
                 else:
                     dl.info(f"crucible-repo: {cr_result.crucible_repo} created={cr_result.created}")
                     w(f"  Crucible repo: {cr_result.crucible_repo}\n")
+                    # Stage crucible repo in workspace_config for bootstrap
+                    for entry in global_cfg.data.get("repos", []):
+                        if isinstance(entry, dict) and entry.get("name") == repo:
+                            ws_cfg = entry.setdefault("workspace_config", {})
+                            ws_cfg.setdefault("crucible", {})["test_repo"] = cr_result.crucible_repo
+                            break
+                    save_config(global_cfg)
             else:
                 dl.info("crucible-repo: skipped by user")
                 w("  Crucible repo: skipped (configure later in Settings)\n")

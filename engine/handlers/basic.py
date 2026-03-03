@@ -121,11 +121,11 @@ class ToolHandler:
         # Variable expansion in command (shell-safe quoting to prevent injection)
         for key, value in context.items():
             if isinstance(value, str):
-                # Convert Windows backslash paths to forward slashes for bash.
-                # Without this, `cd C:\Sandboxes\...` fails in bash because
-                # backslashes are interpreted as escape characters.
+                # Convert Windows paths to POSIX for bash (Git Bash / WSL).
+                # C:\Sandboxes\... → /c/Sandboxes/...
                 if os.name == "nt" and re.match(r"^[A-Za-z]:\\", value):
-                    value = value.replace("\\", "/")
+                    drive = value[0].lower()
+                    value = f"/{drive}" + value[2:].replace("\\", "/")
                 safe_value = shlex.quote(value)
                 command = command.replace(f"${{{key}}}", safe_value)
                 command = command.replace(f"${key}", safe_value)

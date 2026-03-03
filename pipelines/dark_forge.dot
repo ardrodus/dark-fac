@@ -18,6 +18,18 @@ digraph dark_forge {
     start [shape=Mdiamond, label="Approved Issue"]
 
     // ===========================================
+    // Issue Interpretation
+    //
+    // Translates the raw issue into a clear feature scope so
+    // downstream agents evaluate the right thing.
+    // ===========================================
+
+    interpret_issue [
+        shape=box,
+        prompt="You are:\n$issue_interpreter_agent\n\nIssue:\n$issue\n\nWorkspace: $workspace\n\nExplore $workspace to understand the codebase structure and identify what parts are relevant to this issue.\n\nProduce a feature scope following the format in your instructions.\n\nWrite the feature scope to: $workspace/.dark-factory/specs/$issue_number/feature-scope.md\n\nAlso output the full feature scope as your response."
+    ]
+
+    // ===========================================
     // Architecture Review (external pipeline)
     // Currently bypassed for dev testing.
     // ===========================================
@@ -42,7 +54,7 @@ digraph dark_forge {
 
     gen_design [
         shape=box,
-        prompt="You are the Design Agent. Given this GitHub issue and codebase:\n\nIssue:\n$issue\n\nWorkspace: $workspace\n\nGenerate a Technical Design Document covering:\n- Architecture decisions (with rationale)\n- Component changes (new/modified/removed)\n- Data model changes\n- API changes\n- Risks and mitigations\n\nReference existing codebase patterns from the workspace.\nOutput as structured markdown.\nWrite output to .dark-factory/specs/$issue_number/design.md"
+        prompt="You are:\n$design_agent\n\nIssue:\n$issue\n\nWorkspace: $workspace\n\nGenerate a Technical Design Document for the feature described in the issue.\n\nExplore $workspace to understand existing patterns, frameworks, and conventions.\nYour design must work within the existing codebase — do not invent dependencies.\n\nCover:\n- Architecture decisions (with rationale)\n- Component changes (new/modified/removed) — name exact files\n- Data model changes (or state 'none')\n- API changes (or state 'none')\n- Risks and mitigations\n\nWrite output to .dark-factory/specs/$issue_number/design.md"
     ]
 
     gen_api_contract [
@@ -141,8 +153,8 @@ digraph dark_forge {
     done [shape=Msquare, label="PR Created"]
 
     // --- Flow ---
-    // Architecture review first, then spec generation, then TDD execution
-    start -> arch_review -> arch_verdict
+    // Issue interpretation, then arch review, spec generation, TDD execution
+    start -> interpret_issue -> arch_review -> arch_verdict
     arch_verdict -> gen_design [label="APPROVED"]
     arch_verdict -> arch_needs_human [label="NEEDS_HUMAN"]
 

@@ -117,30 +117,27 @@ def add_repo_to_config(
             r["active"] = False
 
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Global repo entry — minimal: just identity + activation state
     entry: dict[str, object] = {
         "name": repo,
-        "strategy": strategy,
         "added_at": now,
         "active": True,
     }
 
+    # Workspace-scoped config — staged here until workspace creation
+    ws_config: dict[str, object] = {}
+    if strategy:
+        ws_config["strategy"] = strategy
     if analysis is not None:
         ad = asdict(analysis)
         for k, v in ad.items():
             if isinstance(v, tuple):
                 ad[k] = list(v)
-        entry.update(ad)
+        ws_config["analysis"] = ad
+
+    if ws_config:
+        entry["workspace_config"] = ws_config
 
     repos.append(entry)
-
-    # Update top-level strategy and analysis for quick access
-    if strategy:
-        cfg.data["strategy"] = strategy
-    if analysis is not None:
-        cfg.data["analysis"] = {
-            k: v
-            for k, v in entry.items()
-            if k not in ("name", "strategy", "added_at", "active")
-        }
-
     save_config(cfg)

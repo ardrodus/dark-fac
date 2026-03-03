@@ -159,6 +159,11 @@ class FactoryPipelineEngine:
             raise ValueError(msg)
 
         ctx: dict[str, Any] = {"workspace": workspace, **(context or {})}
+        if "strategy" not in ctx and workspace:
+            ws_data = self._load_workspace_config(workspace)
+            ws_strategy = ws_data.get("strategy", "")
+            if ws_strategy:
+                ctx["strategy"] = ws_strategy
         ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
 
         if issue_number:
@@ -194,6 +199,23 @@ class FactoryPipelineEngine:
     # ── Helpers ────────────────────────────────────────────────
 
     @staticmethod
+    def _load_workspace_config(workspace: str) -> dict[str, Any]:
+        """Load workspace-level ``.dark-factory/config.json``.
+
+        Returns the parsed dict, or ``{}`` if the file doesn't exist.
+        """
+        import json  # noqa: PLC0415
+
+        ws_config_path = Path(workspace) / ".dark-factory" / "config.json"
+        if not ws_config_path.is_file():
+            return {}
+        try:
+            return json.loads(ws_config_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.debug("Failed to read workspace config at %s", ws_config_path, exc_info=True)
+            return {}
+
+    @staticmethod
     def _load_agent_personas(ctx: dict[str, Any]) -> None:
         """Load agent .md files into context for $variable expansion in prompts.
 
@@ -211,6 +233,29 @@ class FactoryPipelineEngine:
                     ctx[key] = md_file.read_text(encoding="utf-8")
                 except OSError:
                     pass
+
+    @staticmethod
+    def _resolve_crucible_repo(workspace: str) -> str:
+        """Look up the crucible test repo from workspace config.
+
+        Raises :class:`FileNotFoundError` if the workspace has no
+        ``crucible.test_repo`` configured.
+        """
+        if not workspace:
+            msg = "Cannot resolve crucible repo: no workspace path provided"
+            raise FileNotFoundError(msg)
+
+        ws_config_path = Path(workspace) / ".dark-factory" / "config.json"
+        data = FactoryPipelineEngine._load_workspace_config(workspace)
+        repo = data.get("crucible", {}).get("test_repo", "")
+        if not repo:
+            msg = (
+                f"crucible.test_repo not set in {ws_config_path}. "
+                "Run onboarding to configure the crucible test repo."
+            )
+            raise FileNotFoundError(msg)
+
+        return repo
 
     @staticmethod
     def _derive_logs_dir(name: str, ctx: dict[str, Any]) -> str | None:
@@ -300,6 +345,10 @@ class FactoryPipelineEngine:
             "workspace": workspace,
             **(context or {}),
         }
+        # Strategy precedence: explicit param > workspace config > engine default
+        if not strategy and workspace:
+            ws_data = self._load_workspace_config(workspace)
+            strategy = ws_data.get("strategy", "")
         ctx["strategy"] = strategy or self._engine_cfg.deploy_strategy
 
         # Skip arch review nodes when configured
@@ -360,6 +409,10 @@ class FactoryPipelineEngine:
 
         if issue_number:
             ctx["issue_number"] = str(issue_number)
+
+        # Inject test_repo from workspace config if not already provided.
+        if "test_repo" not in ctx:
+            ctx["test_repo"] = self._resolve_crucible_repo(workspace)
 
         # Create workflow log for agent visibility
         if workspace:

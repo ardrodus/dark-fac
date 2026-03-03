@@ -27,6 +27,7 @@ class IssueInfo:
     title: str
     labels: tuple[str, ...]
     state: str
+    body: str = ""
 
 
 def list_issues(
@@ -38,7 +39,7 @@ def list_issues(
     cwd: str | None = None,
 ) -> list[IssueInfo]:
     """List issues matching the given filters."""
-    args = ["issue", "list", "--json", "number,title,labels,state", "--state", state, "--limit", str(limit)]
+    args = ["issue", "list", "--json", "number,title,labels,state,body", "--state", state, "--limit", str(limit)]
     if labels:
         args.extend(["--label", ",".join(labels)])
     if repo:
@@ -68,12 +69,14 @@ def list_issues(
         number = item.get("number", 0)
         title = item.get("title", "")
         issue_state = item.get("state", "OPEN")
+        body = item.get("body", "")
         issues.append(
             IssueInfo(
                 number=int(number) if isinstance(number, (int, float)) else 0,
                 title=str(title),
                 labels=tuple(label_names),
                 state=str(issue_state),
+                body=str(body) if body else "",
             )
         )
     return issues

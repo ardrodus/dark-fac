@@ -204,7 +204,7 @@ def _default_forge(
     from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
 
     engine = FactoryPipelineEngine(on_event=on_event)
-    issue_data = {"number": issue.number, "title": issue.title}
+    issue_data = {"number": issue.number, "title": issue.title, "body": issue.body}
     result = asyncio.run(engine.run_forge(
         issue_data, workspace_path, skip_arch_review=skip_arch_review,
     ))
