@@ -28,12 +28,18 @@ _VERDICT_KEYWORDS: frozenset[str] = frozenset({
     "APPROVED", "NEEDS_CHANGES", "NEEDS_HUMAN",
     # Feature TDD fix loop
     "ALL_PASS", "FIXES_NEEDED",
+    # Dark Forge diff validation + retry
+    "RELEVANT", "IRRELEVANT", "RETRY",
     # Crucible
     "CLEAN", "BLOCK", "GO", "NO_GO", "NEEDS_LIVE",
     # Ouroboros
     "ALLOW", "DENY", "PASS", "FAIL",
     "HEALTHY", "UNHEALTHY",
     "UPDATE_AVAILABLE", "UP_TO_DATE",
+    # Obelisk (planned)
+    "FIXABLE", "INFRASTRUCTURE",
+    "FIXED", "ESCALATED",
+    "CONTEXT_GATHERED", "FIX_PROPOSED",
 })
 
 

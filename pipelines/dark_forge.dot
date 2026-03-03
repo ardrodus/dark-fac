@@ -108,10 +108,34 @@ digraph dark_forge {
         success_condition="status=completed"
     ]
 
+    // ===========================================
+    // Diff Validation — verify changes address the issue
+    //
+    // Before creating a PR, validate that the workspace diff is
+    // actually relevant to the issue. Prevents garbage PRs from
+    // stale workspace state or failed spec generation.
+    // ===========================================
+
+    validate_diff [
+        shape=box,
+        prompt="You are the Dark Forge diff validator.\n\nWorkspace: $workspace\nIssue: $issue\n\nBefore creating a PR, validate that the changes actually address the issue.\n\n1. Run: cd $workspace && git diff --stat\n2. Run: cd $workspace && git diff\n3. Read the issue title and description\n4. For each changed file, assess: does this change contribute to solving the issue?\n5. If the diff is empty, or contains only unrelated changes (internal artifacts, infrastructure, files not mentioned in specs), output IRRELEVANT\n6. If the diff contains meaningful implementation changes that address the issue, output RELEVANT\n\nOutput the single word: RELEVANT or IRRELEVANT"
+    ]
+
+    diff_verdict [shape=diamond, label="Diff\nRelevant?"]
+
+    // On IRRELEVANT: check retry count, either loop back or escalate.
+    retry_or_escalate [
+        shape=box,
+        prompt="You are the Dark Forge retry controller.\n\nWorkspace: $workspace\nIssue: $issue\n\nThe diff validation found the changes do not address the issue.\n\nCheck the retry marker at: $workspace/.dark-factory/specs/$issue_number/retry-count.txt\n\n- If the file does not exist or contains '0': This is the first failure.\n  Write '1' to the retry marker file.\n  Reset the workspace: cd $workspace && git checkout -- . && git clean -fd\n  Output the single word: RETRY\n\n- If the file contains '1' or higher: This is the second failure.\n  Post a comment on the GitHub issue explaining that Dark Factory attempted\n  to solve the issue twice but could not produce relevant code changes.\n  Include what the pipeline tried (read specs from $workspace/.dark-factory/specs/$issue_number/)\n  and why the diff was irrelevant.\n  Run: gh issue comment $issue_number --body '<explanation>'\n  Output the single word: ESCALATED"
+    ]
+
+    retry_verdict [shape=diamond, label="Retry or\nEscalate?"]
+    forge_failed [shape=house, label="Human Review\n(forge could not solve issue)"]
+
     // --- PR Creation ---
     create_pr [
         shape=box,
-        prompt="You are the PR creation agent.\n\nWorkspace: $workspace\nIssue: $issue\n\nAll tests pass. Create a pull request for the changes.\n\n1. Review the git diff to understand what was changed\n2. Create a clear, descriptive commit message referencing issue #$issue_number\n3. Push to a feature branch: feature/$issue_number\n4. Create a PR with:\n   - Title referencing the issue\n   - Summary of changes (design decisions, files modified, test coverage)\n   - Link to the original issue\n   - Label: dark-forge\n\nRun in $workspace:\n  git checkout -b feature/$issue_number\n  git add -A && git commit -m 'feat: <description> (#$issue_number)'\n  git push -u origin feature/$issue_number\n  gh pr create --title '<description> (#$issue_number)' --label dark-forge\n\nOutput the PR URL."
+        prompt="You are the PR creation agent.\n\nWorkspace: $workspace\nIssue: $issue\n\nAll tests pass and the diff has been validated as relevant. Create a pull request.\n\n1. Run: cd $workspace && git diff --name-only to see what changed\n2. Review each changed file — only stage files that implement the feature or fix for issue #$issue_number\n3. Do NOT stage files under .dark-factory/ (these are internal pipeline artifacts)\n4. Do NOT stage files unrelated to the issue\n5. Stage only relevant files: git add <file1> <file2> ...\n6. Create a clear commit: git commit -m 'feat: <description> (#$issue_number)'\n7. Push to a feature branch:\n   git checkout -b feature/$issue_number\n   git push -u origin feature/$issue_number\n8. Create a PR with:\n   - Title referencing the issue\n   - Summary of changes (design decisions, files modified, test coverage)\n   - Link to the original issue\n   - Label: dark-forge\n\nRun in $workspace:\n  gh pr create --title '<description> (#$issue_number)' --label dark-forge\n\nOutput the PR URL."
     ]
 
     done [shape=Msquare, label="PR Created"]
@@ -125,6 +149,16 @@ digraph dark_forge {
     // Spec generation
     gen_design -> gen_api_contract -> gen_schema -> gen_interfaces -> gen_test_strategy -> gen_prd
 
-    // Execute: tests first, full feature pass, targeted fix loop, then PR
-    gen_prd -> test_writer -> feature_writer -> feature_fix_loop -> create_pr -> done
+    // Execute: tests first, full feature pass, targeted fix loop
+    gen_prd -> test_writer -> feature_writer -> feature_fix_loop
+
+    // Diff validation: verify changes address the issue before PR
+    feature_fix_loop -> validate_diff -> diff_verdict
+    diff_verdict -> create_pr [label="RELEVANT"]
+    diff_verdict -> retry_or_escalate [label="IRRELEVANT"]
+    retry_or_escalate -> retry_verdict
+    retry_verdict -> gen_design [label="RETRY"]
+    retry_verdict -> forge_failed [label="ESCALATED"]
+
+    create_pr -> done
 }

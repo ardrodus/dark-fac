@@ -428,11 +428,12 @@ def _clone_fresh(ws_path: Path, repo_url: str) -> None:
 
 
 def _ensure_branch(ws_path: Path, branch: str) -> None:
-    """Checkout *branch*, creating it if it doesn't exist."""
+    """Create *branch* from the current HEAD, deleting any stale version first."""
     cwd = str(ws_path)
-    result = git(["checkout", branch], cwd=cwd)
-    if result.returncode != 0:
-        git(["checkout", "-b", branch], cwd=cwd, check=True)
+    # Delete stale branch if it exists (ignore errors if it doesn't)
+    git(["branch", "-D", branch], cwd=cwd)
+    # Create fresh from current HEAD (which is default branch after smart_pull)
+    git(["checkout", "-b", branch], cwd=cwd, check=True)
 
 
 def _run_sentinel_gate(ws_path: Path) -> bool:
