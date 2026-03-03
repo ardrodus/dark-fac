@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -120,6 +121,11 @@ class ToolHandler:
         # Variable expansion in command (shell-safe quoting to prevent injection)
         for key, value in context.items():
             if isinstance(value, str):
+                # Convert Windows backslash paths to forward slashes for bash.
+                # Without this, `cd C:\Sandboxes\...` fails in bash because
+                # backslashes are interpreted as escape characters.
+                if os.name == "nt" and re.match(r"^[A-Za-z]:\\", value):
+                    value = value.replace("\\", "/")
                 safe_value = shlex.quote(value)
                 command = command.replace(f"${{{key}}}", safe_value)
                 command = command.replace(f"${key}", safe_value)

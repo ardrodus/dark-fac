@@ -229,6 +229,19 @@ def select_edge(
     # Step 4/5: Weight + lexical tiebreak on unconditional edges
     unconditional = [e for e in edges if not e.condition]
     if unconditional:
+        # Guard: for diamond (conditional) nodes where ALL outgoing edges
+        # carry labels, refuse to pick by lexical order.  If we reach here
+        # it means preferred_label was empty or didn't match any edge label
+        # — silently picking the first alphabetical edge would route the
+        # pipeline to the wrong branch (e.g. create_pr instead of
+        # retry_or_escalate).  Fail loudly so the operator can investigate.
+        if node.shape == "diamond" and all(e.label for e in edges):
+            logger.warning(
+                "Diamond '%s': all %d edges have labels but preferred_label='%s' "
+                "matched none — refusing lexical fallback (would silently misroute).",
+                node.id, len(edges), result.preferred_label,
+            )
+            return None
         return _best_by_weight_then_lexical(unconditional)
 
     # All edges have conditions and none matched -- dead end.
@@ -852,9 +865,13 @@ async def run_pipeline(
         # Apply context updates from handler
         ctx.update(result.context_updates)
 
-        # Store preferred_label in context for downstream conditional nodes
-        if result.preferred_label:
-            ctx["_preferred_label"] = result.preferred_label
+        # Store preferred_label in context for downstream conditional nodes.
+        # Always write — even when empty — so stale labels from earlier nodes
+        # (e.g. a manager/hexagon child pipeline) don't bleed into the next
+        # diamond node.  This was the root cause of diff_verdict reading
+        # "FIXES_NEEDED" from feature_fix_loop instead of validate_diff's
+        # actual verdict.
+        ctx["_preferred_label"] = result.preferred_label or ""
 
         # Clear resume preamble after the first node executes post-resume.
         # Without this, every subsequent node gets the stale "[RESUME]

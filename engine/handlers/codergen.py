@@ -61,7 +61,13 @@ def _extract_verdict(output: str) -> str:
         if last_word in _VERDICT_KEYWORDS:
             return last_word
         # Only check the last non-empty line
+        logger.debug(
+            "_extract_verdict: last non-empty line %r (upper=%r) matched no keyword",
+            stripped[:120], upper[:120],
+        )
         break
+    if not output.strip():
+        logger.debug("_extract_verdict: output was empty/whitespace-only")
     return ""
 
 
