@@ -138,15 +138,12 @@ def dispatch_auto(parsed: ParsedCommand) -> None:
 
 def dispatch_test(parsed: ParsedCommand) -> None:
     """Dispatch the ``test`` command (``--test <PR>`` flag)."""
+    import asyncio  # noqa: PLC0415
     import shutil  # noqa: PLC0415
 
-    from dark_factory.crucible.orchestrator import (  # noqa: PLC0415
-        CrucibleConfig,
-        CrucibleVerdict,
-        run_crucible,
-    )
+    from dark_factory.modes.auto import VERDICT_GO, _extract_crucible_verdict  # noqa: PLC0415
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
     from dark_factory.ui.cli_colors import print_error  # noqa: PLC0415
-    from dark_factory.workspace.manager import Workspace  # noqa: PLC0415
 
     pr_number = int(parsed.args[0]) if parsed.args else 0
     if pr_number <= 0:
@@ -172,16 +169,20 @@ def dispatch_test(parsed: ParsedCommand) -> None:
 
         repo_root = str(Path.cwd())
 
-    ws = Workspace(name=f"crucible-pr-{pr_number}", path=repo_root, repo_url="", branch=f"pr-{pr_number}")
     sys.stdout.write(f"Crucible: re-running validation for PR #{pr_number}\n")
 
-    result = run_crucible(ws, CrucibleConfig(), issue_number=pr_number)
-    sys.stdout.write(f"Crucible verdict: {result.verdict.value}\n")
-    sys.stdout.write(f"  pass={result.pass_count} fail={result.fail_count} skip={result.skip_count}\n")
-    sys.stdout.write(f"  duration={result.duration_s:.1f}s\n")
-    if result.error:
-        sys.stdout.write(f"  error: {result.error}\n")
-    if result.verdict != CrucibleVerdict.GO:
+    engine = FactoryPipelineEngine()
+    pipeline_result = asyncio.run(engine.run_pipeline("crucible", {
+        "workspace_root": repo_root,
+        "pr_number": str(pr_number),
+        "pr_branch": f"pr-{pr_number}",
+    }))
+    outcome = _extract_crucible_verdict(pipeline_result)
+    sys.stdout.write(f"Crucible verdict: {outcome.verdict}\n")
+    sys.stdout.write(f"  duration={outcome.duration_s:.1f}s\n")
+    if outcome.error:
+        sys.stdout.write(f"  error: {outcome.error}\n")
+    if outcome.verdict != VERDICT_GO:
         raise SystemExit(1)
 
 
@@ -383,7 +384,8 @@ def _run_forge_interactive() -> None:
 
 
 def _run_crucible_interactive() -> None:
-    """Prompt for a PR number and run Crucible validation."""
+    """Prompt for a PR number and run Crucible validation via the DOT engine."""
+    import asyncio  # noqa: PLC0415
     import shutil  # noqa: PLC0415
 
     sys.stdout.write("\n")
@@ -402,10 +404,9 @@ def _run_crucible_interactive() -> None:
         return
 
     pr_number = int(raw)
-    from dark_factory.crucible.orchestrator import CrucibleConfig, run_crucible  # noqa: PLC0415
-    from dark_factory.workspace.manager import Workspace  # noqa: PLC0415
-
     from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+    from dark_factory.modes.auto import _extract_crucible_verdict  # noqa: PLC0415
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
 
     config = load_config()
     repo_root = config.data.get("project", {}).get("repo_root", "")
@@ -414,19 +415,20 @@ def _run_crucible_interactive() -> None:
 
         repo_root = str(Path.cwd())
 
-    ws = Workspace(
-        name=f"crucible-pr-{pr_number}", path=repo_root,
-        repo_url="", branch=f"pr-{pr_number}",
-    )
     sys.stdout.write(f"  Crucible: validating PR #{pr_number}...\n")
-    result = run_crucible(ws, CrucibleConfig(), issue_number=pr_number)
+    engine = FactoryPipelineEngine()
+    pipeline_result = asyncio.run(engine.run_pipeline("crucible", {
+        "workspace_root": repo_root,
+        "pr_number": str(pr_number),
+        "pr_branch": f"pr-{pr_number}",
+    }))
+    outcome = _extract_crucible_verdict(pipeline_result)
     sys.stdout.write(
-        f"  Verdict: {result.verdict.value}\n"
-        f"  pass={result.pass_count} fail={result.fail_count} "
-        f"skip={result.skip_count} ({result.duration_s:.1f}s)\n"
+        f"  Verdict: {outcome.verdict}\n"
+        f"  duration={outcome.duration_s:.1f}s\n"
     )
-    if result.error:
-        sys.stdout.write(f"  Error: {result.error}\n")
+    if outcome.error:
+        sys.stdout.write(f"  Error: {outcome.error}\n")
     sys.stdout.write("\n")
     input("  Press Enter to return to menu...")
 

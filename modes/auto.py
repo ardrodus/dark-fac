@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from dark_factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
 from dark_factory.dispatch.issue_dispatcher import (
     LABEL_DONE,
     LABEL_FAILED,
@@ -64,6 +63,24 @@ _DEFAULT_MAX_FORGE_RETRIES = 2
 
 # ── Value types ───────────────────────────────────────────────────────
 
+# Crucible verdict strings — match the terminal node IDs in crucible.dot.
+VERDICT_GO = "go"
+VERDICT_NO_GO = "no_go"
+VERDICT_NEEDS_LIVE = "needs_live"
+
+
+@dataclass(frozen=True, slots=True)
+class CrucibleOutcome:
+    """Lightweight crucible result for auto-mode verdict handling.
+
+    Extracted from ``PipelineResult.completed_nodes`` — no dependency on
+    the heavy ``crucible.orchestrator`` types.
+    """
+
+    verdict: str  # "go", "no_go", "needs_live"
+    error: str = ""
+    duration_s: float = 0.0
+
 
 class CycleOutcome(Enum):
     """Possible outcomes for a full auto-mode cycle."""
@@ -99,7 +116,7 @@ class AutoModeConfig:
 
     # Dependency injection hooks (for testing and customisation)
     forge_fn: Callable[[IssueInfo, str], bool] | None = None
-    crucible_fn: Callable[[Workspace, int], CrucibleResult] | None = None
+    crucible_fn: Callable[[Workspace, int], CrucibleOutcome] | None = None
     deploy_fn: Callable[[Workspace, int], bool] | None = None
     ouroboros_fn: Callable[[IssueInfo, CycleOutcome, str], None] | None = None
     acquire_workspace_fn: Callable[[str, int], Workspace] | None = None
@@ -247,56 +264,65 @@ def run_dark_forge(
 # ── Crucible ──────────────────────────────────────────────────────────
 
 
-def _default_crucible(workspace: Workspace, issue_number: int) -> CrucibleResult:
-    """Run the Crucible test suite via the two-round coordinator."""
-    from dark_factory.crucible.coordinator import (  # noqa: PLC0415
-        CrucibleCoordinatorConfig,
-        run_crucible_pipeline,
-        to_crucible_result,
-    )
+def _extract_crucible_verdict(result: object) -> CrucibleOutcome:
+    """Extract verdict from a PipelineResult's completed_nodes."""
+    from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
 
-    config = CrucibleCoordinatorConfig(
-        pr_number=issue_number,
-    )
-    two_round = run_crucible_pipeline(workspace, config)
-    return to_crucible_result(two_round)
+    status = getattr(result, "status", None)
+    completed = getattr(result, "completed_nodes", [])
+    error = getattr(result, "error", "") or ""
+    duration = getattr(result, "duration_seconds", 0.0)
+
+    if status == PipelineStatus.FAILED:
+        verdict = VERDICT_NO_GO
+    elif "needs_live" in completed:
+        verdict = VERDICT_NEEDS_LIVE
+    elif "no_go" in completed or "smoke_failed" in completed:
+        verdict = VERDICT_NO_GO
+    elif "go" in completed:
+        verdict = VERDICT_GO
+    else:
+        verdict = VERDICT_NO_GO
+
+    return CrucibleOutcome(verdict=verdict, error=error, duration_s=duration)
+
+
+def _default_crucible(workspace: Workspace, issue_number: int) -> CrucibleOutcome:
+    """Run the Crucible pipeline via the DOT engine."""
+    import asyncio  # noqa: PLC0415
+
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+
+    engine = FactoryPipelineEngine()
+    result = asyncio.run(engine.run_pipeline("crucible", {
+        "workspace_root": workspace.path,
+        "pr_number": str(issue_number),
+        "pr_branch": workspace.branch,
+    }))
+    return _extract_crucible_verdict(result)
 
 
 def run_crucible_phase(
     workspace: Workspace,
     issue_number: int,
     *,
-    crucible_fn: Callable[[Workspace, int], CrucibleResult] | None = None,
+    crucible_fn: Callable[[Workspace, int], CrucibleOutcome] | None = None,
     sentinel_fn: Callable[[str, str], bool] | None = None,
-) -> CrucibleResult:
+) -> CrucibleOutcome:
     """Execute Crucible with Sentinel gates at lifecycle points."""
     # Pre-crucible Sentinel gate
     if not _run_sentinel_gate(workspace.path, "crucible-pre", sentinel_fn=sentinel_fn):
         logger.warning("Sentinel pre-crucible gate failed for #%d", issue_number)
-        return CrucibleResult(
-            verdict=CrucibleVerdict.NO_GO,
-            test_results=(),
-            screenshots=(),
-            logs="",
-            phases=(),
-            error="Sentinel pre-crucible gate failed",
-        )
+        return CrucibleOutcome(verdict=VERDICT_NO_GO, error="Sentinel pre-crucible gate failed")
 
     fn = crucible_fn or _default_crucible
     result = fn(workspace, issue_number)
 
     # Post-crucible Sentinel gate (only on GO)
-    if result.verdict == CrucibleVerdict.GO:
+    if result.verdict == VERDICT_GO:
         if not _run_sentinel_gate(workspace.path, "crucible-post", sentinel_fn=sentinel_fn):
             logger.warning("Sentinel post-crucible gate failed for #%d", issue_number)
-            return CrucibleResult(
-                verdict=CrucibleVerdict.NO_GO,
-                test_results=result.test_results,
-                screenshots=result.screenshots,
-                logs=result.logs,
-                phases=result.phases,
-                error="Sentinel post-crucible gate failed",
-            )
+            return CrucibleOutcome(verdict=VERDICT_NO_GO, error="Sentinel post-crucible gate failed")
 
     return result
 
@@ -350,15 +376,12 @@ def _default_ouroboros(issue: IssueInfo, outcome: CycleOutcome, detail: str) -> 
 # ── Verdict handling ──────────────────────────────────────────────────
 
 
-def _handle_needs_live(issue_number: int, crucible_result: CrucibleResult, *, config: AutoModeConfig) -> None:
+def _handle_needs_live(issue_number: int, crucible_result: CrucibleOutcome, *, config: AutoModeConfig) -> None:
     """Queue issue for human validation: comment + tag."""
     body = (
         f"**Dark Factory — NEEDS_LIVE verdict**\n\n"
         f"Crucible tests produced a `NEEDS_LIVE` verdict for this issue.\n"
         f"Some tests were skipped and require manual validation in a live environment.\n\n"
-        f"- Pass: {crucible_result.pass_count}\n"
-        f"- Fail: {crucible_result.fail_count}\n"
-        f"- Skip: {crucible_result.skip_count}\n"
         f"- Duration: {crucible_result.duration_s:.1f}s\n"
     )
     try:
@@ -551,7 +574,7 @@ def run_cycle(
         workspace, issue_num, crucible_fn=config.crucible_fn, sentinel_fn=config.sentinel_fn,
     )
 
-    if crucible_result.verdict == CrucibleVerdict.NO_GO:
+    if crucible_result.verdict == VERDICT_NO_GO:
         # Feed failure context back to Dark Forge for another attempt
         failure_context = f"Crucible NO_GO: {crucible_result.error or 'tests failed'}"
         logger.warning("Crucible NO_GO for #%d — retrying Dark Forge", issue_num)
@@ -568,7 +591,7 @@ def run_cycle(
                 workspace, issue_num, crucible_fn=config.crucible_fn, sentinel_fn=config.sentinel_fn,
             )
 
-        if crucible_result.verdict == CrucibleVerdict.NO_GO:
+        if crucible_result.verdict == VERDICT_NO_GO:
             _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_FAILED, config=config)
             ouroboros_fn = config.ouroboros_fn or _default_ouroboros
             ouroboros_fn(issue, CycleOutcome.NO_GO, failure_context)
@@ -580,7 +603,7 @@ def run_cycle(
                 duration_s=time.monotonic() - t0,
             )
 
-    if crucible_result.verdict == CrucibleVerdict.NEEDS_LIVE:
+    if crucible_result.verdict == VERDICT_NEEDS_LIVE:
         _handle_needs_live(issue_num, crucible_result, config=config)
         _label_transition(issue_num, remove=LABEL_IN_PROGRESS, add=LABEL_NEEDS_LIVE, config=config)
         ouroboros_fn = config.ouroboros_fn or _default_ouroboros

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from dark_factory.crucible.orchestrator import CrucibleResult, CrucibleVerdict
 from dark_factory.integrations.gh_safe import IssueInfo
 from dark_factory.modes.auto import (
     LABEL_NEEDS_LIVE,
+    VERDICT_GO,
+    VERDICT_NEEDS_LIVE,
+    VERDICT_NO_GO,
     AutoModeConfig,
     AutoModeState,
+    CrucibleOutcome,
     CycleOutcome,
     _install_signal_handlers,
     run_auto_mode,
@@ -30,25 +33,11 @@ def _workspace(path: str = "/tmp/ws", branch: str = "dark-factory/issue-42") -> 
     return Workspace(name="test/repo", path=path, repo_url="https://github.com/test/repo.git", branch=branch)
 
 
-def _crucible_result(
-    verdict: CrucibleVerdict = CrucibleVerdict.GO,
+def _crucible_outcome(
+    verdict: str = VERDICT_GO,
     error: str = "",
-    pass_count: int = 5,
-    fail_count: int = 0,
-    skip_count: int = 0,
-) -> CrucibleResult:
-    return CrucibleResult(
-        verdict=verdict,
-        test_results=(),
-        screenshots=(),
-        logs="",
-        phases=(),
-        pass_count=pass_count,
-        fail_count=fail_count,
-        skip_count=skip_count,
-        duration_s=1.0,
-        error=error,
-    )
+) -> CrucibleOutcome:
+    return CrucibleOutcome(verdict=verdict, error=error, duration_s=1.0)
 
 
 def _config(**overrides: object) -> AutoModeConfig:
@@ -56,7 +45,7 @@ def _config(**overrides: object) -> AutoModeConfig:
     defaults: dict[str, object] = {
         "repo": "test/repo",
         "forge_fn": lambda issue, ws: True,
-        "crucible_fn": lambda ws, n: _crucible_result(),
+        "crucible_fn": lambda ws, n: _crucible_outcome(),
         "deploy_fn": lambda ws, n: True,
         "ouroboros_fn": lambda issue, outcome, detail: None,
         "acquire_workspace_fn": lambda repo, n: _workspace(),
@@ -133,26 +122,26 @@ class TestRunCruciblePhase:
     def test_go_verdict(self) -> None:
         result = run_crucible_phase(
             _workspace(), 42,
-            crucible_fn=lambda ws, n: _crucible_result(CrucibleVerdict.GO),
+            crucible_fn=lambda ws, n: _crucible_outcome(VERDICT_GO),
             sentinel_fn=lambda w, p: True,
         )
-        assert result.verdict == CrucibleVerdict.GO
+        assert result.verdict == VERDICT_GO
 
     def test_no_go_verdict(self) -> None:
         result = run_crucible_phase(
             _workspace(), 42,
-            crucible_fn=lambda ws, n: _crucible_result(CrucibleVerdict.NO_GO, error="tests failed"),
+            crucible_fn=lambda ws, n: _crucible_outcome(VERDICT_NO_GO, error="tests failed"),
             sentinel_fn=lambda w, p: True,
         )
-        assert result.verdict == CrucibleVerdict.NO_GO
+        assert result.verdict == VERDICT_NO_GO
 
     def test_needs_live_verdict(self) -> None:
         result = run_crucible_phase(
             _workspace(), 42,
-            crucible_fn=lambda ws, n: _crucible_result(CrucibleVerdict.NEEDS_LIVE, skip_count=2),
+            crucible_fn=lambda ws, n: _crucible_outcome(VERDICT_NEEDS_LIVE),
             sentinel_fn=lambda w, p: True,
         )
-        assert result.verdict == CrucibleVerdict.NEEDS_LIVE
+        assert result.verdict == VERDICT_NEEDS_LIVE
 
     def test_pre_sentinel_failure_returns_no_go(self) -> None:
         def sentinel(ws: str, phase: str) -> bool:
@@ -160,10 +149,10 @@ class TestRunCruciblePhase:
 
         result = run_crucible_phase(
             _workspace(), 42,
-            crucible_fn=lambda ws, n: _crucible_result(CrucibleVerdict.GO),
+            crucible_fn=lambda ws, n: _crucible_outcome(VERDICT_GO),
             sentinel_fn=sentinel,
         )
-        assert result.verdict == CrucibleVerdict.NO_GO
+        assert result.verdict == VERDICT_NO_GO
 
     def test_post_sentinel_failure_overrides_go(self) -> None:
         def sentinel(ws: str, phase: str) -> bool:
@@ -171,10 +160,10 @@ class TestRunCruciblePhase:
 
         result = run_crucible_phase(
             _workspace(), 42,
-            crucible_fn=lambda ws, n: _crucible_result(CrucibleVerdict.GO),
+            crucible_fn=lambda ws, n: _crucible_outcome(VERDICT_GO),
             sentinel_fn=sentinel,
         )
-        assert result.verdict == CrucibleVerdict.NO_GO
+        assert result.verdict == VERDICT_NO_GO
 
 
 # ── run_cycle ─────────────────────────────────────────────────────────
@@ -204,11 +193,11 @@ class TestRunCycle:
             call_count["forge"] += 1
             return True
 
-        def crucible(ws: Workspace, n: int) -> CrucibleResult:
+        def crucible(ws: Workspace, n: int) -> CrucibleOutcome:
             call_count["crucible"] += 1
             if call_count["crucible"] == 1:
-                return _crucible_result(CrucibleVerdict.NO_GO, error="first run failed")
-            return _crucible_result(CrucibleVerdict.GO)
+                return _crucible_outcome(VERDICT_NO_GO, error="first run failed")
+            return _crucible_outcome(VERDICT_GO)
 
         result = run_cycle(_issue(), config=_config(forge_fn=forge, crucible_fn=crucible))
         assert result.outcome == CycleOutcome.SUCCESS
@@ -219,7 +208,7 @@ class TestRunCycle:
         result = run_cycle(
             _issue(),
             config=_config(
-                crucible_fn=lambda ws, n: _crucible_result(CrucibleVerdict.NO_GO, error="tests fail"),
+                crucible_fn=lambda ws, n: _crucible_outcome(VERDICT_NO_GO, error="tests fail"),
             ),
         )
         assert result.outcome == CycleOutcome.NO_GO
@@ -237,7 +226,7 @@ class TestRunCycle:
             result = run_cycle(
                 _issue(),
                 config=_config(
-                    crucible_fn=lambda ws, n: _crucible_result(CrucibleVerdict.NEEDS_LIVE, skip_count=3),
+                    crucible_fn=lambda ws, n: _crucible_outcome(VERDICT_NEEDS_LIVE),
                 ),
             )
 

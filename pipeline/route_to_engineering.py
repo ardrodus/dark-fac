@@ -295,7 +295,11 @@ async def route_to_engineering(
         # ── Step 4: Crucible -- three-way verdict ───────────────
         try:
             s = time.monotonic()
-            crucible_result = await engine.run_crucible(ws_path, base_sha, head_sha)
+            crucible_result = await engine.run_pipeline("crucible", {
+                "workspace_root": ws_path,
+                "base_sha": base_sha,
+                "head_sha": head_sha,
+            })
             cruc_s += round(time.monotonic() - s, 2)
         except Exception as exc:  # noqa: BLE001
             failure_context = f"Crucible exception: {exc}"

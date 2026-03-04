@@ -104,21 +104,15 @@ class FullPipelineEngine:
             ],
         )
 
-    async def run_crucible(
-        self, workspace: str, base_sha: str, head_sha: str, **kwargs: Any,
-    ) -> PipelineResult:
-        self.calls.append(
-            StageRecord("crucible", (workspace, base_sha, head_sha), kwargs),
-        )
-        return _ok_result(
-            context={"verdict": "go", "pass_rate": 1.0},
-            completed_nodes=["load_tests", "run_tests", "analyze", "go"],
-        )
-
     async def run_pipeline(
         self, name: str, context: dict[str, Any] | None = None, **kwargs: Any,
     ) -> PipelineResult:
         self.calls.append(StageRecord("pipeline", (name, context), kwargs))
+        if name == "crucible":
+            return _ok_result(
+                context={"verdict": "go", "pass_rate": 1.0},
+                completed_nodes=["load_tests", "run_tests", "analyze", "go"],
+            )
         return _ok_result(completed_nodes=["deploy_start", "deploy_exit"])
 
 
@@ -156,7 +150,10 @@ class TestFullPipelineE2E:
         asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
         methods = [c.method for c in engine.calls]
-        assert methods == ["sentinel", "forge", "crucible", "pipeline"]
+        assert methods == ["sentinel", "forge", "pipeline", "pipeline"]
+        # Verify pipeline calls are crucible then deploy
+        assert engine.calls[2].args[0] == "crucible"
+        assert engine.calls[3].args[0] == "deploy"
 
     def test_sentinel_gate_1_runs_first(self) -> None:
         """Sentinel Gate 1 is called with gate=1 and workspace path."""
@@ -180,15 +177,19 @@ class TestFullPipelineE2E:
         assert forge.args[0]["number"] == 100
         assert forge.args[1] == "/tmp/e2e-ws"
 
-    def test_crucible_receives_shas(self) -> None:
-        """Crucible is called with workspace, base_sha, and head_sha."""
+    def test_crucible_receives_context(self) -> None:
+        """Crucible is called via run_pipeline with workspace_root and SHAs."""
         engine = FullPipelineEngine()
         cfg = _make_config(engine)
         asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
         crucible = engine.calls[2]
-        assert crucible.method == "crucible"
-        assert crucible.args == ("/tmp/e2e-ws", "aaa111", "aaa111")
+        assert crucible.method == "pipeline"
+        assert crucible.args[0] == "crucible"
+        ctx = crucible.args[1]
+        assert ctx["workspace_root"] == "/tmp/e2e-ws"
+        assert ctx["base_sha"] == "aaa111"
+        assert ctx["head_sha"] == "aaa111"
 
     def test_deploy_invoked_on_go_verdict(self) -> None:
         """Deploy pipeline fires when Crucible returns GO."""
@@ -577,20 +578,20 @@ class TestCrucibleVerdict:
 
         assert result.verdict == "go"
         assert result.success is True
-        deploy_calls = [c for c in engine.calls if c.method == "pipeline"]
+        deploy_calls = [c for c in engine.calls if c.method == "pipeline" and c.args[0] == "deploy"]
         assert len(deploy_calls) == 1
 
     def test_no_go_verdict_retries_forge(self) -> None:
         """NO_GO from Crucible triggers forge retry."""
 
         class NoGoEngine(FullPipelineEngine):
-            async def run_crucible(
-                self, workspace: str, base_sha: str, head_sha: str, **kw: Any,
+            async def run_pipeline(
+                self, name: str, context: dict[str, Any] | None = None, **kw: Any,
             ) -> PipelineResult:
-                self.calls.append(
-                    StageRecord("crucible", (workspace, base_sha, head_sha), kw),
-                )
-                return _ok_result(completed_nodes=["no_go"])
+                self.calls.append(StageRecord("pipeline", (name, context), kw))
+                if name == "crucible":
+                    return _ok_result(completed_nodes=["no_go"])
+                return _ok_result(completed_nodes=["deploy_start", "deploy_exit"])
 
         engine = NoGoEngine()
         cfg = RouteConfig(

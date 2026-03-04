@@ -12,10 +12,9 @@ Usage::
     from dark_factory.pipeline.engine import FactoryPipelineEngine
 
     engine = FactoryPipelineEngine()                    # uses .dark-factory/config.json
-    result = await engine.run_pipeline("dark_forge", {"issue": issue_json})
+    result = await engine.run_pipeline("dark_forge", {"workspace_root": "/ws"})
+    result = await engine.run_pipeline("crucible", {"workspace_root": "/ws", "pr_number": "42"})
     result = await engine.run_sentinel_gate(1, "/path/to/workspace")
-    result = await engine.run_forge(issue_json, "/path/to/workspace")
-    result = await engine.run_crucible("/path/to/workspace", "abc123", "def456")
     result = await engine.run_ouroboros("scheduled")
 """
 
@@ -351,29 +350,6 @@ class FactoryPipelineEngine:
                         pass
 
     @staticmethod
-    def _resolve_crucible_repo(workspace: str) -> str:
-        """Look up the crucible test repo from workspace config.
-
-        Raises :class:`FileNotFoundError` if the workspace has no
-        ``crucible.test_repo`` configured.
-        """
-        if not workspace:
-            msg = "Cannot resolve crucible repo: no workspace path provided"
-            raise FileNotFoundError(msg)
-
-        ws_config_path = Path(workspace) / ".dark-factory" / "config.json"
-        data = FactoryPipelineEngine._load_workspace_config(workspace)
-        repo = data.get("crucible", {}).get("test_repo", "")
-        if not repo:
-            msg = (
-                f"crucible.test_repo not set in {ws_config_path}. "
-                "Run onboarding to configure the crucible test repo."
-            )
-            raise FileNotFoundError(msg)
-
-        return repo
-
-    @staticmethod
     def _derive_logs_dir(
         name: str,
         ctx: dict[str, Any],
@@ -504,64 +480,6 @@ class FactoryPipelineEngine:
         self._save_pipeline_artifacts(result, workspace, issue_num)
 
         return result
-
-    # ── Crucible ─────────────────────────────────────────────────
-
-    async def run_crucible(
-        self,
-        workspace: str,
-        base_sha: str,
-        head_sha: str,
-        *,
-        issue_number: int = 0,
-        pr_number: int = 0,
-        pr_branch: str = "",
-        context: dict[str, Any] | None = None,
-    ) -> Any:
-        """Run Crucible with the given SHAs.
-
-        Args:
-            workspace: Path to the workspace directory.
-            base_sha: Base commit SHA for diff comparison.
-            head_sha: Head commit SHA for diff comparison.
-            issue_number: Optional issue number for log naming.
-            pr_number: PR number for scenario generation + graduation.
-            pr_branch: PR branch name for checkout.
-            context: Extra context variables.
-
-        Returns:
-            :class:`~factory.engine.runner.PipelineResult`.
-        """
-        ctx: dict[str, Any] = {
-            "workspace": workspace,
-            "base_sha": base_sha,
-            "head_sha": head_sha,
-            **(context or {}),
-        }
-        if pr_number:
-            ctx["pr_number"] = str(pr_number)
-        if pr_branch:
-            ctx["pr_branch"] = pr_branch
-
-        if issue_number:
-            ctx["issue_number"] = str(issue_number)
-
-        # Inject test_repo from workspace config if not already provided.
-        if "test_repo" not in ctx:
-            ctx["test_repo"] = self._resolve_crucible_repo(workspace)
-
-        # Create workflow log for agent visibility
-        if workspace:
-            from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
-
-            log_name = f"crucible-{issue_number}" if issue_number else "crucible"
-            wf_log = WorkflowLog(
-                Path(workspace) / ".dark-factory" / "logs" / f"workflow-{log_name}.log",
-                issue_number=issue_number,
-            )
-            ctx["_workflow_log"] = str(wf_log.path)
-
-        return await self.run_pipeline("crucible", ctx)
 
     # ── Ouroboros ─────────────────────────────────────────────────
 

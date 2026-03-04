@@ -85,16 +85,12 @@ class FakeEngine:
         self.calls.append(("run_forge", (issue, workspace), kwargs))
         return self._forge
 
-    async def run_crucible(
-        self, workspace: str, base_sha: str, head_sha: str, **kwargs: Any,
-    ) -> PipelineResult:
-        self.calls.append(("run_crucible", (workspace, base_sha, head_sha), kwargs))
-        return self._crucible
-
     async def run_pipeline(
         self, name: str, context: dict[str, Any] | None = None, **kwargs: Any,
     ) -> PipelineResult:
         self.calls.append(("run_pipeline", (name, context), kwargs))
+        if name == "crucible":
+            return self._crucible
         return self._deploy
 
 
@@ -193,7 +189,7 @@ class TestRouteToEngineeringGo:
         assert call_names == [
             "run_sentinel_gate",
             "run_forge",
-            "run_crucible",
+            "run_pipeline",  # crucible
             "run_pipeline",  # deploy
         ]
 
@@ -301,10 +297,12 @@ class TestCrucibleNoGo:
                 call_count["forge"] += 1
                 return _pipeline_ok()
 
-            async def run_crucible(self, workspace: str, base_sha: str, head_sha: str, **kw: Any) -> PipelineResult:
-                self.calls.append(("run_crucible", (workspace, base_sha, head_sha), kw))
-                # Always NO_GO
-                return _pipeline_ok(completed_nodes=["no_go"])
+            async def run_pipeline(self, name: str, context: dict[str, Any] | None = None, **kw: Any) -> PipelineResult:
+                self.calls.append(("run_pipeline", (name, context), kw))
+                if name == "crucible":
+                    # Always NO_GO
+                    return _pipeline_ok(completed_nodes=["no_go"])
+                return self._deploy
 
         engine = RetryEngine()
         cfg = _config(engine=engine, max_forge_retries=1)
@@ -322,12 +320,14 @@ class TestCrucibleNoGo:
                 self.calls.append(("run_forge", (issue, workspace), kw))
                 return _pipeline_ok()
 
-            async def run_crucible(self, workspace: str, base_sha: str, head_sha: str, **kw: Any) -> PipelineResult:
-                self.calls.append(("run_crucible", (workspace, base_sha, head_sha), kw))
-                call_count["crucible"] += 1
-                if call_count["crucible"] == 1:
-                    return _pipeline_ok(completed_nodes=["no_go"])
-                return _pipeline_ok(completed_nodes=["go"])
+            async def run_pipeline(self, name: str, context: dict[str, Any] | None = None, **kw: Any) -> PipelineResult:
+                self.calls.append(("run_pipeline", (name, context), kw))
+                if name == "crucible":
+                    call_count["crucible"] += 1
+                    if call_count["crucible"] == 1:
+                        return _pipeline_ok(completed_nodes=["no_go"])
+                    return _pipeline_ok(completed_nodes=["go"])
+                return self._deploy
 
         engine = RetryThenGoEngine()
         cfg = _config(engine=engine, max_forge_retries=1)
@@ -344,16 +344,18 @@ class TestCrucibleNoGo:
                 self.calls.append(("run_forge", (issue, workspace), kw))
                 return _pipeline_ok()
 
-            async def run_crucible(self, workspace: str, base_sha: str, head_sha: str, **kw: Any) -> PipelineResult:
-                self.calls.append(("run_crucible", (workspace, base_sha, head_sha), kw))
-                call_count["crucible"] += 1
-                if call_count["crucible"] == 1:
-                    return PipelineResult(
-                        status=PipelineStatus.COMPLETED,
-                        completed_nodes=["no_go"],
-                        error="real bug found",
-                    )
-                return _pipeline_ok(completed_nodes=["go"])
+            async def run_pipeline(self, name: str, context: dict[str, Any] | None = None, **kw: Any) -> PipelineResult:
+                self.calls.append(("run_pipeline", (name, context), kw))
+                if name == "crucible":
+                    call_count["crucible"] += 1
+                    if call_count["crucible"] == 1:
+                        return PipelineResult(
+                            status=PipelineStatus.COMPLETED,
+                            completed_nodes=["no_go"],
+                            error="real bug found",
+                        )
+                    return _pipeline_ok(completed_nodes=["go"])
+                return self._deploy
 
         engine = ContextEngine()
         cfg = _config(engine=engine, max_forge_retries=1)
@@ -398,8 +400,9 @@ class TestCrucibleNeedsLive:
         cfg = _config(engine=engine)
         asyncio.run(route_to_engineering(_issue(), cfg))
 
-        call_names = [c[0] for c in engine.calls]
-        assert "run_pipeline" not in call_names
+        # Crucible calls run_pipeline("crucible"), but deploy should NOT be called
+        deploy_calls = [c for c in engine.calls if c[0] == "run_pipeline" and c[1][0] == "deploy"]
+        assert deploy_calls == []
 
 
 # ── Workspace acquisition failure ────────────────────────────────────
