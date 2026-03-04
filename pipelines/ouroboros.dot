@@ -126,7 +126,7 @@ digraph ouroboros {
     self_forge [
         shape=hexagon,
         label="Dark Forge\n(on factory repo itself)",
-        child_graph="dark_factory/pipelines/dark_forge.dot",
+        child_graph="dark_forge.dot",
         max_iterations=2,
         max_retries=2
     ]

@@ -1,8 +1,17 @@
 """Workspace management — create, cache, clean, and list workspaces.
 
 All workspace operations route through this single module.  Workspaces
-are isolated git worktrees or clones used by agents during issue
-processing.
+are self-contained directories with a standard layout::
+
+    {workspace}/
+        repo/       ← git clone of the target repository
+        agents/     ← agent persona .md files (bootstrapped from defaults)
+        pipeline/   ← DOT workflow files (bootstrapped from defaults)
+        scripts/    ← scripts referenced by pipelines
+        logs/       ← pipeline execution logs
+
+The engine receives the workspace root path and finds everything it needs
+inside.  ``$workspace`` in DOT prompts points to ``{root}/repo/``.
 """
 
 from __future__ import annotations
@@ -191,6 +200,43 @@ def _bootstrap_workspace_config(ws_path: Path, name: str) -> None:
         logger.debug("Could not bootstrap workspace config", exc_info=True)
 
 
+def _bootstrap_workspace_defaults(ws_path: Path) -> None:
+    """Copy default agents, pipelines, and create workspace scaffold directories.
+
+    Source files come from the ``dark_factory`` package (``agents/*.md``
+    and ``pipelines/*.dot``).  Skips copying if the destination directory
+    already contains files (idempotent).
+    """
+    pkg_root = Path(__file__).resolve().parent.parent  # dark_factory/
+
+    # Agents
+    agents_dst = ws_path / "agents"
+    agents_dst.mkdir(parents=True, exist_ok=True)
+    agents_src = pkg_root / "agents"
+    if agents_src.is_dir() and not any(agents_dst.glob("*.md")):
+        for md in agents_src.glob("*.md"):
+            shutil.copy2(md, agents_dst / md.name)
+        logger.info("Bootstrapped %d agent personas to %s", len(list(agents_dst.glob("*.md"))), agents_dst)
+
+    # Pipeline DOT files
+    pipeline_dst = ws_path / "pipeline"
+    pipeline_dst.mkdir(parents=True, exist_ok=True)
+    pipeline_src = pkg_root / "pipelines"
+    if pipeline_src.is_dir() and not any(pipeline_dst.glob("*.dot")):
+        for dot in pipeline_src.glob("*.dot"):
+            shutil.copy2(dot, pipeline_dst / dot.name)
+        logger.info("Bootstrapped %d pipeline files to %s", len(list(pipeline_dst.glob("*.dot"))), pipeline_dst)
+
+    # Scripts and logs (empty scaffold)
+    (ws_path / "scripts").mkdir(parents=True, exist_ok=True)
+    (ws_path / "logs").mkdir(parents=True, exist_ok=True)
+
+
+def _repo_path(ws_path: Path) -> Path:
+    """Return the repo subdirectory inside a workspace."""
+    return ws_path / "repo"
+
+
 def create_workspace(
     name: str,
     repo_url: str,
@@ -212,15 +258,17 @@ def create_workspace(
         existing = get_workspace(name, root=resolved)
         return WorkspaceResult(success=False, workspace=existing, message=f"Workspace '{name}' already exists")
 
+    repo_dir = _repo_path(ws_path)
     try:
         if use_worktree:
-            _create_worktree(ws_path, branch, worktree_base)
+            _create_worktree(repo_dir, branch, worktree_base)
         else:
-            _clone_repo(ws_path, repo_url, branch)
+            _clone_repo(repo_dir, repo_url, branch)
     except CommandError as exc:
         return WorkspaceResult(success=False, message=f"git failed: {exc}")
 
-    # Bootstrap workspace config from global repo entry
+    # Bootstrap workspace scaffold (agents, pipelines, scripts, logs)
+    _bootstrap_workspace_defaults(ws_path)
     _bootstrap_workspace_config(ws_path, name)
 
     info = WorkspaceInfo(
@@ -304,24 +352,28 @@ def acquire_workspace(
     owner, repo_name = _parse_repo_key(repo)
     ws_name = f"{owner}/{repo_name}"
     ws_path = resolved / owner / repo_name
+    repo_dir = _repo_path(ws_path)
     branch = f"dark-factory/issue-{issue}"
     repo_url = _build_clone_url(repo)
 
     existing = get_workspace(ws_name, root=resolved)
     security_changed = False
 
-    if existing is not None and (ws_path / ".git").is_dir() and _is_clean(ws_path):
+    if existing is not None and (repo_dir / ".git").is_dir() and _is_clean(repo_dir):
         # Smart-pull: existing clean workspace → pull latest
-        default_branch = _detect_default_branch(ws_path)
-        security_changed = _smart_pull(ws_path, default_branch)
+        default_branch = _detect_default_branch(repo_dir)
+        security_changed = _smart_pull(repo_dir, default_branch)
     else:
         # Fresh clone (stale/dirty workspace removed first)
         if ws_path.exists():
             _force_rmtree(ws_path)
-        _clone_fresh(ws_path, repo_url)
+        _clone_fresh(repo_dir, repo_url)
+
+    # Bootstrap workspace scaffold (agents, pipelines, scripts, logs)
+    _bootstrap_workspace_defaults(ws_path)
 
     # Create issue-specific branch (idempotent)
-    _ensure_branch(ws_path, branch)
+    _ensure_branch(repo_dir, branch)
 
     # Sentinel Gate 1 is skipped during workspace acquisition for now.
     # Security scanning runs at later pipeline stages (sentinel.dot).
@@ -471,55 +523,6 @@ def _ensure_branch(ws_path: Path, branch: str) -> None:
     git(["branch", "-D", branch], cwd=cwd)
     # Create fresh from current HEAD (which is default branch after smart_pull)
     git(["checkout", "-b", branch], cwd=cwd, check=True)
-
-
-def _run_sentinel_gate(ws_path: Path) -> bool:
-    """Run Sentinel Gate 1 (post-clone) security scans on the workspace.
-
-    Only runs security-relevant gates appropriate for workspace acquisition:
-    secret scanning and dependency vulnerability scanning.  Other gates
-    (quality, design review, integration tests, etc.) run at later pipeline
-    stages, not at clone time.
-    """
-    if os.environ.get("WSREG_SKIP_SENTINEL", "").lower() == "true":
-        logger.info("Sentinel gates skipped (WSREG_SKIP_SENTINEL=true)")
-        return True
-
-    from dark_factory.gates.framework import (  # noqa: PLC0415
-        GateReport,
-        UnifiedReport,
-        run_gate_by_name,
-        write_gate_report,
-    )
-
-    # Gate 1 checks: secrets + dependencies only.
-    _GATE1_CHECKS = ("secret-scan", "dependency-scan")
-    metrics_dir = ws_path / ".dark-factory"
-    logger.info("Running Sentinel Gate 1 on %s", ws_path)
-
-    reports: list[GateReport] = []
-    for gate_name in _GATE1_CHECKS:
-        try:
-            report = run_gate_by_name(gate_name, workspace=ws_path, metrics_dir=metrics_dir)
-            reports.append(report)
-            logger.info("  Gate %s: %s", gate_name, "PASSED" if report.passed else "FAILED")
-        except KeyError:
-            logger.debug("Gate %s not registered — skipping", gate_name)
-        except Exception:  # noqa: BLE001
-            logger.warning("Gate %s failed to run", gate_name, exc_info=True)
-
-    if not reports:
-        logger.info("Sentinel Gate 1: no gates ran (all skipped)")
-        return True
-
-    unified = UnifiedReport(gate_reports=tuple(reports))
-    write_gate_report(unified, report_dir=metrics_dir)
-    logger.info(
-        "Sentinel Gate 1: %s (%d gate(s) ran)",
-        "PASSED" if unified.overall_passed else "FAILED",
-        len(reports),
-    )
-    return unified.overall_passed
 
 
 def _clean_stale_workspaces(root: Path, ttl_seconds: float) -> int:

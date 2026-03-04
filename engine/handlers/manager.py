@@ -218,10 +218,11 @@ class ManagerHandler:
         """Load child graph from file path, pipeline name, or inline DOT.
 
         Resolution order for file references (suffix .dot):
-        1. Absolute or CWD-relative path
-        2. Filename match in the built-in pipelines directory
-        3. Full relative path from the package root
-        4. Stem name lookup via discover_pipelines()
+        1. Workspace pipeline dir (``{workspace_root}/pipeline/``)
+        2. Absolute or CWD-relative path
+        3. Filename match in the built-in pipelines directory
+        4. Full relative path from the package root
+        5. Stem name lookup via discover_pipelines()
 
         If none of these resolve, the source is treated as inline DOT.
 
@@ -236,10 +237,19 @@ class ManagerHandler:
                 raise ValueError(f"Path traversal in child_graph: {source}")
 
             path = Path(source)
-            if path.is_absolute() and path.exists():
-                resolved_path = path.resolve()
-            elif not path.is_absolute() and path.exists():
-                resolved_path = path.resolve()
+
+            # 1. Try workspace pipeline directory first
+            ws_root = context.get("_workspace_root", "")
+            if ws_root:
+                ws_candidate = Path(ws_root) / "pipeline" / path.name
+                if ws_candidate.exists():
+                    resolved_path = ws_candidate.resolve()
+
+            if resolved_path is None:
+                if path.is_absolute() and path.exists():
+                    resolved_path = path.resolve()
+                elif not path.is_absolute() and path.exists():
+                    resolved_path = path.resolve()
 
             if resolved_path is None:
                 # Try relative to the built-in pipelines directory
@@ -272,8 +282,8 @@ class ManagerHandler:
             if resolved_path is None:
                 raise FileNotFoundError(
                     f"Child graph not found: '{source}'. "
-                    f"Searched CWD-relative, built-in pipelines dir, "
-                    f"and discover_pipelines(). "
+                    f"Searched workspace pipeline dir, CWD-relative, "
+                    f"built-in pipelines dir, and discover_pipelines(). "
                     f"Check that the file exists and the 'strategy' variable "
                     f"was expanded (unexpanded variables like ${{strategy}} "
                     f"produce invalid filenames)."

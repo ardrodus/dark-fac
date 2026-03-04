@@ -40,6 +40,7 @@ def discover_pipelines(
     *,
     project_root: Path | None = None,
     builtins_dir: Path | None = None,
+    workspace_pipeline_dir: Path | None = None,
 ) -> dict[str, Path]:
     """Discover available pipeline DOT files.
 
@@ -48,12 +49,15 @@ def discover_pipelines(
     1. Built-in pipelines from ``factory/pipelines/*.dot``.
     2. User custom pipelines from ``.dark-factory/pipelines/*.dot``.
     3. Explicit overrides from ``pipeline.overrides`` in config.json.
+    4. Workspace pipelines from ``{workspace}/pipeline/*.dot`` (highest priority).
 
     Args:
         project_root: Root directory containing ``.dark-factory/``.
             Defaults to cwd.
         builtins_dir: Override for the built-in pipelines directory.
             Useful for testing.
+        workspace_pipeline_dir: Workspace-scoped pipeline directory.
+            When set, DOT files here take highest priority.
 
     Returns:
         Mapping of pipeline name (stem) to resolved ``Path``.
@@ -94,5 +98,12 @@ def discover_pipelines(
                     )
     except Exception:
         logger.debug("No config overrides applied (config load failed or absent)")
+
+    # 4. Workspace pipelines (highest priority)
+    if workspace_pipeline_dir:
+        ws_pipelines = _collect_dot_files(workspace_pipeline_dir)
+        if ws_pipelines:
+            logger.debug("Workspace pipelines (override): %s", list(ws_pipelines))
+            pipelines.update(ws_pipelines)
 
     return pipelines

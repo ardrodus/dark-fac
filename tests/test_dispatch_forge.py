@@ -1,12 +1,14 @@
 """Tests for _run_forge_interactive in cli/dispatch.py.
 
-Verifies that the interactive forge command runs ONLY the Dark Forge
-pipeline and does NOT chain into Crucible, Deploy, or Ouroboros.
+Verifies that the interactive forge command:
+- Calls engine.run_pipeline("dark_forge") with workspace_root context
+- Manages issue labels (in-progress → done/failed)
+- Handles no-issue and workspace-error edge cases
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from dark_factory.integrations.gh_safe import IssueInfo
 from dark_factory.workspace.manager import Workspace
@@ -25,15 +27,18 @@ def _workspace(path: str = "/tmp/ws") -> Workspace:
 
 
 class TestRunForgeInteractive:
-    """Verify _run_forge_interactive calls run_dark_forge, not run_cycle."""
+    """Verify _run_forge_interactive calls engine.run_pipeline directly."""
 
     @patch("dark_factory.cli.dispatch.input", return_value="")
     @patch("dark_factory.cli.dispatch.sys")
-    def test_calls_run_dark_forge_not_run_cycle(
+    def test_calls_engine_run_pipeline(
         self, mock_sys: MagicMock, _mock_input: MagicMock,
     ) -> None:
-        """Interactive forge must call run_dark_forge, never run_cycle."""
+        """Interactive forge must call engine.run_pipeline('dark_forge')."""
         mock_sys.stdout = MagicMock()
+
+        mock_engine = MagicMock()
+        mock_engine.run_pipeline = AsyncMock(return_value=MagicMock())
 
         with (
             patch(
@@ -45,30 +50,36 @@ class TestRunForgeInteractive:
                 return_value=_workspace(),
             ),
             patch(
-                "dark_factory.modes.auto.run_dark_forge",
-                return_value=True,
-            ) as mock_forge,
-            patch(
-                "dark_factory.modes.auto.run_cycle",
-                side_effect=AssertionError("run_cycle must NOT be called"),
+                "dark_factory.pipeline.engine.FactoryPipelineEngine",
+                return_value=mock_engine,
             ),
+            patch("dark_factory.integrations.gh_safe.add_label"),
+            patch("dark_factory.integrations.gh_safe.remove_label"),
         ):
             from dark_factory.cli.dispatch import _run_forge_interactive
 
             _run_forge_interactive()
 
-        mock_forge.assert_called_once()
+        mock_engine.run_pipeline.assert_called_once()
+        call_args = mock_engine.run_pipeline.call_args
+        assert call_args[0][0] == "dark_forge"
+        ctx = call_args[0][1]
+        assert "workspace_root" in ctx
+        assert ctx["workspace_root"] == "/tmp/ws"
 
     @patch("dark_factory.cli.dispatch.input", return_value="")
     @patch("dark_factory.cli.dispatch.sys")
     def test_forge_failure_reports_failed(
         self, mock_sys: MagicMock, _mock_input: MagicMock,
     ) -> None:
-        """When run_dark_forge returns False, output should say FAILED."""
+        """When engine raises, output should say FAILED."""
         buf: list[str] = []
         mock_sys.stdout = MagicMock()
         mock_sys.stdout.write = lambda s: buf.append(s)
         mock_sys.stdout.flush = lambda: None
+
+        mock_engine = MagicMock()
+        mock_engine.run_pipeline = AsyncMock(side_effect=RuntimeError("pipeline failed"))
 
         with (
             patch(
@@ -80,9 +91,11 @@ class TestRunForgeInteractive:
                 return_value=_workspace(),
             ),
             patch(
-                "dark_factory.modes.auto.run_dark_forge",
-                return_value=False,
+                "dark_factory.pipeline.engine.FactoryPipelineEngine",
+                return_value=mock_engine,
             ),
+            patch("dark_factory.integrations.gh_safe.add_label"),
+            patch("dark_factory.integrations.gh_safe.remove_label"),
         ):
             from dark_factory.cli.dispatch import _run_forge_interactive
 
@@ -96,11 +109,14 @@ class TestRunForgeInteractive:
     def test_forge_success_reports_passed(
         self, mock_sys: MagicMock, _mock_input: MagicMock,
     ) -> None:
-        """When run_dark_forge returns True, output should say PASSED."""
+        """When engine succeeds, output should say PASSED."""
         buf: list[str] = []
         mock_sys.stdout = MagicMock()
         mock_sys.stdout.write = lambda s: buf.append(s)
         mock_sys.stdout.flush = lambda: None
+
+        mock_engine = MagicMock()
+        mock_engine.run_pipeline = AsyncMock(return_value=MagicMock())
 
         with (
             patch(
@@ -112,9 +128,11 @@ class TestRunForgeInteractive:
                 return_value=_workspace(),
             ),
             patch(
-                "dark_factory.modes.auto.run_dark_forge",
-                return_value=True,
+                "dark_factory.pipeline.engine.FactoryPipelineEngine",
+                return_value=mock_engine,
             ),
+            patch("dark_factory.integrations.gh_safe.add_label"),
+            patch("dark_factory.integrations.gh_safe.remove_label"),
         ):
             from dark_factory.cli.dispatch import _run_forge_interactive
 
@@ -128,17 +146,13 @@ class TestRunForgeInteractive:
     def test_no_issues_returns_early(
         self, mock_sys: MagicMock, _mock_input: MagicMock,
     ) -> None:
-        """When no issues are queued, return without calling forge."""
+        """When no issues are queued, return without calling engine."""
         mock_sys.stdout = MagicMock()
 
         with (
             patch(
                 "dark_factory.dispatch.issue_dispatcher.select_next_issue",
                 return_value=None,
-            ),
-            patch(
-                "dark_factory.modes.auto.run_dark_forge",
-                side_effect=AssertionError("should not be called"),
             ),
         ):
             from dark_factory.cli.dispatch import _run_forge_interactive
@@ -150,7 +164,7 @@ class TestRunForgeInteractive:
     def test_workspace_error_returns_early(
         self, mock_sys: MagicMock, _mock_input: MagicMock,
     ) -> None:
-        """When workspace acquisition fails, return without calling forge."""
+        """When workspace acquisition fails, return without calling engine."""
         mock_sys.stdout = MagicMock()
 
         with (
@@ -162,10 +176,8 @@ class TestRunForgeInteractive:
                 "dark_factory.workspace.manager.acquire_workspace",
                 side_effect=RuntimeError("clone failed"),
             ),
-            patch(
-                "dark_factory.modes.auto.run_dark_forge",
-                side_effect=AssertionError("should not be called"),
-            ),
+            patch("dark_factory.integrations.gh_safe.add_label"),
+            patch("dark_factory.integrations.gh_safe.remove_label"),
         ):
             from dark_factory.cli.dispatch import _run_forge_interactive
 

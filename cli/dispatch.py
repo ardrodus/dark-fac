@@ -293,15 +293,26 @@ def _forge_event_printer(event: object) -> None:
 def _run_forge_interactive() -> None:
     """Pick the next queued issue and run it through Dark Forge only.
 
-    The interactive forge command runs ONLY the Dark Forge pipeline
-    (architecture review + TDD).  It does NOT run Crucible, Deploy,
-    or Ouroboros -- those are separate phases triggered via auto mode
-    or their own menu entries.
+    Simplified flow:
+      1. Poll for queued issue
+      2. Acquire workspace (self-contained: repo/, agents/, pipeline/)
+      3. engine.run_pipeline("dark_forge", {workspace_root, issue})
+      4. Label issue done/failed
     """
+    import asyncio  # noqa: PLC0415
     import os  # noqa: PLC0415
     import time  # noqa: PLC0415
 
-    from dark_factory.modes.auto import run_dark_forge  # noqa: PLC0415
+    from dark_factory.dispatch.issue_dispatcher import (  # noqa: PLC0415
+        LABEL_DONE,
+        LABEL_FAILED,
+        LABEL_IN_PROGRESS,
+        LABEL_QUEUED,
+        select_next_issue,
+    )
+    from dark_factory.integrations.gh_safe import add_label, remove_label  # noqa: PLC0415
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
     repo = os.environ.get("GITHUB_REPO", "")
     if not repo:
@@ -313,8 +324,6 @@ def _run_forge_interactive() -> None:
                 repo = r.get("name", "")
                 break
 
-    from dark_factory.dispatch.issue_dispatcher import select_next_issue  # noqa: PLC0415
-
     sys.stdout.write("\n  Dark Forge: scanning for queued issues...\n")
     issue = select_next_issue(repo=repo or None)
     if issue is None:
@@ -322,40 +331,51 @@ def _run_forge_interactive() -> None:
         input("  Press Enter to return to menu...")
         return
 
-    # Acquire a workspace for the issue
-    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
-
     sys.stdout.write(f"  Processing #{issue.number}: {issue.title}\n")
 
-    # GitHub lifecycle: queued → arch-review + comment
-    from dark_factory.modes.auto import complete_arch_review, dispatch_to_forge  # noqa: PLC0415
-
-    dispatch_to_forge(issue.number, repo=repo)
+    # Label transition: queued → in-progress
+    try:
+        remove_label(issue.number, LABEL_QUEUED, repo=repo or None)
+    except Exception:  # noqa: BLE001
+        pass
+    add_label(issue.number, LABEL_IN_PROGRESS, repo=repo or None)
 
     try:
         workspace = acquire_workspace(repo, issue.number)
     except Exception as exc:
         sys.stdout.write(f"  Failed to acquire workspace: {exc}\n\n")
+        add_label(issue.number, LABEL_FAILED, repo=repo or None)
         input("  Press Enter to return to menu...")
         return
 
-    # Load per-workspace settings
-    from dark_factory.modes.foundry_onboard import load_workspace_settings  # noqa: PLC0415
+    # Build issue dict for the pipeline context
+    issue_dict = {
+        "number": issue.number,
+        "title": issue.title,
+        "body": getattr(issue, "body", ""),
+        "labels": getattr(issue, "labels", []),
+    }
 
-    ws_settings = load_workspace_settings(workspace.path)
-    skip_arch = bool(ws_settings.get("skip_arch_review", False))
-
+    engine = FactoryPipelineEngine(on_event=_forge_event_printer)
     t0 = time.monotonic()
-    passed = run_dark_forge(
-        issue,
-        workspace.path,
-        skip_arch_review=skip_arch,
-        on_event=_forge_event_printer,
-    )
+    try:
+        asyncio.run(engine.run_pipeline("dark_forge", {
+            "workspace_root": workspace.path,
+            "issue": issue_dict,
+            "issue_number": str(issue.number),
+        }))
+        passed = True
+    except Exception as exc:  # noqa: BLE001
+        sys.stdout.write(f"  Pipeline error: {exc}\n")
+        passed = False
     elapsed = time.monotonic() - t0
 
-    # GitHub lifecycle: arch-review → arch-approved (or failed) + comment
-    complete_arch_review(issue.number, passed=passed, duration_s=elapsed, repo=repo)
+    # Label transition: in-progress → done/failed
+    try:
+        remove_label(issue.number, LABEL_IN_PROGRESS, repo=repo or None)
+    except Exception:  # noqa: BLE001
+        pass
+    add_label(issue.number, LABEL_DONE if passed else LABEL_FAILED, repo=repo or None)
 
     status = "PASSED" if passed else "FAILED"
     sys.stdout.write(f"  Dark Forge {status} ({elapsed:.1f}s)\n\n")

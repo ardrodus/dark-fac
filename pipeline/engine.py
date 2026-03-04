@@ -1,8 +1,11 @@
 """FactoryPipelineEngine -- high-level wrapper integrating the engine with Dark Factory.
 
 Bridges Dark Factory's config system, pipeline loader, and DOT-based engine
-into a single class with convenience methods for each subsystem:
-Dark Forge, Sentinel, Crucible, and Ouroboros.
+into a single class.  Architecture follows **prepare → gather deps → run**:
+
+- **prepare**: resolve workspace, discover pipelines, load agents, set strategy
+- **gather deps**: engine config, backend, handler registry (all in ``__init__``)
+- **run**: parse DOT → validate → apply stylesheet → ``runner.run_pipeline()``
 
 Usage::
 
@@ -52,14 +55,18 @@ class FactoryPipelineEngine:
         *,
         config_start: Path | None = None,
         on_event: Callable[[PipelineEvent], None] | None = None,
+        on_human_gate: Callable[[str, str], str] | None = None,
     ) -> None:
         from dark_factory.engine.claude_backend import (  # noqa: PLC0415
             ClaudeCodeBackend,
             ClaudeCodeConfig,
         )
         from dark_factory.engine.config import load_engine_config  # noqa: PLC0415
+        from dark_factory.engine.handlers import register_default_handlers  # noqa: PLC0415
         from dark_factory.engine.resource_limiter import ResourceLimiter  # noqa: PLC0415
+        from dark_factory.engine.runner import HandlerRegistry  # noqa: PLC0415
 
+        # --- Gather deps (once, at construction time) ---
         self._engine_cfg = load_engine_config(config_start)
         self._resource_limiter = ResourceLimiter(
             limit=self._engine_cfg.max_concurrent_subprocesses,
@@ -71,6 +78,27 @@ class FactoryPipelineEngine:
             ),
             resource_limiter=self._resource_limiter,
         )
+
+        # Handler registry — built once, reused across all run_pipeline() calls
+        self._registry = HandlerRegistry()
+        register_default_handlers(self._registry, codergen_backend=self._backend)
+
+        if on_human_gate:
+            from dark_factory.engine.handlers import (  # noqa: PLC0415
+                CallbackInterviewer,
+                HumanHandler,
+            )
+
+            _gate_cb = on_human_gate
+
+            async def _human_callback(
+                text: str, options: list[str] | None, stage: str | None,
+            ) -> str:
+                return _gate_cb(stage or "", text)
+
+            interviewer = CallbackInterviewer(callback=_human_callback)
+            self._registry.register("wait.human", HumanHandler(interviewer=interviewer))
+
         self._config_start = config_start
         self._on_event = on_event
 
@@ -85,23 +113,60 @@ class FactoryPipelineEngine:
     ) -> Any:
         """Run any named pipeline with the given context.
 
-        Resolves *name* via the pipeline loader (built-in, user override,
-        or config override), injects the ``strategy`` variable from
-        ``EngineConfig.deploy_strategy``, then delegates to
-        :func:`factory.engine.sdk.execute`.
+        Follows **prepare → gather deps → run**:
+
+        1. **Prepare**: resolve workspace, discover pipelines, load agents,
+           inject strategy.
+        2. **Gather deps**: engine config, backend, handler registry (in
+           ``__init__``); logs dir (found from workspace).
+        3. **Run**: parse DOT → validate → apply stylesheet →
+           ``runner.run_pipeline()``.
+
+        When ``context["workspace_root"]`` is set, the workspace is used
+        as the primary source for pipelines (``{root}/pipeline/``) and
+        agent personas (``{root}/agents/``).  The context variable
+        ``$workspace`` is set to ``{root}/repo/`` so DOT prompts can
+        reference the code directory.
 
         Args:
             name: Pipeline stem name (e.g. ``"dark_forge"``, ``"sentinel"``).
             context: Variables available to pipeline nodes via ``$variable``.
+                Set ``workspace_root`` to the workspace directory to enable
+                workspace-scoped pipeline and agent resolution.
             on_event: Per-call event callback (overrides constructor default).
 
         Returns:
             :class:`~factory.engine.runner.PipelineResult`.
         """
-        from dark_factory.engine.sdk import execute  # noqa: PLC0415
+        from dark_factory.engine.parser import parse_dot  # noqa: PLC0415
+        from dark_factory.engine.runner import run_pipeline as _run_pipeline  # noqa: PLC0415
+        from dark_factory.engine.stylesheet import apply_stylesheet  # noqa: PLC0415
+        from dark_factory.engine.validation import validate_or_raise  # noqa: PLC0415
         from dark_factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
 
-        pipelines = discover_pipelines(project_root=self._config_start)
+        ctx = dict(context or {})
+
+        # --- PREPARE ---
+
+        # Resolve workspace root — this is the self-contained workspace
+        # directory containing repo/, agents/, pipeline/, scripts/, logs/.
+        ws_root_str = ctx.pop("workspace_root", "")
+        ws_root = Path(ws_root_str) if ws_root_str else None
+
+        # Set $workspace to the repo subdirectory so DOT prompts
+        # reference the code directory (backward compatible).
+        if ws_root and not ctx.get("workspace"):
+            ctx["workspace"] = str(ws_root / "repo")
+
+        # Discover pipelines: workspace pipeline/ dir takes priority.
+        if ws_root:
+            pipelines = discover_pipelines(
+                project_root=self._config_start,
+                workspace_pipeline_dir=ws_root / "pipeline",
+            )
+        else:
+            pipelines = discover_pipelines(project_root=self._config_start)
+
         dotfile = pipelines.get(name)
         if dotfile is None:
             msg = (
@@ -111,22 +176,45 @@ class FactoryPipelineEngine:
             raise FileNotFoundError(msg)
 
         # Inject strategy so arch_review_${strategy}.dot resolves correctly.
-        ctx = dict(context or {})
         ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
 
         # Load agent persona files into context so DOT prompts can
         # reference them as $sa_security_console_agent etc.
-        self._load_agent_personas(ctx)
+        self._load_agent_personas(ctx, workspace_root=ws_root)
 
-        # Derive logs_dir so the runner writes per-node artifacts to disk
-        logs_dir = self._derive_logs_dir(name, ctx)
+        # Store workspace_root in context for child_graph resolution
+        if ws_root:
+            ctx["_workspace_root"] = str(ws_root)
+
+        # --- GATHER DEPS (logs dir — found from workspace) ---
+
+        logs_dir = self._derive_logs_dir(name, ctx, workspace_root=ws_root)
+        logs_root = None
+        if logs_dir:
+            logs_root = Path(logs_dir)
+            logs_root.mkdir(parents=True, exist_ok=True)
+
+        # --- RUN: parse → validate → stylesheet → execute ---
+
+        path = Path(dotfile)
+        if not path.exists():
+            raise FileNotFoundError(f"Pipeline file not found: {dotfile}")
+
+        source = path.read_text(encoding="utf-8")
+        graph = parse_dot(source)
+        validate_or_raise(graph)
+
+        # Apply model stylesheet from engine config
+        if self._engine_cfg.model_stylesheet and not graph.model_stylesheet:
+            graph.model_stylesheet = self._engine_cfg.model_stylesheet
+            apply_stylesheet(graph)
 
         event_cb = on_event or self._on_event
-        return await execute(
-            dotfile,
-            model=self._engine_cfg.model or None,
+        return await _run_pipeline(
+            graph,
+            self._registry,
             context=ctx,
-            logs_dir=logs_dir,
+            logs_root=logs_root,
             on_event=event_cb,
         )
 
@@ -180,7 +268,10 @@ class FactoryPipelineEngine:
             )
             ctx["_workflow_log"] = str(wf_log.path)
 
-        from dark_factory.engine.sdk import execute  # noqa: PLC0415
+        from dark_factory.engine.parser import parse_dot  # noqa: PLC0415
+        from dark_factory.engine.runner import run_pipeline as _run_pipeline  # noqa: PLC0415
+        from dark_factory.engine.stylesheet import apply_stylesheet  # noqa: PLC0415
+        from dark_factory.engine.validation import validate_or_raise  # noqa: PLC0415
         from dark_factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
 
         pipelines = discover_pipelines(project_root=self._config_start)
@@ -189,9 +280,21 @@ class FactoryPipelineEngine:
             msg = "sentinel pipeline not found"
             raise FileNotFoundError(msg)
 
-        return await execute(
-            dotfile,
-            model=self._engine_cfg.model or None,
+        path = Path(dotfile)
+        if not path.exists():
+            raise FileNotFoundError(f"Pipeline file not found: {dotfile}")
+
+        source = path.read_text(encoding="utf-8")
+        graph = parse_dot(source)
+        validate_or_raise(graph)
+
+        if self._engine_cfg.model_stylesheet and not graph.model_stylesheet:
+            graph.model_stylesheet = self._engine_cfg.model_stylesheet
+            apply_stylesheet(graph)
+
+        return await _run_pipeline(
+            graph,
+            self._registry,
             context=ctx,
             on_event=self._on_event,
         )
@@ -216,23 +319,36 @@ class FactoryPipelineEngine:
             return {}
 
     @staticmethod
-    def _load_agent_personas(ctx: dict[str, Any]) -> None:
+    def _load_agent_personas(
+        ctx: dict[str, Any],
+        *,
+        workspace_root: Path | None = None,
+    ) -> None:
         """Load agent .md files into context for $variable expansion in prompts.
 
-        Scans the ``agents/`` directory next to the ``pipelines/`` directory.
-        Each file ``agents/sa-security-console.md`` becomes context key
+        Resolution order:
+        1. Workspace agents dir (``{workspace_root}/agents/``) — highest priority.
+        2. Source repo agents dir (fallback for non-workspace runs).
+
+        Each file ``sa-security-console.md`` becomes context key
         ``sa_security_console_agent`` (hyphens to underscores, stem + _agent).
         """
-        agents_dir = Path(__file__).resolve().parent.parent / "agents"
-        if not agents_dir.is_dir():
-            return
-        for md_file in agents_dir.glob("*.md"):
-            key = md_file.stem.replace("-", "_") + "_agent"
-            if key not in ctx:
-                try:
-                    ctx[key] = md_file.read_text(encoding="utf-8")
-                except OSError:
-                    pass
+        # Try workspace agents first, then fall back to source repo.
+        agents_dirs: list[Path] = []
+        if workspace_root:
+            agents_dirs.append(workspace_root / "agents")
+        agents_dirs.append(Path(__file__).resolve().parent.parent / "agents")
+
+        for agents_dir in agents_dirs:
+            if not agents_dir.is_dir():
+                continue
+            for md_file in agents_dir.glob("*.md"):
+                key = md_file.stem.replace("-", "_") + "_agent"
+                if key not in ctx:
+                    try:
+                        ctx[key] = md_file.read_text(encoding="utf-8")
+                    except OSError:
+                        pass
 
     @staticmethod
     def _resolve_crucible_repo(workspace: str) -> str:
@@ -258,15 +374,27 @@ class FactoryPipelineEngine:
         return repo
 
     @staticmethod
-    def _derive_logs_dir(name: str, ctx: dict[str, Any]) -> str | None:
-        """Derive a logs directory from workspace + issue context."""
-        workspace = ctx.get("workspace", "")
+    def _derive_logs_dir(
+        name: str,
+        ctx: dict[str, Any],
+        *,
+        workspace_root: Path | None = None,
+    ) -> str | None:
+        """Derive a logs directory from workspace + issue context.
+
+        When *workspace_root* is set, logs go to ``{root}/logs/``.
+        Falls back to ``{workspace}/.dark-factory/logs/`` for legacy callers.
+        """
         issue = ctx.get("issue", {})
         issue_num = issue.get("number", 0) if isinstance(issue, dict) else 0
-        if workspace and issue_num:
-            return str(Path(workspace) / ".dark-factory" / "logs" / f"pipeline-{name}-{issue_num}")
+        suffix = f"pipeline-{name}-{issue_num}" if issue_num else f"pipeline-{name}"
+
+        if workspace_root:
+            return str(workspace_root / "logs" / suffix)
+
+        workspace = ctx.get("workspace", "")
         if workspace:
-            return str(Path(workspace) / ".dark-factory" / "logs" / f"pipeline-{name}")
+            return str(Path(workspace) / ".dark-factory" / "logs" / suffix)
         return None
 
     @staticmethod
