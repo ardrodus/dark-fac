@@ -233,20 +233,22 @@ async def route_to_engineering(
 
     ws_path = workspace.path
 
-    # ── Step 2: Sentinel Gate 1 -- BLOCK exits early ────────────
+    # ── Step 2: Sentinel -- scan code before forge runs ─────────
     engine_fn = config.engine_factory or _default_engine
     engine = engine_fn()
 
     try:
         s = time.monotonic()
-        sentinel_result = await engine.run_sentinel_gate(1, ws_path)
+        sentinel_result = await engine.run_pipeline("sentinel", {
+            "workspace_root": ws_path,
+        })
         sen_s = round(time.monotonic() - s, 2)
     except Exception as exc:  # noqa: BLE001
-        return _fail(f"Sentinel Gate 1 failed: {exc}", num, repo, _m())
+        return _fail(f"Sentinel scan failed: {exc}", num, repo, _m())
 
     if not _is_pipeline_ok(sentinel_result):
         return _fail(
-            f"Sentinel Gate 1 BLOCK: {sentinel_result.error or 'security scan failed'}",
+            f"Sentinel CONTAMINATED: {sentinel_result.error or 'security scan failed'}",
             num, repo, _m(),
         )
 

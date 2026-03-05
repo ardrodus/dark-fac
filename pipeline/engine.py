@@ -42,14 +42,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Gate numbers mapped to the sentinel DOT entry-point node IDs.
-_SENTINEL_GATE_ENTRIES: dict[int, str] = {
-    1: "gate1_start",
-    2: "gate2_start",
-    3: "gate3_start",
-    4: "gate4_start",
-    5: "gate5_start",
-}
 
 
 class FactoryPipelineEngine:
@@ -228,86 +220,6 @@ class FactoryPipelineEngine:
             on_event=event_cb,
         )
 
-    # ── Sentinel gates ───────────────────────────────────────────
-
-    async def run_sentinel_gate(
-        self,
-        gate: int,
-        workspace: str,
-        *,
-        issue_number: int = 0,
-        context: dict[str, Any] | None = None,
-    ) -> Any:
-        """Run a specific Sentinel gate (1-5) via the sentinel.dot pipeline.
-
-        The sentinel pipeline is loaded and executed starting from the
-        gate's entry node.
-
-        Args:
-            gate: Gate number (1-5).
-            workspace: Path to the workspace under scan.
-            issue_number: Optional issue number for log naming.
-            context: Extra context variables for the gate.
-
-        Returns:
-            :class:`~factory.engine.runner.PipelineResult`.
-        """
-        if gate not in _SENTINEL_GATE_ENTRIES:
-            msg = f"Invalid sentinel gate: {gate}. Must be 1-5."
-            raise ValueError(msg)
-
-        ctx: dict[str, Any] = {"workspace": workspace, **(context or {})}
-        if "strategy" not in ctx and workspace:
-            ws_data = self._load_workspace_config(workspace)
-            ws_strategy = ws_data.get("strategy", "")
-            if ws_strategy:
-                ctx["strategy"] = ws_strategy
-        ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
-
-        if issue_number:
-            ctx["issue_number"] = str(issue_number)
-
-        # Create workflow log for agent visibility
-        if workspace:
-            from dark_factory.engine.workflow_log import WorkflowLog  # noqa: PLC0415
-
-            log_name = f"sentinel-gate{gate}-{issue_number}" if issue_number else f"sentinel-gate{gate}"
-            wf_log = WorkflowLog(
-                Path(workspace) / ".dark-factory" / "logs" / f"workflow-{log_name}.log",
-                issue_number=issue_number,
-            )
-            ctx["_workflow_log"] = str(wf_log.path)
-
-        from dark_factory.engine.parser import parse_dot  # noqa: PLC0415
-        from dark_factory.engine.runner import run_pipeline as _run_pipeline  # noqa: PLC0415
-        from dark_factory.engine.stylesheet import apply_stylesheet  # noqa: PLC0415
-        from dark_factory.engine.validation import validate_or_raise  # noqa: PLC0415
-        from dark_factory.pipeline.loader import discover_pipelines  # noqa: PLC0415
-
-        pipelines = discover_pipelines(project_root=self._config_start)
-        dotfile = pipelines.get("sentinel")
-        if dotfile is None:
-            msg = "sentinel pipeline not found"
-            raise FileNotFoundError(msg)
-
-        path = Path(dotfile)
-        if not path.exists():
-            raise FileNotFoundError(f"Pipeline file not found: {dotfile}")
-
-        source = path.read_text(encoding="utf-8")
-        graph = parse_dot(source)
-        validate_or_raise(graph)
-
-        if self._engine_cfg.model_stylesheet and not graph.model_stylesheet:
-            graph.model_stylesheet = self._engine_cfg.model_stylesheet
-            apply_stylesheet(graph)
-
-        return await _run_pipeline(
-            graph,
-            self._registry,
-            context=ctx,
-            on_event=self._on_event,
-        )
 
     # ── Helpers ────────────────────────────────────────────────
 

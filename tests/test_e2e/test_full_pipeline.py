@@ -84,12 +84,6 @@ class FullPipelineEngine:
     def __init__(self) -> None:
         self.calls: list[StageRecord] = []
 
-    async def run_sentinel_gate(
-        self, gate: int, workspace: str, **kwargs: Any,
-    ) -> PipelineResult:
-        self.calls.append(StageRecord("sentinel", (gate, workspace), kwargs))
-        return _ok_result(completed_nodes=["gate1_start", "secret_scan", "dep_audit", "gate1_pass"])
-
     async def run_forge(
         self, issue: dict[str, Any], workspace: str, **kwargs: Any,
     ) -> PipelineResult:
@@ -107,7 +101,9 @@ class FullPipelineEngine:
     async def run_pipeline(
         self, name: str, context: dict[str, Any] | None = None, **kwargs: Any,
     ) -> PipelineResult:
-        self.calls.append(StageRecord("pipeline", (name, context), kwargs))
+        self.calls.append(StageRecord(name, (name, context), kwargs))
+        if name == "sentinel":
+            return _ok_result(completed_nodes=["start", "secret_scan", "dep_audit", "sast_scan", "classify", "clean"])
         if name == "crucible":
             return _ok_result(
                 context={"verdict": "go", "pass_rate": 1.0},
@@ -150,20 +146,18 @@ class TestFullPipelineE2E:
         asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
         methods = [c.method for c in engine.calls]
-        assert methods == ["sentinel", "forge", "pipeline", "pipeline"]
-        # Verify pipeline calls are crucible then deploy
-        assert engine.calls[2].args[0] == "crucible"
-        assert engine.calls[3].args[0] == "deploy"
+        assert methods == ["sentinel", "forge", "crucible", "deploy"]
 
-    def test_sentinel_gate_1_runs_first(self) -> None:
-        """Sentinel Gate 1 is called with gate=1 and workspace path."""
+    def test_sentinel_runs_first_via_run_pipeline(self) -> None:
+        """Sentinel is called via run_pipeline with workspace_root context."""
         engine = FullPipelineEngine()
         cfg = _make_config(engine)
         asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
         sentinel = engine.calls[0]
         assert sentinel.method == "sentinel"
-        assert sentinel.args == (1, "/tmp/e2e-ws")
+        assert sentinel.args[0] == "sentinel"
+        assert sentinel.args[1]["workspace_root"] == "/tmp/e2e-ws"
 
     def test_forge_receives_issue_data(self) -> None:
         """Dark Forge is called with the issue dict and workspace."""
@@ -184,7 +178,7 @@ class TestFullPipelineE2E:
         asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
         crucible = engine.calls[2]
-        assert crucible.method == "pipeline"
+        assert crucible.method == "crucible"
         assert crucible.args[0] == "crucible"
         ctx = crucible.args[1]
         assert ctx["workspace_root"] == "/tmp/e2e-ws"
@@ -198,7 +192,7 @@ class TestFullPipelineE2E:
         asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
         deploy = engine.calls[3]
-        assert deploy.method == "pipeline"
+        assert deploy.method == "deploy"
         assert deploy.args[0] == "deploy"
         ctx = deploy.args[1]
         assert ctx["workspace"] == "/tmp/e2e-ws"
@@ -578,7 +572,7 @@ class TestCrucibleVerdict:
 
         assert result.verdict == "go"
         assert result.success is True
-        deploy_calls = [c for c in engine.calls if c.method == "pipeline" and c.args[0] == "deploy"]
+        deploy_calls = [c for c in engine.calls if c.method == "deploy"]
         assert len(deploy_calls) == 1
 
     def test_no_go_verdict_retries_forge(self) -> None:
@@ -588,7 +582,9 @@ class TestCrucibleVerdict:
             async def run_pipeline(
                 self, name: str, context: dict[str, Any] | None = None, **kw: Any,
             ) -> PipelineResult:
-                self.calls.append(StageRecord("pipeline", (name, context), kw))
+                self.calls.append(StageRecord(name, (name, context), kw))
+                if name == "sentinel":
+                    return _ok_result(completed_nodes=["start", "clean"])
                 if name == "crucible":
                     return _ok_result(completed_nodes=["no_go"])
                 return _ok_result(completed_nodes=["deploy_start", "deploy_exit"])
@@ -620,7 +616,7 @@ class TestDeployPipeline:
         asyncio.run(route_to_engineering(_mock_issue(), cfg))
 
         deploy = engine.calls[3]
-        assert deploy.method == "pipeline"
+        assert deploy.method == "deploy"
         assert deploy.args[0] == "deploy"
 
     def test_deploy_receives_workspace_and_branch(self) -> None:

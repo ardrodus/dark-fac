@@ -73,12 +73,6 @@ class FakeEngine:
         self._deploy = deploy_result or _pipeline_ok()
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
-    async def run_sentinel_gate(
-        self, gate: int, workspace: str, **kwargs: Any,
-    ) -> PipelineResult:
-        self.calls.append(("run_sentinel_gate", (gate, workspace), kwargs))
-        return self._sentinel
-
     async def run_forge(
         self, issue: dict[str, Any], workspace: str, **kwargs: Any,
     ) -> PipelineResult:
@@ -89,6 +83,8 @@ class FakeEngine:
         self, name: str, context: dict[str, Any] | None = None, **kwargs: Any,
     ) -> PipelineResult:
         self.calls.append(("run_pipeline", (name, context), kwargs))
+        if name == "sentinel":
+            return self._sentinel
         if name == "crucible":
             return self._crucible
         return self._deploy
@@ -187,13 +183,13 @@ class TestRouteToEngineeringGo:
 
         call_names = [c[0] for c in engine.calls]
         assert call_names == [
-            "run_sentinel_gate",
+            "run_pipeline",  # sentinel
             "run_forge",
             "run_pipeline",  # crucible
             "run_pipeline",  # deploy
         ]
 
-    def test_sentinel_called_with_gate_1(self) -> None:
+    def test_sentinel_called_via_run_pipeline(self) -> None:
         engine = FakeEngine(
             crucible_result=_pipeline_ok(completed_nodes=["go"]),
         )
@@ -201,8 +197,9 @@ class TestRouteToEngineeringGo:
         asyncio.run(route_to_engineering(_issue(), cfg))
 
         sentinel_call = engine.calls[0]
-        assert sentinel_call[0] == "run_sentinel_gate"
-        assert sentinel_call[1] == (1, "/tmp/ws")
+        assert sentinel_call[0] == "run_pipeline"
+        assert sentinel_call[1][0] == "sentinel"
+        assert sentinel_call[1][1]["workspace_root"] == "/tmp/ws"
 
     def test_deploy_called_with_context(self) -> None:
         engine = FakeEngine(
@@ -233,7 +230,7 @@ class TestRouteToEngineeringGo:
 
 
 class TestSentinelBlock:
-    def test_sentinel_block_exits_early(self) -> None:
+    def test_sentinel_contaminated_exits_early(self) -> None:
         engine = FakeEngine(
             sentinel_result=_pipeline_fail("security scan blocked"),
         )
@@ -241,22 +238,24 @@ class TestSentinelBlock:
         result = asyncio.run(route_to_engineering(_issue(), cfg))
 
         assert result.success is False
-        assert "Sentinel Gate 1 BLOCK" in result.error_message
-        # No forge/crucible/deploy calls
+        assert "Sentinel CONTAMINATED" in result.error_message
+        # No forge/crucible/deploy calls — only sentinel pipeline
         call_names = [c[0] for c in engine.calls]
-        assert call_names == ["run_sentinel_gate"]
+        assert call_names == ["run_pipeline"]
 
     def test_sentinel_exception_exits_early(self) -> None:
         class ExplodingEngine(FakeEngine):
-            async def run_sentinel_gate(self, gate: int, workspace: str, **kw: Any) -> PipelineResult:
-                raise RuntimeError("connection lost")
+            async def run_pipeline(self, name: str, context: dict[str, Any] | None = None, **kw: Any) -> PipelineResult:
+                if name == "sentinel":
+                    raise RuntimeError("connection lost")
+                return await super().run_pipeline(name, context, **kw)
 
         engine = ExplodingEngine()
         cfg = _config(engine=engine)
         result = asyncio.run(route_to_engineering(_issue(), cfg))
 
         assert result.success is False
-        assert "Sentinel Gate 1 failed" in result.error_message
+        assert "Sentinel scan failed" in result.error_message
 
 
 # ── Forge failure ────────────────────────────────────────────────────
