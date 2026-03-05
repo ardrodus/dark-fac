@@ -276,7 +276,11 @@ def _resolve_active_repo() -> str:
 
 
 def _run_subsystem(key: str) -> None:
-    """Launch the subsystem selected from the interactive TUI menu."""
+    """Launch the subsystem selected from the interactive TUI menu.
+
+    Menu keys match :data:`~dark_factory.modes.interactive.MENU_ITEMS`:
+    1=Dark Forge, 2=Crucible, 3=Ouroboros, 4=Foundry, 5=Settings.
+    """
     if key == "1":
         # Dark Forge — run one dispatch cycle through the full pipeline
         _run_forge_interactive()
@@ -284,11 +288,14 @@ def _run_subsystem(key: str) -> None:
         # Crucible — prompt for PR number and validate
         _run_crucible_interactive()
     elif key == "3":
+        # Ouroboros — invoke → gather deps → execute (same as other pillars)
+        _run_ouroboros_interactive()
+    elif key == "4":
         # Foundry — workspace manager TUI
         from dark_factory.modes.foundry import run_foundry_tui  # noqa: PLC0415
 
         run_foundry_tui()
-    elif key == "4":
+    elif key == "5":
         # Settings — config editor TUI
         from dark_factory.modes.settings import run_settings_tui  # noqa: PLC0415
 
@@ -488,6 +495,57 @@ def _run_crucible_interactive() -> None:
     if outcome.error:
         sys.stdout.write(f"  Error: {outcome.error}\n")
     sys.stdout.write("\n")
+    input("  Press Enter to return to menu...")
+
+
+def _run_ouroboros_interactive() -> None:
+    """Run Ouroboros self-improvement pipeline interactively.
+
+    Follows the prepare → gather deps → execute pattern:
+      1. Resolve active repo (the factory repo itself)
+      2. acquire_workspace() — clone/pull factory, bootstrap scaffold
+      3. engine.run_pipeline("ouroboros", {workspace_root, trigger})
+      4. Print result
+
+    Ouroboros operates on Dark Factory's own code.  The DOT pipeline
+    handles all workflow logic (auto-update, self-forge, feedback).
+    """
+    import asyncio  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
+
+    repo = _resolve_active_repo()
+    if not repo:
+        sys.stdout.write("  No active repo configured.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    sys.stdout.write("\n  Ouroboros: acquiring workspace for self-improvement...\n")
+    try:
+        workspace = acquire_workspace(repo, "ouroboros")
+    except Exception as exc:  # noqa: BLE001
+        sys.stdout.write(f"  Failed to acquire workspace: {exc}\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
+    sys.stdout.write("  Ouroboros: running self-improvement pipeline...\n")
+    engine = FactoryPipelineEngine(on_event=_forge_event_printer)
+    t0 = time.monotonic()
+    try:
+        asyncio.run(engine.run_pipeline("ouroboros", {
+            "workspace_root": workspace.path,
+            "trigger": "manual",
+        }))
+        passed = True
+    except Exception as exc:  # noqa: BLE001
+        sys.stdout.write(f"  Pipeline error: {exc}\n")
+        passed = False
+    elapsed = time.monotonic() - t0
+
+    status = "PASSED" if passed else "FAILED"
+    sys.stdout.write(f"  Ouroboros {status} ({elapsed:.1f}s)\n\n")
     input("  Press Enter to return to menu...")
 
 

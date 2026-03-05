@@ -30,8 +30,7 @@ class ClaudeCodeConfig:
 class ClaudeCodeBackend:
     """CodergenBackend that shells out to ``claude --print``.
 
-    Implements the same ``run()`` protocol as :class:`AgentLoopBackend`
-    and :class:`DirectLLMBackend` so it can be passed directly to
+    Implements the ``run()`` protocol so it can be passed directly to
     :class:`CodergenHandler`.
 
     Usage::
