@@ -1,5 +1,10 @@
 // Ouroboros: Self-Improvement Pipeline
 //
+// ARCHITECTURE: This DOT file IS the pipeline implementation.
+// Python only does: resolve ouroboros repo → acquire workspace → engine.run_pipeline("ouroboros").
+// ALL workflow logic, branching, and decisions live HERE — not in Python.
+// If you need to change Ouroboros's behavior, modify THIS file.
+//
 // Dark Factory's self-improvement layer. Three paths:
 //
 //   1. Auto-Update  — detect new version, stage, smoke-test, swap/rollback
@@ -8,11 +13,24 @@
 //                     health check), PR with merge policy
 //   3. Feedback     — learn from self-modifications, pattern confidence
 //
+// IMPORTANT: Ouroboros targets the Dark Factory repo itself (or a user's fork),
+// NOT the user's project repo. The target is configured during onboarding and
+// stored in workspace_config.ouroboros.repo in config.json.
+//
+// Entry point: cli/dispatch.py → _run_ouroboros_interactive()
+// Follows: _resolve_ouroboros_repo() → acquire_workspace() → engine.run_pipeline()
+//
+// Context variables:
+//   $workspace      — path to the cloned factory repo
+//   $upstream_repo  — HTTPS clone URL of the upstream factory repo
+//   $trigger        — "manual" | "scheduled" | "post-cycle"
+//
 // Built-in factory deployment (staging, swap, rollback) is NOT
 // user-customisable — it is the factory updating itself.
 //
-// Demonstrates: parallel paths, self-referential pipeline, multi-layer
-// validation, factory-internal deployment, feedback learning loop.
+// Node shapes: box = LLM agent, parallelogram = shell, diamond = decision,
+//              hexagon = child pipeline ref, house = terminal (non-exit),
+//              Mdiamond = start, Msquare = exit
 
 digraph ouroboros {
     graph [
