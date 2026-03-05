@@ -1,7 +1,19 @@
-"""Workspace management — create, cache, clean, and list workspaces.
+"""Workspace management — the "Gather Dependencies" phase.
 
-All workspace operations route through this single module.  Workspaces
-are self-contained directories with a standard layout::
+This module is the second phase of the Invoke → Gather Dependencies →
+Execute pattern.  Every pipeline (Dark Forge, Crucible, etc.) calls
+``acquire_workspace()`` before running the engine.
+
+What ``acquire_workspace()`` does
+---------------------------------
+1. **Clone or pull** the target repo into ``{workspace}/repo/``.
+2. **Bootstrap** default agents, DOT pipelines, scripts, and log
+   directories into the workspace — making it self-contained.
+3. **Create an issue branch** (``dark-factory/issue-<N>``).
+4. **Return a Workspace handle** whose ``.path`` is passed to the
+   engine as ``workspace_root``.
+
+Workspace layout::
 
     {workspace}/
         repo/       ← git clone of the target repository
@@ -10,8 +22,19 @@ are self-contained directories with a standard layout::
         scripts/    ← scripts referenced by pipelines
         logs/       ← pipeline execution logs
 
-The engine receives the workspace root path and finds everything it needs
-inside.  ``$workspace`` in DOT prompts points to ``{root}/repo/``.
+The engine receives the workspace root path and finds everything it
+needs inside.  ``$workspace`` in DOT prompts points to ``{root}/repo/``.
+
+Why workspaces are self-contained
+---------------------------------
+Each workspace gets its OWN copy of agents and DOT pipeline files.
+This means a pipeline can be customised per-project without affecting
+the package defaults.  The engine's pipeline loader checks the
+workspace ``pipeline/`` directory first (highest priority).
+
+When adding a new pipeline, you only need to add the ``.dot`` file to
+``pipelines/`` in the package — ``_bootstrap_workspace_defaults()``
+copies it into every new workspace automatically.
 """
 
 from __future__ import annotations

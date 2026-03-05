@@ -1,5 +1,10 @@
 // Crucible: Two-Round Validation Pipeline with Test Graduation
 //
+// ARCHITECTURE: This DOT file IS the pipeline implementation.
+// Python only does: resolve repo → acquire workspace → engine.run_pipeline("crucible").
+// ALL workflow logic, branching, and decisions live HERE — not in Python.
+// If you need to change Crucible's behavior, modify THIS file.
+//
 // The "bill becoming a law" pipeline:
 //   1. Pull crucible repo + PR branch
 //   2. Detect frameworks, install deps
@@ -12,6 +17,9 @@
 // Verdicts: GO | NO_GO | NEEDS_LIVE
 //
 // Flow: provision -> detect -> containerize -> generate -> smoke -> regress -> graduate
+//
+// Entry points: cli/dispatch.py → dispatch_test() or _run_crucible_interactive()
+// Both follow: _resolve_active_repo() → acquire_workspace() → engine.run_pipeline()
 
 digraph crucible {
     graph [
@@ -68,7 +76,7 @@ digraph crucible {
     ]
 
     smoke_verdict [shape=diamond, label="Smoke\nVerdict?"]
-    smoke_failed [shape=house, label="NO_GO\nNew tests failed\n-> feedback to forge"]
+    smoke_failed [shape=house, label="NO_GO\nNew tests failed"]
 
     // --- Phase 6: Round 2 -- Full Regression ---
     round2_regression [

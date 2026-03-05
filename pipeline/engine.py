@@ -1,21 +1,32 @@
-"""FactoryPipelineEngine -- high-level wrapper integrating the engine with Dark Factory.
+"""FactoryPipelineEngine — the "Execute" phase.
 
-Bridges Dark Factory's config system, pipeline loader, and DOT-based engine
-into a single class.  Architecture follows **prepare → gather deps → run**:
+This is the third and final phase of the Invoke → Gather Dependencies →
+Execute pattern.  By the time code reaches this module:
 
-- **prepare**: resolve workspace, discover pipelines, load agents, set strategy
-- **gather deps**: engine config, backend, handler registry (all in ``__init__``)
-- **run**: parse DOT → validate → apply stylesheet → ``runner.run_pipeline()``
+1. The dispatch layer (``cli/dispatch.py``) has resolved the repo and
+   validated inputs.  ← **Invoke**
+2. ``workspace/manager.py`` has cloned/pulled the repo and bootstrapped
+   a self-contained workspace with agents, DOT files, and scripts.
+   ← **Gather Dependencies**
+3. This engine loads a DOT pipeline from the workspace and walks the
+   graph — each node is an LLM agent prompt.  ← **Execute**
+
+ALL workflow logic lives in the DOT files
+-----------------------------------------
+The engine is a generic graph runner.  It does not know what "Dark Forge"
+or "Crucible" are — it just parses nodes, resolves edges, and dispatches
+prompts.  Branching, retries, parallelism, and success conditions are
+all expressed declaratively in the ``.dot`` files.
+
+If you need to add workflow logic (new steps, conditional branches,
+retry loops), modify or create a DOT file — do NOT add it to this
+module or to the dispatch layer.
 
 Usage::
 
-    from dark_factory.pipeline.engine import FactoryPipelineEngine
-
-    engine = FactoryPipelineEngine()                    # uses .dark-factory/config.json
-    result = await engine.run_pipeline("dark_forge", {"workspace_root": "/ws"})
-    result = await engine.run_pipeline("crucible", {"workspace_root": "/ws", "pr_number": "42"})
-    result = await engine.run_sentinel_gate(1, "/path/to/workspace")
-    result = await engine.run_ouroboros("scheduled")
+    engine = FactoryPipelineEngine()
+    result = await engine.run_pipeline("dark_forge", {"workspace_root": ws.path})
+    result = await engine.run_pipeline("crucible", {"workspace_root": ws.path, "pr_number": "42"})
 """
 
 from __future__ import annotations

@@ -277,51 +277,6 @@ class TuiInterviewer:
         return await self.ask(question)
 
 
-# ── Interviewer: auto mode ─────────────────────────────────────────
-
-
-class AutoModeInterviewer:
-    """Interviewer that comments on GitHub issues for human gates.
-
-    Satisfies the :class:`~factory.engine.handlers.human.Interviewer`
-    protocol.  Each ``ask()`` call posts a contextual comment on the
-    GitHub issue and adds the appropriate label, then returns
-    ``"queued"`` so the pipeline can proceed (or halt).
-    """
-
-    def __init__(
-        self,
-        issue_number: int,
-        *,
-        repo: str = "",
-        cwd: str | None = None,
-    ) -> None:
-        self._issue_number = issue_number
-        self._repo = repo
-        self._cwd = cwd
-
-    async def ask(self, question: Question) -> Answer:
-        from dark_factory.engine.handlers.human import Answer as _Answer  # noqa: PLC0415
-
-        gate_type = classify_gate(question.stage, question.metadata)
-        label = _GATE_LABELS[gate_type]
-        body = build_gate_comment(gate_type, question.text, question.metadata)
-        _comment_and_label(
-            self._issue_number,
-            body,
-            label,
-            repo=self._repo,
-            cwd=self._cwd,
-        )
-        return _Answer(
-            value="queued",
-            text=f"Queued for human review ({gate_type})",
-        )
-
-    async def ask_question(self, question: Question) -> Answer:
-        return await self.ask(question)
-
-
 # ── NEEDS_LIVE helpers ──────────────────────────────────────────────
 
 
@@ -340,23 +295,3 @@ def make_needs_live_request(
     )
 
 
-def handle_needs_live_auto(
-    issue_number: int,
-    test_results: str,
-    *,
-    repo: str = "",
-    cwd: str | None = None,
-) -> None:
-    """Handle NEEDS_LIVE verdict in auto mode: comment + label on GitHub."""
-    body = build_gate_comment(
-        HumanGateType.NEEDS_LIVE,
-        "Crucible tests require manual validation",
-        {"test_results": test_results},
-    )
-    _comment_and_label(
-        issue_number,
-        body,
-        LABEL_NEEDS_LIVE,
-        repo=repo,
-        cwd=cwd,
-    )

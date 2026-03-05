@@ -1,5 +1,10 @@
 // Dark Forge: TDD Pipeline
 //
+// ARCHITECTURE: This DOT file IS the pipeline implementation.
+// Python only does: resolve repo → acquire workspace → engine.run_pipeline("dark_forge").
+// ALL workflow logic, branching, and decisions live HERE — not in Python.
+// If you need to change Dark Forge's behavior, modify THIS file.
+//
 // The build engine of Dark Factory. Takes an approved issue through
 // spec generation, PRD splitting, and agent-driven TDD execution.
 //
@@ -8,6 +13,9 @@
 //   2. gen_prd: separates specs into test + feature, generates PRD JSON for each
 //   3. test_writer: agent implements tests from test PRD
 //   4. feature_writer: agent implements features from feature PRD, then fix loop
+//
+// Entry point: cli/dispatch.py → _run_forge_interactive()
+// Follows: _resolve_active_repo() → acquire_workspace() → engine.run_pipeline()
 
 digraph dark_forge {
     graph [

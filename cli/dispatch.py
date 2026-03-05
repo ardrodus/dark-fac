@@ -1,13 +1,56 @@
-"""Command dispatch for the argparse-based CLI path.
+"""Command dispatch — entry points for all Dark Factory pipelines.
 
-Maps parsed commands to their handler implementations in
-:mod:`factory.cli.handlers`.
+Architecture: Invoke → Gather Dependencies → Execute
+=======================================================
+
+Every pipeline entry point in this module follows the same three-phase
+pattern.  This is intentional and MUST be preserved when adding new
+pipelines or modifying existing ones.
+
+**Phase 1 — Invoke** (this module):
+    Resolve the active repo, validate inputs, and acquire a workspace.
+    Python code here is THIN — just enough to wire inputs to the engine.
+
+**Phase 2 — Gather Dependencies** (workspace/manager.py):
+    ``acquire_workspace()`` clones or pulls the repo, then bootstraps
+    agents, DOT pipelines, scripts, and logs into a self-contained
+    workspace directory.  The engine finds everything it needs inside.
+
+**Phase 3 — Execute** (pipeline/engine.py → pipelines/*.dot):
+    ``engine.run_pipeline(name, context)`` loads a DOT file and walks
+    the graph.  Each node is an LLM agent prompt.  ALL workflow logic,
+    branching, retries, and decisions live in the DOT file — not in
+    Python.
+
+Why this matters
+----------------
+Complexity belongs in the DOT files, not in Python dispatch code.
+DOT pipelines are declarative, versionable, and workspace-scoped —
+every workspace gets its own copy.  If you are tempted to add
+conditional logic, retries, or multi-step orchestration in Python,
+**stop and put it in a DOT file instead**.  Python's only job is:
+resolve repo → acquire workspace → call ``engine.run_pipeline()``.
+
+Adding a new pipeline
+---------------------
+1. Create ``pipelines/<name>.dot`` with the workflow graph.
+2. Add a dispatch function here that follows the pattern::
+
+       repo = _resolve_active_repo()
+       workspace = acquire_workspace(repo, identifier)
+       result = engine.run_pipeline("<name>", {
+           "workspace_root": workspace.path, ...
+       })
+
+3. Register it in ``DISPATCH_TABLE`` and ``cli/parser.py``.
+4. Do NOT add workflow logic in the dispatch function.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -103,47 +146,53 @@ def dispatch_selftest(parsed: ParsedCommand) -> None:
     run_selftest()
 
 
-def dispatch_auto(parsed: ParsedCommand) -> None:
-    """Dispatch the ``auto`` command (``--auto`` / ``-a`` flag).
+@dataclass(frozen=True, slots=True)
+class _CrucibleOutcome:
+    """Lightweight crucible result for verdict handling."""
 
-    Runs the full 4-pillar auto-mode loop: poll for issues → Dark Forge →
-    Crucible → Deploy → Ouroboros.
-    """
-    import os  # noqa: PLC0415
+    verdict: str  # "go", "no_go", "needs_live"
+    error: str = ""
+    duration_s: float = 0.0
 
-    from dark_factory.core.instance_lock import InstanceLockError, instance_lock  # noqa: PLC0415
-    from dark_factory.modes.auto import AutoModeConfig, run_auto_mode  # noqa: PLC0415
 
-    repo = os.environ.get("GITHUB_REPO", "")
-    if not repo:
-        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+def _extract_crucible_verdict(result: object) -> _CrucibleOutcome:
+    """Extract verdict from a PipelineResult's completed_nodes."""
+    from dark_factory.engine.runner import PipelineStatus  # noqa: PLC0415
 
-        cfg = load_config()
-        repos = cfg.data.get("repos", [])
-        for r in repos:
-            if isinstance(r, dict) and r.get("active"):
-                repo = r.get("name", "")
-                break
+    status = getattr(result, "status", None)
+    completed = getattr(result, "completed_nodes", [])
+    error = getattr(result, "error", "") or ""
+    duration = getattr(result, "duration_seconds", 0.0)
 
-    try:
-        with instance_lock():
-            run_auto_mode(AutoModeConfig(repo=repo))
-    except InstanceLockError as exc:
-        sys.stderr.write(f"[instance-lock] ERROR: {exc}\n")
-        raise SystemExit(1) from None
-    except KeyboardInterrupt:
-        sys.stderr.write("Auto mode interrupted\n")
-        raise SystemExit(130) from None
+    if status == PipelineStatus.FAILED:
+        verdict = "no_go"
+    elif "needs_live" in completed:
+        verdict = "needs_live"
+    elif "no_go" in completed or "smoke_failed" in completed:
+        verdict = "no_go"
+    elif "go" in completed:
+        verdict = "go"
+    else:
+        verdict = "no_go"
+
+    return _CrucibleOutcome(verdict=verdict, error=error, duration_s=duration)
 
 
 def dispatch_test(parsed: ParsedCommand) -> None:
-    """Dispatch the ``test`` command (``--test <PR>`` flag)."""
+    """Dispatch the ``test`` command (``--test <PR>`` flag).
+
+    Follows the prepare → gather deps → execute pattern:
+      1. Resolve active repo
+      2. acquire_workspace() — clone/pull, bootstrap agents/pipelines
+      3. engine.run_pipeline("crucible", {workspace_root, pr_number, pr_branch})
+      4. Print verdict, exit 1 on failure
+    """
     import asyncio  # noqa: PLC0415
     import shutil  # noqa: PLC0415
 
-    from dark_factory.modes.auto import VERDICT_GO, _extract_crucible_verdict  # noqa: PLC0415
     from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
     from dark_factory.ui.cli_colors import print_error  # noqa: PLC0415
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
     pr_number = int(parsed.args[0]) if parsed.args else 0
     if pr_number <= 0:
@@ -160,20 +209,25 @@ def dispatch_test(parsed: ParsedCommand) -> None:
         )
         raise SystemExit(1)
 
-    from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+    repo = _resolve_active_repo()
+    if not repo:
+        print_error(
+            "No active repo configured",
+            hint="Run 'dark-factory onboard' first or set GITHUB_REPO env var.",
+        )
+        raise SystemExit(1)
 
-    config = load_config()
-    repo_root = config.data.get("project", {}).get("repo_root", "")
-    if not repo_root:
-        from pathlib import Path  # noqa: PLC0415
+    sys.stdout.write(f"Crucible: acquiring workspace for PR #{pr_number}...\n")
+    try:
+        workspace = acquire_workspace(repo, pr_number)
+    except Exception as exc:
+        print_error(f"Failed to acquire workspace: {exc}")
+        raise SystemExit(1) from None
 
-        repo_root = str(Path.cwd())
-
-    sys.stdout.write(f"Crucible: re-running validation for PR #{pr_number}\n")
-
+    sys.stdout.write(f"Crucible: validating PR #{pr_number}...\n")
     engine = FactoryPipelineEngine()
     pipeline_result = asyncio.run(engine.run_pipeline("crucible", {
-        "workspace_root": repo_root,
+        "workspace_root": workspace.path,
         "pr_number": str(pr_number),
         "pr_branch": f"pr-{pr_number}",
     }))
@@ -182,7 +236,7 @@ def dispatch_test(parsed: ParsedCommand) -> None:
     sys.stdout.write(f"  duration={outcome.duration_s:.1f}s\n")
     if outcome.error:
         sys.stdout.write(f"  error: {outcome.error}\n")
-    if outcome.verdict != VERDICT_GO:
+    if outcome.verdict != "go":
         raise SystemExit(1)
 
 
@@ -215,6 +269,22 @@ def _needs_onboarding() -> bool:
     return True
 
 
+def _resolve_active_repo() -> str:
+    """Return the active repo name from GITHUB_REPO env var or config."""
+    import os  # noqa: PLC0415
+
+    repo = os.environ.get("GITHUB_REPO", "")
+    if not repo:
+        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+        cfg = load_config()
+        for r in cfg.data.get("repos", []):
+            if isinstance(r, dict) and r.get("active"):
+                repo = r.get("name", "")
+                break
+    return repo
+
+
 def _run_subsystem(key: str) -> None:
     """Launch the subsystem selected from the interactive TUI menu."""
     if key == "1":
@@ -224,18 +294,11 @@ def _run_subsystem(key: str) -> None:
         # Crucible — prompt for PR number and validate
         _run_crucible_interactive()
     elif key == "3":
-        # Ouroboros — runs automatically in auto mode
-        sys.stdout.write(
-            "\n  Ouroboros runs automatically after each auto-mode cycle.\n"
-            "  Use 'dark-factory auto' to start the autonomous loop.\n\n"
-        )
-        input("  Press Enter to return to menu...")
-    elif key == "4":
         # Foundry — workspace manager TUI
         from dark_factory.modes.foundry import run_foundry_tui  # noqa: PLC0415
 
         run_foundry_tui()
-    elif key == "5":
+    elif key == "4":
         # Settings — config editor TUI
         from dark_factory.modes.settings import run_settings_tui  # noqa: PLC0415
 
@@ -292,16 +355,16 @@ def _forge_event_printer(event: object) -> None:
 
 
 def _run_forge_interactive() -> None:
-    """Pick the next queued issue and run it through Dark Forge only.
+    """Pick the next queued issue and run it through Dark Forge.
 
-    Simplified flow:
-      1. Poll for queued issue
-      2. Acquire workspace (self-contained: repo/, agents/, pipeline/)
-      3. engine.run_pipeline("dark_forge", {workspace_root, issue})
-      4. Label issue done/failed
+    Follows the prepare → gather deps → execute pattern:
+      1. Resolve active repo
+      2. Poll for queued issue
+      3. acquire_workspace() — clone/pull, bootstrap agents/pipelines
+      4. engine.run_pipeline("dark_forge", {workspace_root, issue})
+      5. Label issue done/failed
     """
     import asyncio  # noqa: PLC0415
-    import os  # noqa: PLC0415
     import time  # noqa: PLC0415
 
     from dark_factory.dispatch.issue_dispatcher import (  # noqa: PLC0415
@@ -315,15 +378,7 @@ def _run_forge_interactive() -> None:
     from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
     from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
-    repo = os.environ.get("GITHUB_REPO", "")
-    if not repo:
-        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
-
-        cfg = load_config()
-        for r in cfg.data.get("repos", []):
-            if isinstance(r, dict) and r.get("active"):
-                repo = r.get("name", "")
-                break
+    repo = _resolve_active_repo()
 
     sys.stdout.write("\n  Dark Forge: scanning for queued issues...\n")
     issue = select_next_issue(repo=repo or None)
@@ -349,7 +404,6 @@ def _run_forge_interactive() -> None:
         input("  Press Enter to return to menu...")
         return
 
-    # Build issue dict for the pipeline context
     issue_dict = {
         "number": issue.number,
         "title": issue.title,
@@ -384,7 +438,15 @@ def _run_forge_interactive() -> None:
 
 
 def _run_crucible_interactive() -> None:
-    """Prompt for a PR number and run Crucible validation via the DOT engine."""
+    """Prompt for a PR number and run Crucible validation via the DOT engine.
+
+    Follows the prepare → gather deps → execute pattern:
+      1. Resolve active repo
+      2. Prompt for PR number
+      3. acquire_workspace() — clone/pull, bootstrap agents/pipelines
+      4. engine.run_pipeline("crucible", {workspace_root, pr_number, pr_branch})
+      5. Print verdict
+    """
     import asyncio  # noqa: PLC0415
     import shutil  # noqa: PLC0415
 
@@ -404,21 +466,27 @@ def _run_crucible_interactive() -> None:
         return
 
     pr_number = int(raw)
-    from dark_factory.core.config_manager import load_config  # noqa: PLC0415
-    from dark_factory.modes.auto import _extract_crucible_verdict  # noqa: PLC0415
+    repo = _resolve_active_repo()
+    if not repo:
+        sys.stdout.write("  No active repo configured.\n\n")
+        input("  Press Enter to return to menu...")
+        return
+
     from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+    from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
-    config = load_config()
-    repo_root = config.data.get("project", {}).get("repo_root", "")
-    if not repo_root:
-        from pathlib import Path  # noqa: PLC0415
-
-        repo_root = str(Path.cwd())
+    sys.stdout.write(f"  Crucible: acquiring workspace for PR #{pr_number}...\n")
+    try:
+        workspace = acquire_workspace(repo, pr_number)
+    except Exception as exc:
+        sys.stdout.write(f"  Failed to acquire workspace: {exc}\n\n")
+        input("  Press Enter to return to menu...")
+        return
 
     sys.stdout.write(f"  Crucible: validating PR #{pr_number}...\n")
     engine = FactoryPipelineEngine()
     pipeline_result = asyncio.run(engine.run_pipeline("crucible", {
-        "workspace_root": repo_root,
+        "workspace_root": workspace.path,
         "pr_number": str(pr_number),
         "pr_branch": f"pr-{pr_number}",
     }))
@@ -472,7 +540,6 @@ def dispatch_workspace(parsed: ParsedCommand) -> None:
 
 
 DISPATCH_TABLE: dict[str, Callable[[ParsedCommand], None]] = {
-    "auto": dispatch_auto,
     "config": dispatch_config,
     "dashboard": dispatch_dashboard,
     "doctor": dispatch_doctor,

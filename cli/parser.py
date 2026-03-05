@@ -67,7 +67,6 @@ def _format_help() -> str:
         "  Dark Factory \u2014 automated issue-dispatch pipeline.",
         "",
         "Options:",
-        "  -a, --auto       Start autonomous dispatch mode.",
         "  -d, --dev        Dev mode -- enable development flags.",
         "  -t, --test <PR>  Re-run Crucible validation for a specific PR.",
         "  --version        Show the version and exit.",
@@ -368,8 +367,7 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
         sys.stdout.write(f"dark-factory, version {__version__}\n")
         raise SystemExit(0)
 
-    # Parse top-level flags (--auto, --dev, --test) that can be combined
-    has_auto = False
+    # Parse top-level flags (--dev, --test)
     has_dev = False
     has_test = False
     test_pr = ""
@@ -377,9 +375,7 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
     i = 0
     while i < len(argv):
         token = argv[i]
-        if token in ("--auto", "-a"):
-            has_auto = True
-        elif token in ("--dev", "-d"):
+        if token in ("--dev", "-d"):
             has_dev = True
         elif token in ("--test", "-t"):
             has_test = True
@@ -393,12 +389,8 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
             remaining.append(token)
         i += 1
 
-    if (has_auto or has_dev or has_test) and remaining:
-        sys.stderr.write("Error: --auto/--dev/--test cannot be combined with a subcommand.\n")
-        raise SystemExit(2)
-
-    if has_test and has_auto:
-        sys.stderr.write("Error: --test cannot be combined with --auto.\n")
+    if (has_dev or has_test) and remaining:
+        sys.stderr.write("Error: --dev/--test cannot be combined with a subcommand.\n")
         raise SystemExit(2)
 
     if has_test:
@@ -411,9 +403,6 @@ def parse_cli_args(argv: list[str]) -> ParsedCommand:
             sys.stderr.write(f"Error: PR number must be positive, got {pr_number}.\n")
             raise SystemExit(2)
         return ParsedCommand(command="test", flags={"dev_mode": has_dev}, args=(str(pr_number),))
-
-    if has_auto:
-        return ParsedCommand(command="auto", flags={"dev_mode": has_dev}, args=())
 
     if has_dev:
         return ParsedCommand(command="interactive", flags={"dev_mode": True}, args=())

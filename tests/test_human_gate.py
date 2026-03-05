@@ -1,4 +1,4 @@
-"""Tests for factory.gates.human_gate — human gate handling for TUI and auto mode."""
+"""Tests for factory.gates.human_gate — human gate handling for TUI."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from dark_factory.gates.human_gate import (
     LABEL_ESCALATION,
     LABEL_NEEDS_HUMAN,
     LABEL_NEEDS_LIVE,
-    AutoModeInterviewer,
     HumanGateQueue,
     HumanGateRequest,
     HumanGateResponse,
@@ -20,7 +19,6 @@ from dark_factory.gates.human_gate import (
     TuiInterviewer,
     build_gate_comment,
     classify_gate,
-    handle_needs_live_auto,
     make_needs_live_request,
 )
 
@@ -368,70 +366,6 @@ class TestTuiInterviewer:
         await interviewer.ask(question)
 
 
-# ── AutoModeInterviewer ─────────────────────────────────────────────
-
-
-class TestAutoModeInterviewer:
-    @pytest.mark.asyncio()
-    async def test_comments_and_labels_needs_human(self) -> None:
-        with patch("dark_factory.gates.human_gate._comment_and_label") as mock_cal:
-            interviewer = AutoModeInterviewer(issue_number=42, repo="test/repo")
-            question = _question(
-                text="Review this arch",
-                stage="arch_needs_human",
-                metadata={"engineering_brief": "Use REST"},
-            )
-            answer = await interviewer.ask(question)
-
-            assert answer.value == "queued"
-            assert "needs_human" in answer.text
-            mock_cal.assert_called_once()
-            args, kwargs = mock_cal.call_args
-            assert args[0] == 42  # issue_number
-            body = args[1]
-            assert "NEEDS_HUMAN" in body
-            assert "Use REST" in body
-            assert args[2] == "human-review"  # label
-            assert kwargs["repo"] == "test/repo"
-
-    @pytest.mark.asyncio()
-    async def test_comments_and_labels_escalation(self) -> None:
-        with patch("dark_factory.gates.human_gate._comment_and_label") as mock_cal:
-            interviewer = AutoModeInterviewer(issue_number=99, repo="org/repo")
-            question = _question(
-                text="Code review stuck",
-                stage="escalate",
-                metadata={"review_history": "Round 1, Round 2, Round 3"},
-            )
-            answer = await interviewer.ask(question)
-
-            assert answer.value == "queued"
-            mock_cal.assert_called_once()
-            args, _ = mock_cal.call_args
-            assert args[0] == 99
-            body = args[1]
-            assert "ESCALATION" in body
-            assert "Round 1" in body
-            assert args[2] == "human-review"
-
-    @pytest.mark.asyncio()
-    async def test_ask_question_delegates(self) -> None:
-        with patch("dark_factory.gates.human_gate._comment_and_label"):
-            interviewer = AutoModeInterviewer(issue_number=1)
-            question = _question(stage="needs_human")
-            answer = await interviewer.ask_question(question)
-            assert answer.value == "queued"
-
-    @pytest.mark.asyncio()
-    async def test_gh_errors_logged_not_raised(self) -> None:
-        """_comment_and_label swallows GhSafeError internally, so ask() succeeds."""
-        with patch("dark_factory.gates.human_gate._comment_and_label"):
-            interviewer = AutoModeInterviewer(issue_number=42)
-            question = _question(stage="needs_human")
-            answer = await interviewer.ask(question)
-            assert answer.value == "queued"
-
-
 # ── NEEDS_LIVE helpers ──────────────────────────────────────────────
 
 
@@ -443,19 +377,6 @@ class TestNeedsLiveHelpers:
         assert req.context == "5 pass, 2 skip"
         assert req.stage == "crucible"
         assert req.metadata["test_results"] == "5 pass, 2 skip"
-
-    def test_handle_needs_live_auto(self) -> None:
-        with patch("dark_factory.gates.human_gate._comment_and_label") as mock_cal:
-            handle_needs_live_auto(42, "3 pass, 1 skip", repo="test/repo")
-
-            mock_cal.assert_called_once()
-            args, kwargs = mock_cal.call_args
-            assert args[0] == 42
-            body = args[1]
-            assert "NEEDS_LIVE" in body
-            assert "3 pass, 1 skip" in body
-            assert args[2] == "needs-live-env"
-            assert kwargs["repo"] == "test/repo"
 
 
 # ── Integration: gate types from DOT pipeline nodes ─────────────────
