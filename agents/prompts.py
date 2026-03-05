@@ -147,12 +147,3 @@ AGENT_PROMPTS: Mapping[str, AgentPrompt] = {
 }
 
 
-def get_prompt(role: str) -> AgentPrompt:
-    """Return the :class:`AgentPrompt` for *role*.
-
-    Raises
-    ------
-    KeyError
-        If *role* is not in the registry.
-    """
-    return AGENT_PROMPTS[role]
