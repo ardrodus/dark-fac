@@ -288,17 +288,9 @@ _REPORT_DIR = ".dark-factory"
 _REPORT_FILE = "gate-report.json"
 
 GATE_REGISTRY: dict[str, str] = {
-    "ai-security-review": "dark_factory.gates.ai_security_review",
-    "contract-validation": "dark_factory.gates.contract_validation",
-    "dependency-scan": "dark_factory.gates.dependency_scan",
-    "design-review": "dark_factory.gates.design_review",
-    "image-scan": "dark_factory.gates.image_scan",
-    "integration-test": "dark_factory.gates.integration_test",
+    # Security gates are handled by the sentinel DOT pipeline (pipelines/sentinel.dot).
+    # Only quality gates remain as Python implementations.
     "quality": "dark_factory.gates.quality",
-    "sast-scan": "dark_factory.gates.sast_scan",
-    "sbom-scan": "dark_factory.gates.sbom_scan",
-    "secret-scan": "dark_factory.gates.secret_scan",
-    "startup-health": "dark_factory.gates.startup_health",
 }
 
 

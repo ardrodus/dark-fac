@@ -46,7 +46,6 @@ COMMAND_TABLE: dict[str, str] = {
     "config": "Read and write .dark-factory/config.json values.",
     "dashboard": "Launch the Textual TUI dashboard.",
     "doctor": "Run system health checks.",
-    "gates": "Discover and run validation gates.",
     "ingest": "Ingest a PRD file, validate stories, and create GitHub Issues.",
     "onboard": "Run project onboarding (use --self for factory self-onboarding).",
     "selftest": "Run all built-in validators and report issues.",
@@ -182,39 +181,6 @@ def _parse_status(argv: list[str]) -> ParsedCommand:
     )
 
 
-def _parse_gates(argv: list[str]) -> ParsedCommand:
-    """Parse ``dark-factory gates`` arguments."""
-    parser = argparse.ArgumentParser(
-        prog="dark-factory gates",
-        description="Discover and run validation gates.",
-    )
-    parser.add_argument(
-        "--run-all",
-        action="store_true",
-        dest="run_all",
-        help="Run every discovered gate in sequence.",
-    )
-    parser.add_argument(
-        "--list",
-        action="store_true",
-        dest="list_gates",
-        help="List all registered gates with their check counts.",
-    )
-    parser.add_argument(
-        "--run",
-        default="",
-        dest="run_name",
-        help="Run a single gate by name.",
-    )
-    ns = parser.parse_args(argv)
-    return ParsedCommand(
-        command="gates",
-        flags={
-            "run_all": ns.run_all,
-            "list_gates": ns.list_gates,
-        },
-        args=(ns.run_name,) if ns.run_name else (),
-    )
 
 
 def _parse_ingest(argv: list[str]) -> ParsedCommand:
@@ -322,7 +288,6 @@ _SUBCOMMAND_PARSERS: dict[str, Callable[[list[str]], ParsedCommand]] = {
     "config": _parse_config,
     "dashboard": _parse_dashboard,
     "doctor": _parse_doctor,
-    "gates": _parse_gates,
     "ingest": _parse_ingest,
     "onboard": _parse_onboard,
     "selftest": _parse_selftest,

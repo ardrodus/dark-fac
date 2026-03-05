@@ -1,5 +1,10 @@
 // Sentinel: Security Gate Pipeline
 //
+// ARCHITECTURE: This DOT file IS the security implementation.
+// Python only does: engine.run_sentinel_gate(N, workspace_path).
+// ALL security logic, branching, and decisions live HERE — not in Python.
+// If you need to change security gate behavior, modify THIS file.
+//
 // Dark Factory's security layer. Runs 5 gates at different pipeline points:
 //   Gate 1  -- Post-clone: secret scan + dependency audit (blocks before any code runs)
 //   Gate 2  -- Post-architecture/pre-TDD: dependency re-scan + SAST + SBOM
@@ -8,28 +13,11 @@
 //   Gate 5  -- Post-review/pre-PR: AI security review of diff
 //
 // Sentinel is NOT called as one big pipeline. Each gate is invoked independently
-// by Dark Factory at the appropriate lifecycle point. This DOT file describes
-// the full gate sequence for documentation and visualization.
+// by Dark Factory at the appropriate lifecycle point via engine.run_sentinel_gate().
 //
-// ── Invocation Path ──────────────────────────────────────────────
-//
-// Sentinel nodes invoke factory/gates/*.py (thin wrappers), NOT
-// factory/security/*.py directly.  Each gate wrapper re-exports
-// GATE_NAME + create_runner from its security counterpart:
-//
-//   sentinel.dot node          factory/gates/ wrapper         factory/security/ impl
-//   ─────────────────────────  ─────────────────────────────  ──────────────────────────────
-//   secret_scan_full/incr  ->  gates/secret_scan.py       ->  security/secret_scan.py
-//   dep_scan / dep_rescan  ->  gates/dependency_scan.py   ->  security/dependency_scan.py
-//   sast_layer1            ->  gates/sast_scan.py         ->  security/sast_scan.py
-//   sbom_generate          ->  gates/sbom_scan.py         ->  security/sbom_scan.py
-//   image_scan             ->  gates/image_scan.py        ->  security/image_scan.py
-//   security_review        ->  gates/ai_security_review.py -> security/ai_security_review.py
-//   netiso_scan            ->  (AI prompt node)              security/network_isolation.py
-//
-// All security gates are registered in GATE_REGISTRY (framework.py)
-// and can be run individually via run_gate_by_name() or discovered
-// via discover_gates().
+// Each node is either a shell command (parallelogram) or an LLM agent prompt (box).
+// No Python gate code is called — security tools run directly via shell commands
+// and LLM agents classify the results.
 //
 // Scan modes (configurable per repo):
 //   strict   -- All HIGH+ findings block
@@ -39,8 +27,7 @@
 // On BLOCK: finding routes to security triage. Human must respond:
 //   fix_it | suppress | ignore_run | abort
 //
-// Demonstrates: sequential gates, conditional severity routing,
-// human escalation, configurable scan modes.
+// Entry point: pipeline/engine.py → run_sentinel_gate(gate_number, workspace_path)
 
 digraph sentinel {
     graph [

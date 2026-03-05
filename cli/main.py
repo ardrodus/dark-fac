@@ -18,7 +18,6 @@ import sys
 from dark_factory.cli.commands import cli as cli  # noqa: F401
 from dark_factory.cli.dispatch import dispatch_config as _dispatch_config  # noqa: F401
 from dark_factory.cli.dispatch import dispatch_doctor as _dispatch_doctor  # noqa: F401
-from dark_factory.cli.dispatch import dispatch_gates as _dispatch_gates  # noqa: F401
 from dark_factory.cli.dispatch import dispatch_onboard as _dispatch_onboard  # noqa: F401
 from dark_factory.cli.dispatch import dispatch_selftest as _dispatch_selftest  # noqa: F401
 from dark_factory.cli.dispatch import dispatch_smoke_test as _dispatch_smoke_test  # noqa: F401

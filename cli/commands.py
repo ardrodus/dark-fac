@@ -39,16 +39,6 @@ def smoke_test(title: str) -> None:
     run_smoke_test(title=title)
 
 
-@cli.command()
-@click.option("--run-all", is_flag=True, help="Run every discovered gate in sequence.")
-@click.option("--list", "list_gates", is_flag=True, help="List all registered gates with their check counts.")
-@click.option("--run", "run_name", default="", help="Run a single gate by name.")
-def gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
-    """Discover and run validation gates."""
-    from dark_factory.cli.handlers import run_gates
-
-    run_gates(run_all=run_all, list_gates=list_gates, run_name=run_name)
-
 
 @cli.command()
 def selftest() -> None:

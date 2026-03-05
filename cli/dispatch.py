@@ -105,16 +105,6 @@ def dispatch_ingest(parsed: ParsedCommand) -> None:
     )
 
 
-def dispatch_gates(parsed: ParsedCommand) -> None:
-    """Dispatch the ``gates`` command."""
-    from dark_factory.cli.handlers import run_gates
-
-    run_name = parsed.args[0] if parsed.args else ""
-    run_gates(
-        run_all=parsed.flags.get("run_all", False),
-        list_gates=parsed.flags.get("list_gates", False),
-        run_name=run_name,
-    )
 
 
 def dispatch_smoke_test(parsed: ParsedCommand) -> None:
@@ -543,7 +533,6 @@ DISPATCH_TABLE: dict[str, Callable[[ParsedCommand], None]] = {
     "config": dispatch_config,
     "dashboard": dispatch_dashboard,
     "doctor": dispatch_doctor,
-    "gates": dispatch_gates,
     "ingest": dispatch_ingest,
     "interactive": dispatch_interactive,
     "onboard": dispatch_onboard,

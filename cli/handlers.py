@@ -183,49 +183,6 @@ def run_status(*, epics: bool) -> None:
         sys.stdout.write(show_status() + "\n")
 
 
-def run_gates(*, run_all: bool, list_gates: bool, run_name: str) -> None:
-    """Execute the ``gates`` command logic.
-
-    Parameters
-    ----------
-    run_all:
-        Run every discovered gate in sequence.
-    list_gates:
-        List all discovered gates with their check counts.
-    run_name:
-        Run a single gate by name.
-    """
-    from dark_factory.gates import (
-        discover_gates,
-        format_gate_list,
-        format_unified_report,
-        run_all_gates,
-        run_gate_by_name,
-    )
-
-    if list_gates:
-        gates = discover_gates()
-        sys.stdout.write(format_gate_list(gates) + "\n")
-    elif run_name:
-        try:
-            report = run_gate_by_name(run_name)
-        except KeyError as exc:
-            sys.stderr.write(f"Error: {exc}\n")
-            raise SystemExit(1) from None
-        from dark_factory.gates import UnifiedReport
-
-        unified = UnifiedReport(gate_reports=(report,))
-        sys.stdout.write(format_unified_report(unified) + "\n")
-        if not report.passed:
-            raise SystemExit(1)
-    elif run_all:
-        unified = run_all_gates()
-        sys.stdout.write(format_unified_report(unified) + "\n")
-        if not unified.overall_passed:
-            raise SystemExit(1)
-    else:
-        sys.stdout.write("Usage: dark-factory gates [--run-all | --list | --run <name>]\n")
-
 
 def run_dashboard() -> None:
     """Launch the Textual TUI dashboard."""
