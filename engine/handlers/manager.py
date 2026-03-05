@@ -284,8 +284,8 @@ class ManagerHandler:
                     f"Child graph not found: '{source}'. "
                     f"Searched workspace pipeline dir, CWD-relative, "
                     f"built-in pipelines dir, and discover_pipelines(). "
-                    f"Check that the file exists and the 'strategy' variable "
-                    f"was expanded (unexpanded variables like ${{strategy}} "
+                    f"Check that the file exists and the 'app_type' variable "
+                    f"was expanded (unexpanded variables like ${{app_type}} "
                     f"produce invalid filenames)."
                 )
 

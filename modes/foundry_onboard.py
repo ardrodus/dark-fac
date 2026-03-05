@@ -5,7 +5,7 @@ Multi-step flow to add a new workspace to the factory:
 1. Prompt for repo URL
 2. Clone the repository
 3. Wire webhooks
-4. Select deploy strategy (web / console)
+4. Select app type (web / console)
 5. Configure Sentinel scan mode (full / fast / off)
 6. Run initial Gate 1 baseline scan
 
@@ -47,7 +47,7 @@ class OnboardResult:
 
     success: bool
     repo: str
-    strategy: str
+    app_type: str
     scan_mode: str
     steps: tuple[OnboardStep, ...]
 
@@ -131,7 +131,7 @@ class WorkspaceEntry:
     """A single workspace entry in the config file."""
 
     repo: str
-    strategy: str
+    app_type: str
     scan_mode: str
     status: str = "active"
     webhook_status: str = "enabled"
@@ -182,22 +182,22 @@ def load_workspace_configs(
                 continue
             seen_repos.add(repo_name)
 
-            # Resolve strategy from workspace_config staging key
+            # Resolve app_type from workspace_config staging key
             ws_cfg = item.get("workspace_config", {})
             if not isinstance(ws_cfg, dict):
                 ws_cfg = {}
-            strategy = str(ws_cfg.get("strategy", "console"))
+            app_type = str(ws_cfg.get("app_type", "console"))
 
             # Try workspace-level config for latest values
             ws_path = root / _CONFIG_DIR / "workspaces" / repo_name
             ws_settings = load_workspace_settings(ws_path) if ws_path.is_dir() else {}
-            if ws_settings.get("strategy"):
-                strategy = str(ws_settings["strategy"])
+            if ws_settings.get("app_type"):
+                app_type = str(ws_settings["app_type"])
 
             entries.append(
                 WorkspaceEntry(
                     repo=repo_name,
-                    strategy=strategy,
+                    app_type=app_type,
                     scan_mode="full",
                     status="active" if item.get("active") else "paused",
                     webhook_status="disabled",
@@ -216,7 +216,7 @@ def load_workspace_configs(
                 entries.append(
                     WorkspaceEntry(
                         repo=repo,
-                        strategy=str(item.get("strategy", "console")),
+                        app_type=str(item.get("app_type", "console")),
                         scan_mode=str(item.get("scan_mode", "full")),
                         status=str(item.get("status", "active")),
                         webhook_status=str(
@@ -234,7 +234,7 @@ def load_workspace_settings(workspace_path: str | Path) -> dict[str, object]:
     """Load per-workspace settings from ``{workspace}/.dark-factory/config.json``.
 
     Returns an empty dict if the file doesn't exist or is malformed.
-    Settings include ``skip_arch_review``, ``strategy``, etc.
+    Settings include ``skip_arch_review``, ``app_type``, etc.
     """
     path = Path(workspace_path) / _CONFIG_DIR / _CONFIG_FILE
     if not path.is_file():
@@ -279,7 +279,7 @@ def save_workspace_config(
     # Upsert: update existing or append new
     entry_dict = {
         "repo": entry.repo,
-        "strategy": entry.strategy,
+        "app_type": entry.app_type,
         "scan_mode": entry.scan_mode,
         "status": entry.status,
         "webhook_status": entry.webhook_status,
@@ -350,7 +350,7 @@ def build_clone_url(repo: str) -> str:
 def run_onboard_workspace(
     repo_url: str,
     *,
-    strategy: str = "console",
+    app_type: str = "console",
     scan_mode: str = "full",
     config: OnboardConfig | None = None,
 ) -> OnboardResult:
@@ -360,7 +360,7 @@ def run_onboard_workspace(
       1. Parse and validate the repo URL
       2. Clone the repository
       3. Wire webhooks
-      4. Apply deploy strategy
+      4. Apply app type (web / console)
       5. Configure Sentinel scan mode
       6. Run initial Gate 1 baseline scan
       7. Save workspace config
@@ -369,8 +369,8 @@ def run_onboard_workspace(
     ----------
     repo_url:
         GitHub repository URL or ``owner/repo`` string.
-    strategy:
-        Deploy strategy — ``"web"`` or ``"console"``.
+    app_type:
+        App type — ``"web"`` or ``"console"``.
     scan_mode:
         Sentinel scan mode — ``"full"``, ``"fast"``, or ``"off"``.
     config:
@@ -385,7 +385,7 @@ def run_onboard_workspace(
     except ValueError as exc:
         steps.append(OnboardStep(name="parse_url", passed=False, message=str(exc)))
         return OnboardResult(
-            success=False, repo=repo_url, strategy=strategy,
+            success=False, repo=repo_url, app_type=app_type,
             scan_mode=scan_mode, steps=tuple(steps),
         )
     steps.append(OnboardStep(name="parse_url", passed=True, message=f"Parsed: {repo}"))
@@ -401,7 +401,7 @@ def run_onboard_workspace(
     ))
     if not clone_ok:
         return OnboardResult(
-            success=False, repo=repo, strategy=strategy,
+            success=False, repo=repo, app_type=app_type,
             scan_mode=scan_mode, steps=tuple(steps),
         )
 
@@ -413,12 +413,12 @@ def run_onboard_workspace(
     ))
     # Webhook failure is non-fatal — continue
 
-    # Step 4: Deploy strategy
-    if strategy not in ("web", "console"):
-        strategy = "console"
+    # Step 4: App type
+    if app_type not in ("web", "console"):
+        app_type = "console"
     steps.append(OnboardStep(
-        name="deploy_strategy", passed=True,
-        message=f"Strategy set to {strategy}",
+        name="app_type", passed=True,
+        message=f"App type set to {app_type}",
     ))
 
     # Step 5: Sentinel scan mode
@@ -440,7 +440,7 @@ def run_onboard_workspace(
     webhook_status = "enabled" if webhook_ok else "disabled"
     entry = WorkspaceEntry(
         repo=repo,
-        strategy=strategy,
+        app_type=app_type,
         scan_mode=scan_mode,
         status="active",
         webhook_status=webhook_status,
@@ -457,13 +457,13 @@ def run_onboard_workspace(
             message=f"Failed to save config: {exc}",
         ))
         return OnboardResult(
-            success=False, repo=repo, strategy=strategy,
+            success=False, repo=repo, app_type=app_type,
             scan_mode=scan_mode, steps=tuple(steps),
         )
 
     # Overall success: clone must pass, gate1 is informational
     success = clone_ok
     return OnboardResult(
-        success=success, repo=repo, strategy=strategy,
+        success=success, repo=repo, app_type=app_type,
         scan_mode=scan_mode, steps=tuple(steps),
     )

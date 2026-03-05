@@ -97,7 +97,7 @@ def generate_design(
     """Generate a technical design document from *prd* and *analysis*."""
     summary = format_analysis(analysis, (
         ("language", "Language"), ("framework", "Framework"),
-        ("detected_strategy", "Strategy"), ("build_cmd", "Build"),
+        ("detected_app_type", "App type"), ("build_cmd", "Build"),
         ("test_cmd", "Test"), ("source_dirs", "Sources"), ("test_dirs", "Tests"),
     ))
     m = re.search(r"#(\d+)", prd.title)

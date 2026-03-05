@@ -1,4 +1,4 @@
-"""Strategy selection and config initialization — port of init_config() flow."""
+"""App-type selection and config initialization — port of init_config() flow."""
 from __future__ import annotations
 
 import json
@@ -15,26 +15,26 @@ if TYPE_CHECKING:
 
 _CONFIG_VERSION = 1
 
-_STRAT_MENU = (
+_APP_TYPE_MENU = (
     ("1", "console", "Console     CLI tool, no server deployment"),
     ("2", "web", "Web         Web app with Docker, CI/CD"),
 )
 
 
-def prompt_deployment_strategy(
+def prompt_app_type(
     analysis: AnalysisResult | None = None,
 ) -> str:
-    """Present deployment strategy choices based on analysis signals.
+    """Present app type choices based on analysis signals.
 
-    Returns the selected strategy name (``console`` or ``web``).
+    Returns the selected app type name (``console`` or ``web``).
     """
     w = sys.stdout.write
-    w("\n  Select deployment strategy:\n\n")
-    for num, _, label in _STRAT_MENU:
+    w("\n  Select app type:\n\n")
+    for num, _, label in _APP_TYPE_MENU:
         w(f"    [{num}] {label}\n")
-    if analysis and analysis.detected_strategy != "console":
+    if analysis and analysis.detected_app_type != "console":
         w(
-            f"\n  Detected: {analysis.detected_strategy}"
+            f"\n  Detected: {analysis.detected_app_type}"
             f" (confidence: {analysis.confidence})\n"
         )
     w("\n")
@@ -42,9 +42,9 @@ def prompt_deployment_strategy(
         choice = input("  Choice [1]: ").strip() or "1"
     except (EOFError, KeyboardInterrupt):
         choice = "1"
-    strat = next((s for n, s, _ in _STRAT_MENU if choice == n), "console")
-    w(f"  + Strategy: {strat}\n")
-    return strat
+    app_type = next((s for n, s, _ in _APP_TYPE_MENU if choice == n), "console")
+    w(f"  + App type: {app_type}\n")
+    return app_type
 
 
 def init_config(
@@ -77,7 +77,7 @@ def init_config(
         "auth_method": "",
         "repos": [],
         "analysis": {},
-        "strategy": "",
+        "app_type": "",
         "agents": {},
     }
     config_file.write_text(
@@ -89,7 +89,7 @@ def init_config(
 
 def add_repo_to_config(
     repo: str,
-    strategy: str = "",
+    app_type: str = "",
     analysis: AnalysisResult | None = None,
     *,
     start: Path | None = None,
@@ -98,7 +98,7 @@ def add_repo_to_config(
 
     Deactivates all existing repos first, then adds the new one as active.
     If *analysis* is provided, its fields are merged into the repo entry and
-    also stored in the top-level ``analysis`` and ``strategy`` keys.
+    also stored in the top-level ``analysis`` and ``app_type`` keys.
     """
     from dark_factory.core.config_manager import (  # noqa: PLC0415
         load_config,
@@ -127,8 +127,8 @@ def add_repo_to_config(
 
     # Workspace-scoped config — staged here until workspace creation
     ws_config: dict[str, object] = {}
-    if strategy:
-        ws_config["strategy"] = strategy
+    if app_type:
+        ws_config["app_type"] = app_type
     if analysis is not None:
         ad = asdict(analysis)
         for k, v in ad.items():

@@ -25,7 +25,7 @@ class WorkflowLog:
         path: Path,
         issue_number: int = 0,
         repo: str = "",
-        strategy: str = "",
+        app_type: str = "",
     ) -> None:
         self._path = path
         try:
@@ -35,7 +35,7 @@ class WorkflowLog:
                 f.write(f"Dark Factory Workflow Log -- Issue #{issue_number}\n")
                 f.write(f"Repo:      {repo}\n")
                 f.write(f"Started:   {datetime.now(tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
-                f.write(f"Strategy:  {strategy}\n")
+                f.write(f"App type:  {app_type}\n")
                 f.write("=================================================================\n")
         except OSError:
             logger.warning("Could not create workflow log at %s", path, exc_info=True)

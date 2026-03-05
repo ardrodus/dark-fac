@@ -19,9 +19,9 @@ from dark_factory.ui.theme import SUBSYSTEM_THEMES
 # ── Sample data ──────────────────────────────────────────────────
 
 SAMPLE_WORKSPACES: list[Workspace] = [
-    Workspace(repo="acme/web-app", strategy="web", status="active"),
-    Workspace(repo="acme/cli-tool", strategy="console", status="active"),
-    Workspace(repo="acme/data-pipeline", strategy="console", status="paused"),
+    Workspace(repo="acme/web-app", app_type="web", status="active"),
+    Workspace(repo="acme/cli-tool", app_type="console", status="active"),
+    Workspace(repo="acme/data-pipeline", app_type="console", status="paused"),
 ]
 
 
@@ -29,15 +29,15 @@ SAMPLE_WORKSPACES: list[Workspace] = [
 
 
 def test_workspace_is_frozen() -> None:
-    ws = Workspace(repo="test/repo", strategy="web", status="active")
+    ws = Workspace(repo="test/repo", app_type="web", status="active")
     with pytest.raises(AttributeError):
         ws.repo = "changed"  # type: ignore[misc]
 
 
 def test_workspace_fields() -> None:
-    ws = Workspace(repo="org/repo", strategy="console", status="paused")
+    ws = Workspace(repo="org/repo", app_type="console", status="paused")
     assert ws.repo == "org/repo"
-    assert ws.strategy == "console"
+    assert ws.app_type == "console"
     assert ws.status == "paused"
 
 
@@ -63,7 +63,7 @@ async def test_each_row_shows_repo_strategy_status() -> None:
     async with app.run_test():
         table = app.query_one("#workspace-table", DataTable)
         assert table.row_count == 3
-        # Column headers: Repo, Strategy, Status
+        # Column headers: Repo, App Type, Status
         assert len(table.columns) == 3
 
 
@@ -152,7 +152,7 @@ async def test_foundry_status_bar_is_present() -> None:
 
 
 def test_foundry_screen_exposes_workspaces_property() -> None:
-    ws = [Workspace(repo="x/y", strategy="web", status="active")]
+    ws = [Workspace(repo="x/y", app_type="web", status="active")]
     app = FoundryScreen(workspaces=ws)
     assert app.workspaces == ws
 

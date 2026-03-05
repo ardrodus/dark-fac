@@ -177,8 +177,8 @@ class FactoryPipelineEngine:
             )
             raise FileNotFoundError(msg)
 
-        # Inject strategy so arch_review_${strategy}.dot resolves correctly.
-        ctx.setdefault("strategy", self._engine_cfg.deploy_strategy)
+        # Inject app_type so arch_review_${app_type}.dot resolves correctly.
+        ctx.setdefault("app_type", self._engine_cfg.app_type)
 
         # Load agent persona files into context so DOT prompts can
         # reference them as $sa_security_console_agent etc.
@@ -349,17 +349,17 @@ class FactoryPipelineEngine:
         issue: dict[str, Any],
         workspace: str,
         *,
-        strategy: str | None = None,
+        app_type: str | None = None,
         skip_arch_review: bool = False,
         context: dict[str, Any] | None = None,
     ) -> Any:
-        """Run Dark Forge with issue JSON, workspace, and strategy.
+        """Run Dark Forge with issue JSON, workspace, and app type.
 
         Args:
             issue: Issue data (number, title, body, labels, etc.).
             workspace: Path to the workspace directory.
-            strategy: Deploy strategy override (``"web"`` or ``"console"``).
-                Defaults to ``EngineConfig.deploy_strategy``.
+            app_type: App type override (``"web"`` or ``"console"``).
+                Defaults to ``EngineConfig.app_type``.
             skip_arch_review: If True, skip the arch review + verdict nodes
                 and jump straight to spec generation.
             context: Extra context variables.
@@ -372,11 +372,11 @@ class FactoryPipelineEngine:
             "workspace": workspace,
             **(context or {}),
         }
-        # Strategy precedence: explicit param > workspace config > engine default
-        if not strategy and workspace:
+        # App type precedence: explicit param > workspace config > engine default
+        if not app_type and workspace:
             ws_data = self._load_workspace_config(workspace)
-            strategy = ws_data.get("strategy", "")
-        ctx["strategy"] = strategy or self._engine_cfg.deploy_strategy
+            app_type = ws_data.get("app_type", "")
+        ctx["app_type"] = app_type or self._engine_cfg.app_type
 
         # Skip arch review nodes when configured
         if skip_arch_review:

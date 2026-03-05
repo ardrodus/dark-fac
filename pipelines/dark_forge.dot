@@ -44,8 +44,8 @@ digraph dark_forge {
 
     arch_review [
         shape=hexagon,
-        label="Architecture Review\n(strategy-selected pipeline)",
-        child_graph="arch_review_${strategy}.dot",
+        label="Architecture Review\n(app-type-selected pipeline)",
+        child_graph="arch_review_${app_type}.dot",
         max_iterations=2,
         max_retries=2
     ]

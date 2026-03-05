@@ -32,7 +32,7 @@ def _apply_patches(stack: ExitStack, overrides: dict, captured: list[str]) -> No
         "model": "opus",
         "auth": True,
         "analysis": MagicMock(
-            language="Python", framework="", detected_strategy="console",
+            language="Python", framework="", detected_app_type="console",
             confidence="high", required_tools=(), base_image="python:3.12",
         ),
         "install": MagicMock(installed=0, skipped=0, failed=0),
@@ -56,7 +56,7 @@ def _apply_patches(stack: ExitStack, overrides: dict, captured: list[str]) -> No
     p(patch("dark_factory.setup.dep_installer.install_project_deps", return_value=defaults["install"]))
     p(patch("dark_factory.setup.docker_gen.write_generated_files", return_value=(Path("/tmp/Dockerfile"), Path("/tmp/dc.yml"))))
     p(patch("dark_factory.setup.github_provision.provision_github", return_value=defaults["prov"]))
-    p(patch("dark_factory.strategies.resolve_strategy", return_value=defaults["strat_cfg"]))
+    p(patch("dark_factory.strategies.resolve_app_type", return_value=defaults["strat_cfg"]))
     p(patch("dark_factory.crucible.repo_provision.provision_crucible_repo"))
     p(patch("dark_factory.core.config_manager.resolve_config_dir", return_value=Path("/tmp/.df")))
     p(patch("dark_factory.core.config_manager.load_config"))

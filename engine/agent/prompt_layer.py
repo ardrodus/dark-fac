@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Root of the factory package (factory/engine/agent/ -> factory/)
 _FACTORY_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# Default directory for agent role .md files (strategy-specific agents)
+# Default directory for agent role .md files (app-type-specific agents)
 _ROLE_PROMPTS_DIR = _FACTORY_ROOT / "agents"
 
 

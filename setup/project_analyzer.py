@@ -14,7 +14,7 @@ class AnalysisResult:
 
     language: str = ""
     framework: str = ""
-    detected_strategy: str = "console"
+    detected_app_type: str = "console"
     confidence: str = "low"
     description: str = ""
     build_cmd: str = ""
@@ -156,8 +156,8 @@ def _detect_test_dirs(root: Path) -> tuple[str, ...]:
     return tuple(dirs) or ("tests/",)
 
 
-def _detect_strategy(root: Path) -> tuple[str, str]:
-    """Detect deployment strategy: ``console`` or ``web``."""
+def _detect_app_type(root: Path) -> tuple[str, str]:
+    """Detect app type: ``console`` or ``web``."""
     has_docker = (root / "Dockerfile").is_file()
     has_compose = (root / "docker-compose.yml").is_file() or (
         root / "docker-compose.yaml").is_file()
@@ -179,7 +179,7 @@ def analyze_project(repo: str) -> AnalysisResult:
     lang, fw = _detect_language(root), _detect_framework(root)
     cmds = _CMD.get(fw) or _CMD.get(lang, ("", "", "", ()))
     build, test, run, tools = cmds
-    strat, conf = _detect_strategy(root)
+    strat, conf = _detect_app_type(root)
     has_iac = any((root / p).exists()
                   for p in ("terraform", "cdk.json", "serverless.yml", "pulumi"))
     has_db = False
@@ -198,7 +198,7 @@ def analyze_project(repo: str) -> AnalysisResult:
     desc = (f"{lang}/{fw} project" if fw
             else (f"{lang} project" if lang else "Unknown project"))
     return AnalysisResult(
-        language=lang, framework=fw, detected_strategy=strat,
+        language=lang, framework=fw, detected_app_type=strat,
         confidence=conf, description=desc,
         build_cmd=build, test_cmd=test, run_cmd=run,
         base_image=bimg, required_tools=tools,
@@ -219,7 +219,7 @@ def display_analysis_results(result: AnalysisResult) -> None:
     w(f"  Language:     {lang}\n")
     if result.base_image:
         w(f"  Base image:   {result.base_image}\n")
-    w(f"  Strategy:     {result.detected_strategy} (confidence: {result.confidence})\n")
+    w(f"  App type:     {result.detected_app_type} (confidence: {result.confidence})\n")
     chars = [c for c, v in (("web-server", result.has_web_server),
              ("database", result.has_database), ("IaC", result.has_iac)) if v]
     if chars:
@@ -236,23 +236,23 @@ def display_analysis_results(result: AnalysisResult) -> None:
     w("  -----------------------------------------\n")
 
 
-_STRAT_MENU = (
+_APP_TYPE_MENU = (
     ("1", "console", "Console     CLI tool, no server deployment"),
     ("2", "web", "Web         Web app with Docker, CI/CD"))
 
 
-def _prompt_strategy(result: AnalysisResult) -> AnalysisResult:
+def _prompt_app_type(result: AnalysisResult) -> AnalysisResult:
     w = sys.stdout.write
-    w("\n  Select deployment strategy:\n\n")
-    for num, _, label in _STRAT_MENU:
+    w("\n  Select app type:\n\n")
+    for num, _, label in _APP_TYPE_MENU:
         w(f"    [{num}] {label}\n")
     w("\n")
     try:
         choice = input("  Choice [1]: ").strip() or "1"
     except (EOFError, KeyboardInterrupt):
         choice = "1"
-    strat = next((s for n, s, _ in _STRAT_MENU if choice == n), "console")
-    return replace(result, detected_strategy=strat, confidence="high")
+    strat = next((s for n, s, _ in _APP_TYPE_MENU if choice == n), "console")
+    return replace(result, detected_app_type=strat, confidence="high")
 
 
 def confirm_or_override_analysis(result: AnalysisResult) -> AnalysisResult:
@@ -260,15 +260,15 @@ def confirm_or_override_analysis(result: AnalysisResult) -> AnalysisResult:
     if not sys.stdin.isatty():
         return result
     if result.confidence not in ("high", "medium"):
-        sys.stdout.write("\n  ! Low confidence -- please select strategy.\n")
-        return _prompt_strategy(result)
+        sys.stdout.write("\n  ! Low confidence -- please select app type.\n")
+        return _prompt_app_type(result)
     sys.stdout.write(
-        f"\n  [Enter] Accept detected strategy ({result.detected_strategy})\n"
-        "  [o]     Override -- choose a different strategy\n\n")
+        f"\n  [Enter] Accept detected app type ({result.detected_app_type})\n"
+        "  [o]     Override -- choose a different app type\n\n")
     try:
         choice = input("  Choice: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return result
-    if choice not in ("o", "override") and result.detected_strategy in ("console", "web"):
+    if choice not in ("o", "override") and result.detected_app_type in ("console", "web"):
         return result
-    return _prompt_strategy(result)
+    return _prompt_app_type(result)

@@ -33,7 +33,7 @@ class TestProjectAnalyzerDisplay:
         result = AnalysisResult(
             language="Python",
             framework="FastAPI",
-            detected_strategy="web",
+            detected_app_type="web",
             confidence="high",
             description="Python/FastAPI project",
         )
@@ -46,7 +46,7 @@ class TestProjectAnalyzerDisplay:
         result = AnalysisResult(
             language="TypeScript",
             framework="React",
-            detected_strategy="web",
+            detected_app_type="web",
             confidence="high",
             description="TypeScript/React project",
         )
@@ -59,7 +59,7 @@ class TestProjectAnalyzerDisplay:
         result = AnalysisResult(
             language="Python",
             framework="Django",
-            detected_strategy="web",
+            detected_app_type="web",
             confidence="high",
             description="Python/Django project",
         )
@@ -73,7 +73,7 @@ class TestProjectAnalyzerDisplay:
         result = AnalysisResult(
             language="Go",
             framework="Gin",
-            detected_strategy="web",
+            detected_app_type="web",
             confidence="medium",
             description="Go/Gin project",
         )

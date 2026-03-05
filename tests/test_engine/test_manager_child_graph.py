@@ -95,7 +95,7 @@ class TestLoadChildGraphResolution:
         assert "arch_review" in graph.name
 
     def test_strategy_expanded_path(self, handler: ManagerHandler) -> None:
-        """After variable expansion, arch_review_${strategy}.dot resolves correctly."""
+        """After variable expansion, arch_review_${app_type}.dot resolves correctly."""
         from dark_factory.engine.variable_expansion import expand_variables
         from dark_factory.pipeline.loader import _BUILTINS_DIR
 
@@ -103,8 +103,8 @@ class TestLoadChildGraphResolution:
         if not candidate.exists():
             pytest.skip("arch_review_console.dot not in builtins dir")
 
-        source = "dark_factory/pipelines/arch_review_${strategy}.dot"
-        context = {"strategy": "console", "goal": "test"}
+        source = "dark_factory/pipelines/arch_review_${app_type}.dot"
+        context = {"app_type": "console", "goal": "test"}
         expanded = expand_variables(source, context, undefined="keep")
 
         graph = handler._load_child_graph(expanded, context)
@@ -120,9 +120,9 @@ class TestLoadChildGraphErrors:
             handler._load_child_graph("no_such_pipeline.dot", {"goal": "test"})
 
     def test_unexpanded_variable_raises_file_not_found(self, handler: ManagerHandler) -> None:
-        """An unexpanded ${strategy} produces a clear FileNotFoundError."""
-        source = "dark_factory/pipelines/arch_review_${strategy}.dot"
-        with pytest.raises(FileNotFoundError, match="strategy.*variable"):
+        """An unexpanded ${app_type} produces a clear FileNotFoundError."""
+        source = "dark_factory/pipelines/arch_review_${app_type}.dot"
+        with pytest.raises(FileNotFoundError, match="app_type.*variable"):
             handler._load_child_graph(source, {"goal": "test"})
 
     def test_path_traversal_rejected(self, handler: ManagerHandler) -> None:

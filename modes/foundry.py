@@ -38,7 +38,7 @@ class Workspace:
     """A single configured workspace entry."""
 
     repo: str
-    strategy: str  # "web" | "console"
+    app_type: str  # "web" | "console"
     status: str    # "active" | "paused"
 
 
@@ -52,7 +52,7 @@ def load_workspaces(config_root: Path | None = None) -> list[Workspace]:
 
     entries = load_workspace_configs(config_root=config_root)
     return [
-        Workspace(repo=e.repo, strategy=e.strategy, status=e.status)
+        Workspace(repo=e.repo, app_type=e.app_type, status=e.status)
         for e in entries
     ]
 
@@ -96,7 +96,7 @@ _STATUS_COLOUR: dict[str, str] = {
     "paused": THEME.warning,
 }
 
-_STRATEGY_COLOUR: dict[str, str] = {
+_APP_TYPE_COLOUR: dict[str, str] = {
     "web": THEME.info,
     "console": THEME.text_accent,
 }
@@ -224,10 +224,10 @@ class FoundryScreen(App[str | None]):
         empty_msg.display = False
         for ws in self._workspaces:
             s_colour = _STATUS_COLOUR.get(ws.status, THEME.text)
-            t_colour = _STRATEGY_COLOUR.get(ws.strategy, THEME.text)
+            t_colour = _APP_TYPE_COLOUR.get(ws.app_type, THEME.text)
             table.add_row(
                 ws.repo,
-                f"[{t_colour}]{ws.strategy}[/{t_colour}]",
+                f"[{t_colour}]{ws.app_type}[/{t_colour}]",
                 f"[{s_colour}]{ws.status}[/{s_colour}]",
                 key=ws.repo,
             )

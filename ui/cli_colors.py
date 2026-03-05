@@ -146,24 +146,24 @@ def phase_header(
         return f"{label}\n{divider}\n"
 
 
-def completion_panel(repo: str, strategy: str, label_count: int) -> str:
+def completion_panel(repo: str, app_type: str, label_count: int) -> str:
     """Return a styled onboarding completion summary.
 
     Preserves machine-parseable ``Onboarding complete!`` and
-    ``GITHUB_REPO=owner/repo`` lines.  Escapes *repo* and *strategy*
+    ``GITHUB_REPO=owner/repo`` lines.  Escapes *repo* and *app_type*
     with :func:`rich.markup.escape` when Rich is available (SEC-001).
     """
     try:
         from rich.markup import escape  # noqa: PLC0415
 
         safe_repo = escape(repo)
-        safe_strategy = escape(strategy)
+        safe_app_type = escape(app_type)
 
         body = (
             f"Onboarding complete!\n"
             f"\n"
             f"  Repository: {safe_repo}\n"
-            f"  Strategy:   {safe_strategy}\n"
+            f"  App type:   {safe_app_type}\n"
             f"  Labels:     {label_count} created\n"
             f"  GITHUB_REPO={safe_repo}"
         )
@@ -179,7 +179,7 @@ def completion_panel(repo: str, strategy: str, label_count: int) -> str:
             f"  Onboarding Summary\n"
             f"  {sep}\n"
             f"  Repository: {repo}\n"
-            f"  Strategy:   {strategy}\n"
+            f"  App type:   {app_type}\n"
             f"  Labels:     {label_count} created\n"
             f"  GITHUB_REPO={repo}\n"
             f"  {sep}\n"

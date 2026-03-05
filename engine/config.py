@@ -41,7 +41,7 @@ class EngineConfig:
 
     model: str = ""
     claude_path: str = "claude"
-    deploy_strategy: str = "console"
+    app_type: str = "console"
     sentinel_scan_mode: str = "standard"
     pipeline_timeout: int = 600
     max_concurrent_subprocesses: int = 3
@@ -83,7 +83,7 @@ def load_engine_config(start: Path | None = None) -> EngineConfig:
 
     model = get_config_value(cfg, "engine.model") or get_config_value(cfg, "claude_model") or ""
     claude_path = get_config_value(cfg, "engine.claude_path") or "claude"
-    deploy_strategy = get_config_value(cfg, "engine.deploy_strategy") or "console"
+    app_type = get_config_value(cfg, "engine.app_type") or "console"
     sentinel_scan_mode = get_config_value(cfg, "sentinel.scan_mode") or "standard"
 
     raw_timeout = get_config_value(cfg, "engine.pipeline_timeout")
@@ -104,7 +104,7 @@ def load_engine_config(start: Path | None = None) -> EngineConfig:
     return EngineConfig(
         model=str(model),
         claude_path=str(claude_path),
-        deploy_strategy=str(deploy_strategy),
+        app_type=str(app_type),
         sentinel_scan_mode=str(sentinel_scan_mode),
         pipeline_timeout=pipeline_timeout,
         max_concurrent_subprocesses=max_concurrent_subprocesses,

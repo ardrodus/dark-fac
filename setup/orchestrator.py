@@ -161,7 +161,7 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
     from dark_factory.setup.config_init import (  # noqa: PLC0415
         add_repo_to_config,
         init_config,
-        prompt_deployment_strategy,
+        prompt_app_type,
     )
     from dark_factory.setup.dep_installer import install_project_deps  # noqa: PLC0415
     from dark_factory.setup.docker_gen import write_generated_files  # noqa: PLC0415
@@ -265,13 +265,13 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
             display_analysis_results(analysis)
             if not auto_mode:
                 analysis = confirm_or_override_analysis(analysis)
-        dl.info(f"lang={analysis.language} fw={analysis.framework} strat={analysis.detected_strategy}")
+        dl.info(f"lang={analysis.language} fw={analysis.framework} app_type={analysis.detected_app_type}")
 
-        # ── Phase C9: Strategy Selection ──────────────────────────
-        with _phase(dl, "strategy-select"):
-            strategy = analysis.detected_strategy if auto_mode else prompt_deployment_strategy(analysis)
-        dl.info(f"strategy={strategy}")
-        w(f"  Strategy: {strategy}\n")
+        # ── Phase C9: App Type Selection ──────────────────────────
+        with _phase(dl, "app-type-select"):
+            app_type = analysis.detected_app_type if auto_mode else prompt_app_type(analysis)
+        dl.info(f"app_type={app_type}")
+        w(f"  App type: {app_type}\n")
 
         # ── Phase C11: Install Project Deps ───────────────────────
         with _phase(dl, "install-deps"):
@@ -281,7 +281,7 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
         # ── Phase C12: Config Init ────────────────────────────────
         with _phase(dl, "config-init"):
             init_config(start=start)
-            add_repo_to_config(repo, strategy, analysis, start=start)
+            add_repo_to_config(repo, app_type, analysis, start=start)
         w("  Config initialized\n")
 
         # ── Phase C13-C14: Docker Gen ─────────────────────────────
@@ -333,12 +333,25 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
                 dl.info("crucible-repo: skipped by user")
                 w("  Crucible repo: skipped (configure later in Settings)\n")
 
-        # ── Phase E: Strategy Bootstrap ───────────────────────────
-        with _phase(dl, "strategy-bootstrap"):
-            from dark_factory.strategies import resolve_strategy  # noqa: PLC0415
-            cfg = resolve_strategy(strategy)
-            dl.info(f"strategy-deps={', '.join(cfg.bootstrap_deps)}")
-            w(f"  Strategy deps: {', '.join(cfg.bootstrap_deps)}\n")
+        # ── Phase E: App Type Bootstrap ──────────────────────────
+        with _phase(dl, "app-type-bootstrap"):
+            from dark_factory.strategies import resolve_app_type  # noqa: PLC0415
+            cfg = resolve_app_type(app_type)
+            dl.info(f"app-type-deps={', '.join(cfg.bootstrap_deps)}")
+            w(f"  App type deps: {', '.join(cfg.bootstrap_deps)}\n")
+
+        # ── Phase F: Acquire Workspace ────────────────────────────
+        with _phase(dl, "acquire-workspace"):
+            from dark_factory.workspace.manager import create_workspace  # noqa: PLC0415
+
+            ws_result = create_workspace(repo, f"https://github.com/{repo}.git")
+            if ws_result.success:
+                dl.info(f"workspace={ws_result.workspace.path if ws_result.workspace else 'unknown'}")
+                w(f"  Workspace ready: {ws_result.workspace.path if ws_result.workspace else 'created'}\n")
+            else:
+                # Non-fatal — workspace can be created on first pipeline run
+                dl.info(f"workspace: {ws_result.message} (non-fatal)")
+                w(f"  Workspace: {ws_result.message} (will create on first run)\n")
 
         # ── Cleanup ───────────────────────────────────────────────
         import shutil  # noqa: PLC0415
@@ -348,7 +361,7 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
         dl.flush()
         w("\n  Onboarding complete!\n")
         w(f"  Repository: {repo}\n")
-        w(f"  Strategy:   {strategy}\n")
+        w(f"  App type:   {app_type}\n")
         w(f"  Labels:     {label_count} created\n")
         w(f"  GITHUB_REPO={repo}\n\n")
         return 0

@@ -67,12 +67,12 @@ def test_onboard_step_is_frozen() -> None:
 
 def test_onboard_result_fields() -> None:
     result = OnboardResult(
-        success=True, repo="acme/app", strategy="web",
+        success=True, repo="acme/app", app_type="web",
         scan_mode="full", steps=(),
     )
     assert result.success is True
     assert result.repo == "acme/app"
-    assert result.strategy == "web"
+    assert result.app_type == "web"
     assert result.scan_mode == "full"
 
 
@@ -80,14 +80,14 @@ def test_onboard_result_fields() -> None:
 
 
 def test_workspace_entry_defaults() -> None:
-    entry = WorkspaceEntry(repo="acme/app", strategy="web", scan_mode="full")
+    entry = WorkspaceEntry(repo="acme/app", app_type="web", scan_mode="full")
     assert entry.status == "active"
     assert entry.webhook_status == "enabled"
     assert entry.watched_branch == "main"
 
 
 def test_workspace_entry_is_frozen() -> None:
-    entry = WorkspaceEntry(repo="acme/app", strategy="web", scan_mode="full")
+    entry = WorkspaceEntry(repo="acme/app", app_type="web", scan_mode="full")
     with pytest.raises(AttributeError):
         entry.repo = "changed"  # type: ignore[misc]
 
@@ -98,30 +98,30 @@ def test_workspace_entry_is_frozen() -> None:
 class TestConfigPersistence:
     def test_save_and_load_workspace(self, tmp_path: Path) -> None:
         entry = WorkspaceEntry(
-            repo="acme/web-app", strategy="web", scan_mode="full",
+            repo="acme/web-app", app_type="web", scan_mode="full",
         )
         save_workspace_config(entry, config_root=tmp_path)
 
         loaded = load_workspace_configs(config_root=tmp_path)
         assert len(loaded) == 1
         assert loaded[0].repo == "acme/web-app"
-        assert loaded[0].strategy == "web"
+        assert loaded[0].app_type == "web"
         assert loaded[0].scan_mode == "full"
         assert loaded[0].status == "active"
 
     def test_save_creates_config_dir(self, tmp_path: Path) -> None:
-        entry = WorkspaceEntry(repo="x/y", strategy="console", scan_mode="fast")
+        entry = WorkspaceEntry(repo="x/y", app_type="console", scan_mode="fast")
         path = save_workspace_config(entry, config_root=tmp_path)
         assert path.is_file()
         assert (tmp_path / ".dark-factory").is_dir()
 
     def test_save_multiple_workspaces(self, tmp_path: Path) -> None:
         save_workspace_config(
-            WorkspaceEntry(repo="a/b", strategy="web", scan_mode="full"),
+            WorkspaceEntry(repo="a/b", app_type="web", scan_mode="full"),
             config_root=tmp_path,
         )
         save_workspace_config(
-            WorkspaceEntry(repo="c/d", strategy="console", scan_mode="fast"),
+            WorkspaceEntry(repo="c/d", app_type="console", scan_mode="fast"),
             config_root=tmp_path,
         )
         loaded = load_workspace_configs(config_root=tmp_path)
@@ -131,16 +131,16 @@ class TestConfigPersistence:
 
     def test_save_upserts_existing(self, tmp_path: Path) -> None:
         save_workspace_config(
-            WorkspaceEntry(repo="a/b", strategy="web", scan_mode="full"),
+            WorkspaceEntry(repo="a/b", app_type="web", scan_mode="full"),
             config_root=tmp_path,
         )
         save_workspace_config(
-            WorkspaceEntry(repo="a/b", strategy="console", scan_mode="fast"),
+            WorkspaceEntry(repo="a/b", app_type="console", scan_mode="fast"),
             config_root=tmp_path,
         )
         loaded = load_workspace_configs(config_root=tmp_path)
         assert len(loaded) == 1
-        assert loaded[0].strategy == "console"
+        assert loaded[0].app_type == "console"
         assert loaded[0].scan_mode == "fast"
 
     def test_load_missing_config_returns_empty(self, tmp_path: Path) -> None:
@@ -161,7 +161,7 @@ class TestConfigPersistence:
             encoding="utf-8",
         )
         save_workspace_config(
-            WorkspaceEntry(repo="a/b", strategy="web", scan_mode="full"),
+            WorkspaceEntry(repo="a/b", app_type="web", scan_mode="full"),
             config_root=tmp_path,
         )
         data = json.loads(
@@ -201,10 +201,10 @@ class TestOnboardFlow:
 
     def test_successful_onboard(self, tmp_path: Path) -> None:
         cfg = self._make_config(tmp_path)
-        result = run_onboard_workspace("acme/web-app", strategy="web", scan_mode="full", config=cfg)
+        result = run_onboard_workspace("acme/web-app", app_type="web", scan_mode="full", config=cfg)
         assert result.success is True
         assert result.repo == "acme/web-app"
-        assert result.strategy == "web"
+        assert result.app_type == "web"
         assert result.scan_mode == "full"
 
     def test_all_steps_pass(self, tmp_path: Path) -> None:
@@ -214,7 +214,7 @@ class TestOnboardFlow:
         assert "parse_url" in step_names
         assert "clone" in step_names
         assert "wire_webhooks" in step_names
-        assert "deploy_strategy" in step_names
+        assert "app_type" in step_names
         assert "sentinel_scan_mode" in step_names
         assert "gate1_baseline" in step_names
         assert "save_config" in step_names
@@ -254,17 +254,17 @@ class TestOnboardFlow:
 
     def test_config_saved_after_onboard(self, tmp_path: Path) -> None:
         cfg = self._make_config(tmp_path)
-        run_onboard_workspace("acme/web-app", strategy="web", scan_mode="fast", config=cfg)
+        run_onboard_workspace("acme/web-app", app_type="web", scan_mode="fast", config=cfg)
         entries = load_workspace_configs(config_root=tmp_path)
         assert len(entries) == 1
         assert entries[0].repo == "acme/web-app"
-        assert entries[0].strategy == "web"
+        assert entries[0].app_type == "web"
         assert entries[0].scan_mode == "fast"
 
     def test_invalid_strategy_defaults_to_console(self, tmp_path: Path) -> None:
         cfg = self._make_config(tmp_path)
-        result = run_onboard_workspace("acme/app", strategy="invalid", config=cfg)
-        assert result.strategy == "console"
+        result = run_onboard_workspace("acme/app", app_type="invalid", config=cfg)
+        assert result.app_type == "console"
 
     def test_invalid_scan_mode_defaults_to_full(self, tmp_path: Path) -> None:
         cfg = self._make_config(tmp_path)
@@ -310,11 +310,11 @@ class TestFoundryListIntegration:
             workspace_root=tmp_path / "workspaces",
             config_root=tmp_path,
         )
-        run_onboard_workspace("acme/web-app", strategy="web", config=cfg)
+        run_onboard_workspace("acme/web-app", app_type="web", config=cfg)
         workspaces = load_workspaces(config_root=tmp_path)
         assert len(workspaces) == 1
         assert workspaces[0].repo == "acme/web-app"
-        assert workspaces[0].strategy == "web"
+        assert workspaces[0].app_type == "web"
         assert workspaces[0].status == "active"
 
     def test_multiple_onboards_appear_in_list(self, tmp_path: Path) -> None:
@@ -327,8 +327,8 @@ class TestFoundryListIntegration:
             workspace_root=tmp_path / "workspaces",
             config_root=tmp_path,
         )
-        run_onboard_workspace("acme/web-app", strategy="web", config=cfg)
-        run_onboard_workspace("acme/cli-tool", strategy="console", config=cfg)
+        run_onboard_workspace("acme/web-app", app_type="web", config=cfg)
+        run_onboard_workspace("acme/cli-tool", app_type="console", config=cfg)
         workspaces = load_workspaces(config_root=tmp_path)
         assert len(workspaces) == 2
         repos = {ws.repo for ws in workspaces}

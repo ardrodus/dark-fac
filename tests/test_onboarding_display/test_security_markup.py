@@ -38,15 +38,15 @@ class TestRichMarkupInjection:
                 pytest.skip("completion_panel not yet implemented")
 
     def test_strategy_name_markup_escaped(self) -> None:
-        """Strategy name with markup characters is escaped before rendering."""
-        malicious_strategy = "[red]MALICIOUS[/red]"
+        """App type name with markup characters is escaped before rendering."""
+        malicious_app_type = "[red]MALICIOUS[/red]"
         captured: list[str] = []
 
         with patch("sys.stdout.write", side_effect=lambda s: captured.append(s)):
             try:
                 from dark_factory.ui.cli_colors import completion_panel
 
-                output = completion_panel("acme/app", malicious_strategy, 5)
+                output = completion_panel("acme/app", malicious_app_type, 5)
                 # Raw Rich markup should not be passed through unescaped
                 # Either escaped or stripped
                 assert "[red]" not in output or "\\[red]" in output

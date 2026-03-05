@@ -1,59 +1,49 @@
-"""Strategy configuration -- per-type deployment defaults.
+"""App-type configuration -- per-type defaults.
 
-Strategy is a simple config value (``"console"`` or ``"web"``), not a class
-hierarchy.  Use :func:`get_config` to look up defaults::
+App type is a StrEnum (``"console"`` or ``"web"``).  Use
+:func:`get_config` to look up per-type defaults::
 
-    from dark_factory.strategies.config import get_config
-    cfg = get_config("console")
+    from dark_factory.strategies.config import AppType, get_config
+    cfg = get_config(AppType.CONSOLE)
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
+
+
+class AppType(StrEnum):
+    """Application type — determines pipeline behaviour and toolchain."""
+
+    CONSOLE = "console"
+    WEB = "web"
 
 
 @dataclass(frozen=True, slots=True)
-class StrategyConfig:
-    """Per-strategy deployment defaults."""
+class AppTypeConfig:
+    """Per-app-type defaults (console CLI vs web app)."""
 
     name: str
-    agent_count: int
-    coverage_target: int
-    parallel_stages: bool
-    auto_approve_audit: bool
-    require_manual_review: bool
-    max_parallel_deploys: int
     bootstrap_deps: tuple[str, ...]
 
 
-DEFAULTS: dict[str, StrategyConfig] = {
-    "console": StrategyConfig(
+DEFAULTS: dict[str, AppTypeConfig] = {
+    AppType.CONSOLE: AppTypeConfig(
         name="Console",
-        agent_count=1,
-        coverage_target=80,
-        parallel_stages=False,
-        auto_approve_audit=True,
-        require_manual_review=False,
-        max_parallel_deploys=1,
         bootstrap_deps=("python", "pip", "twine", "git"),
     ),
-    "web": StrategyConfig(
+    AppType.WEB: AppTypeConfig(
         name="Web",
-        agent_count=3,
-        coverage_target=90,
-        parallel_stages=True,
-        auto_approve_audit=False,
-        require_manual_review=True,
-        max_parallel_deploys=3,
         bootstrap_deps=("node", "npm", "docker", "git"),
     ),
 }
 
 
-def get_config(strategy: str) -> StrategyConfig:
-    """Look up strategy defaults by name."""
-    cfg = DEFAULTS.get(strategy)
+def get_config(app_type: str) -> AppTypeConfig:
+    """Look up app-type defaults by name."""
+    cfg = DEFAULTS.get(app_type)
     if cfg is None:
-        msg = f"Unknown strategy: {strategy!r}. Valid: {', '.join(DEFAULTS)}"
+        msg = f"Unknown app type: {app_type!r}. Valid: {', '.join(DEFAULTS)}"
         raise ValueError(msg)
     return cfg

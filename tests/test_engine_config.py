@@ -24,7 +24,7 @@ def project_dir(tmp_path: Path) -> Path:
         "engine": {
             "model": "claude-opus-4-6",
             "claude_path": "/usr/local/bin/claude",
-            "deploy_strategy": "aws",
+            "app_type": "aws",
             "pipeline_timeout": 300,
         },
         "sentinel": {
@@ -51,7 +51,7 @@ class TestEngineConfig:
         cfg = EngineConfig()
         assert cfg.model == ""
         assert cfg.claude_path == "claude"
-        assert cfg.deploy_strategy == "console"
+        assert cfg.app_type == "console"
         assert cfg.sentinel_scan_mode == "standard"
         assert cfg.pipeline_timeout == 600
         assert cfg.model_stylesheet == ""
@@ -69,7 +69,7 @@ class TestLoadEngineConfig:
         cfg = load_engine_config(start=project_dir)
         assert cfg.model == "claude-opus-4-6"
         assert cfg.claude_path == "/usr/local/bin/claude"
-        assert cfg.deploy_strategy == "aws"
+        assert cfg.app_type == "aws"
         assert cfg.sentinel_scan_mode == "strict"
         assert cfg.pipeline_timeout == 300
 
@@ -77,7 +77,7 @@ class TestLoadEngineConfig:
         cfg = load_engine_config(start=minimal_project_dir)
         assert cfg.model == ""
         assert cfg.claude_path == "claude"
-        assert cfg.deploy_strategy == "console"
+        assert cfg.app_type == "console"
         assert cfg.sentinel_scan_mode == "standard"
         assert cfg.pipeline_timeout == 600
 

@@ -27,38 +27,38 @@ class TestConfigInitDisplay:
         captured: list[str] = []
         analysis = AnalysisResult(
             language="Python",
-            detected_strategy="console",
+            detected_app_type="console",
             confidence="high",
         )
         with (
             patch("sys.stdout.write", side_effect=lambda s: captured.append(s)),
             patch("builtins.input", return_value="1"),
         ):
-            from dark_factory.setup.config_init import prompt_deployment_strategy
+            from dark_factory.setup.config_init import prompt_app_type
 
-            prompt_deployment_strategy(analysis)
+            prompt_app_type(analysis)
 
         full_output = "".join(captured)
         # Menu should show numbered options
         assert "[1]" in full_output or "Console" in full_output
         assert "[2]" in full_output or "Web" in full_output
 
-    def test_detected_strategy_highlighted(self) -> None:
-        """Detected strategy is highlighted as recommended."""
+    def test_detected_app_type_highlighted(self) -> None:
+        """Detected app type is highlighted as recommended."""
         captured: list[str] = []
         analysis = AnalysisResult(
             language="TypeScript",
             framework="Next.js",
-            detected_strategy="web",
+            detected_app_type="web",
             confidence="high",
         )
         with (
             patch("sys.stdout.write", side_effect=lambda s: captured.append(s)),
             patch("builtins.input", return_value="2"),
         ):
-            from dark_factory.setup.config_init import prompt_deployment_strategy
+            from dark_factory.setup.config_init import prompt_app_type
 
-            prompt_deployment_strategy(analysis)
+            prompt_app_type(analysis)
 
         full_output = "".join(captured)
         # Should indicate the detected strategy
@@ -71,14 +71,14 @@ class TestConfigInitDisplay:
             patch("sys.stdout.write", side_effect=lambda s: captured.append(s)),
             patch("builtins.input", return_value="1"),
         ):
-            from dark_factory.setup.config_init import prompt_deployment_strategy
+            from dark_factory.setup.config_init import prompt_app_type
 
-            result = prompt_deployment_strategy()
+            result = prompt_app_type()
 
         full_output = "".join(captured)
         assert result == "console"
         # Should confirm the selection
-        assert "Strategy" in full_output or "console" in full_output
+        assert "App Type" in full_output or "console" in full_output
 
 
 # ── dep_installer.py tests ───────────────────────────────────────

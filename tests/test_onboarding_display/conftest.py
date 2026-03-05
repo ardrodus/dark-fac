@@ -38,8 +38,8 @@ class MockPresenter:
     def dep_status(self, name: str, found: bool) -> None:
         self._record("dep_status", name, found)
 
-    def completion_panel(self, repo: str, strategy: str, label_count: int) -> None:
-        self._record("completion_panel", repo, strategy, label_count)
+    def completion_panel(self, repo: str, app_type: str, label_count: int) -> None:
+        self._record("completion_panel", repo, app_type, label_count)
 
     def error(self, message: str, *, hint: str = "") -> None:
         self._record("error", message, hint=hint)

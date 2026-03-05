@@ -37,7 +37,7 @@ _DEFAULTS: dict[str, Any] = {
     "engine": {
         "model": "",
         "claude_path": "claude",
-        "deploy_strategy": "console",
+        "app_type": "console",
         "pipeline_timeout": 600,
     },
     "sentinel": {

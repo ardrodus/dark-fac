@@ -28,7 +28,7 @@ class TestCompletionPanel:
         assert "acme/web-app" in output
 
     def test_panel_contains_strategy(self) -> None:
-        """Panel body contains the strategy value."""
+        """Panel body contains the app_type value."""
         from dark_factory.ui.cli_colors import completion_panel
 
         output = completion_panel("acme/web-app", "web", 17)

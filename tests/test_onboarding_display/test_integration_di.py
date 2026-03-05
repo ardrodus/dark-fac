@@ -42,7 +42,7 @@ def _make_success_mocks():
     fake_analysis = MagicMock()
     fake_analysis.language = "Python"
     fake_analysis.framework = "pytest"
-    fake_analysis.detected_strategy = "console"
+    fake_analysis.detected_app_type = "console"
     fake_analysis.confidence = "high"
     fake_analysis.required_tools = ("python",)
 
@@ -80,13 +80,13 @@ def _apply_patches(stack: ExitStack, mocks: dict, captured: list[str], repo: str
     p(patch("dark_factory.setup.project_analyzer.analyze_project", return_value=mocks["analysis"]))
     p(patch("dark_factory.setup.project_analyzer.display_analysis_results"))
     p(patch("dark_factory.setup.project_analyzer.confirm_or_override_analysis", return_value=mocks["analysis"]))
-    p(patch("dark_factory.setup.config_init.prompt_deployment_strategy", return_value="console"))
+    p(patch("dark_factory.setup.config_init.prompt_app_type", return_value="console"))
     p(patch("dark_factory.setup.config_init.init_config"))
     p(patch("dark_factory.setup.config_init.add_repo_to_config"))
     p(patch("dark_factory.setup.dep_installer.install_project_deps", return_value=mocks["install"]))
     p(patch("dark_factory.setup.docker_gen.write_generated_files", return_value=(Path("/tmp/Dockerfile"), Path("/tmp/docker-compose.yml"))))
     p(patch("dark_factory.setup.github_provision.provision_github", return_value=mocks["prov"]))
-    p(patch("dark_factory.strategies.resolve_strategy", return_value=mocks["strat_cfg"]))
+    p(patch("dark_factory.strategies.resolve_app_type", return_value=mocks["strat_cfg"]))
     p(patch("dark_factory.crucible.repo_provision.provision_crucible_repo"))
     p(patch("dark_factory.core.config_manager.resolve_config_dir", return_value=Path("/tmp/.dark-factory")))
     p(patch("dark_factory.core.config_manager.resolve_config_path", return_value=Path("/tmp/.dark-factory/config.json")))
@@ -163,7 +163,7 @@ class TestIntegrationDI:
             p(patch("dark_factory.setup.dep_installer.install_project_deps", return_value=mocks["install"]))
             p(patch("dark_factory.setup.docker_gen.write_generated_files", return_value=(Path("/tmp/Dockerfile"), Path("/tmp/docker-compose.yml"))))
             p(patch("dark_factory.setup.github_provision.provision_github", return_value=mocks["prov"]))
-            p(patch("dark_factory.strategies.resolve_strategy", return_value=mocks["strat_cfg"]))
+            p(patch("dark_factory.strategies.resolve_app_type", return_value=mocks["strat_cfg"]))
             p(patch("dark_factory.crucible.repo_provision.provision_crucible_repo"))
             p(patch("dark_factory.core.config_manager.resolve_config_dir", return_value=Path("/tmp/.dark-factory")))
             p(patch("sys.stdout", fake_stdout))

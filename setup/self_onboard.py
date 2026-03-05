@@ -44,7 +44,7 @@ def _analyze_self(root: Path) -> AnalysisResult:
         result,
         language="Python",
         framework="pytest",
-        detected_strategy="console",
+        detected_app_type="console",
         confidence="high",
     )
 
@@ -57,7 +57,7 @@ def _write_config(root: Path, analysis: AnalysisResult) -> Path:
     config_path = init_config(start=root)
     add_repo_to_config(
         repo=str(root),
-        strategy="console",
+        app_type="console",
         analysis=analysis,
         start=root,
     )
@@ -116,7 +116,7 @@ def run_onboard_self(root: Path | None = None) -> OnboardResult:
     analysis = _analyze_self(root)
     steps.append(
         f"OK: Analysis -- language={analysis.language}, "
-        f"framework={analysis.framework}, strategy={analysis.detected_strategy}"
+        f"framework={analysis.framework}, app_type={analysis.detected_app_type}"
     )
 
     # Step 3: Write config
