@@ -5,31 +5,48 @@
 // ALL workflow logic, branching, and decisions live HERE — not in Python.
 // If you need to change Crucible's behavior, modify THIS file.
 //
-// The "bill becoming a law" pipeline:
-//   1. Pull crucible repo + PR branch
-//   2. Detect frameworks, install deps
-//   3. Containerize app with digital twins
-//   4. Generate scenario tests from PR diff
-//   5. ROUND 1: Run new PR tests (smoke)
-//   6. ROUND 2: Run all existing tests (regression)
-//   7. Graduate new tests to crucible repo via PR
+// The "bill becoming a law" pipeline — two paths based on app type:
+//
+//   WEB apps (has_web_server=true):
+//     provision → detect → generate Dockerfile → containerize → health check
+//     → generate tests → smoke → regression → teardown → graduate
+//
+//   CONSOLE apps (has_web_server=false):
+//     provision → detect → install deps natively
+//     → generate tests → smoke → regression → graduate
+//
+// Console apps skip containerization entirely — tests run directly in the
+// workspace. No Docker overhead for CLIs, libraries, or batch tools.
 //
 // Verdicts: GO | NO_GO | NEEDS_LIVE
 //
-// Flow: provision -> detect -> containerize -> generate -> smoke -> regress -> graduate
-//
 // Entry points: cli/dispatch.py → dispatch_test() or _run_crucible_interactive()
 // Both follow: _resolve_active_repo() → acquire_workspace() → engine.run_pipeline()
+//
+// Context variables (set by dispatch):
+//   $workspace    — path to the app workspace
+//   $test_repo    — HTTPS clone URL for the crucible companion test repo
+//   $pr_number    — PR number being validated
+//   $pr_branch    — branch name for the PR
+//   $app_type     — "web" or "console" (from workspace_config)
+//   $language     — primary language (from analysis)
+//   $framework    — framework if any (from analysis)
+//   $test_cmd     — project's test command (from analysis)
+//
+// Node shapes: box = LLM agent, parallelogram = shell, diamond = decision,
+//              house = terminal (non-exit), Mdiamond = start, Msquare = exit
 
 digraph crucible {
     graph [
         goal="Validate PR via two-round testing then graduate new tests to crucible repo"
     ]
 
-    // --- Entry ---
-    start [shape=Mdiamond, label="PR Ready\n(merged to main or PR branch)"]
+    // =============================================
+    // PHASE 1: PROVISION
+    // =============================================
 
-    // --- Phase 1: Provision ---
+    start [shape=Mdiamond, label="PR Ready"]
+
     clone_crucible [
         shape=parallelogram,
         label="Clone Crucible Repo",
@@ -39,95 +56,156 @@ digraph crucible {
 
     clone_pr [
         shape=parallelogram,
-        label="Clone PR Branch",
+        label="Checkout PR Branch",
         prompt="cd $workspace && git fetch origin $pr_branch && git checkout $pr_branch 2>&1 || echo 'Already on PR branch'",
         timeout="3m"
     ]
 
-    // --- Phase 2: Framework Detection ---
+    // =============================================
+    // PHASE 2: FRAMEWORK DETECTION
+    // =============================================
+
     detect_frameworks [
         shape=box,
-        label="Framework Detection\nAgent",
-        prompt="$eng_crucible_framework_agent\n\nExamine the target app at $workspace to determine which E2E/integration test frameworks are needed for Crucible validation.\n\nApp workspace: $workspace\nCrucible test repo: $workspace/.dark-factory/crucible-tests/\n\nIMPORTANT: Recommend SCENARIO/E2E frameworks, NOT unit test runners.\n- Web UI: Playwright (preferred), Cypress (NOT Jest or Mocha alone)\n- REST API: supertest (Node), httpx (Python) (NOT pytest alone)\n- pytest and Jest are test RUNNERS, not E2E frameworks\n\nAnalysis steps:\n1. Examine the app technology stack (language, framework, runtime)\n2. Identify testable surfaces: web UI, REST API, GraphQL, CLI, WebSocket\n3. For each surface, recommend ONE E2E/integration framework (max 3 total)\n4. Check what already exists in the crucible repo\n5. Install missing frameworks\n\nWrite detection results to: $workspace/.dark-factory/crucible/framework-detection.json"
+        label="Framework Detection Agent",
+        prompt="You are the Crucible framework detection agent.\n\nWorkspace: $workspace\nLanguage: $language\nFramework: $framework\nApp type: $app_type\nCrucible test repo: $workspace/.dark-factory/crucible-tests/\n\nDetermine which test frameworks are needed for Crucible validation.\n\nFor WEB apps ($app_type = web):\n- Web UI: Playwright (preferred), Cypress\n- REST API: supertest (Node), httpx (Python)\n- These are SCENARIO/E2E frameworks, NOT unit test runners\n\nFor CONSOLE apps ($app_type = console):\n- Use the project's own test runner ($test_cmd)\n- Add integration test frameworks if needed (e.g. pytest + subprocess for CLIs)\n- No E2E web frameworks needed\n\nSteps:\n1. Examine the app technology stack\n2. Identify testable surfaces based on app type\n3. Recommend frameworks (max 3 total)\n4. Check what already exists in the crucible repo\n\nWrite results to: $workspace/.dark-factory/crucible/framework-detection.json\nInclude: app_type, frameworks[], testable_surfaces[], install_commands[]\n\nOutput the final word: WEB or CONSOLE"
     ]
 
-    // --- Phase 3: Containerization + Twins ---
-    containerize [
+    // =============================================
+    // PHASE 3: ENVIRONMENT SETUP (split by app type)
+    // =============================================
+
+    app_type_check [shape=diamond, label="App Type?"]
+
+    // --- Web path: containerize ---
+
+    generate_dockerfile [
         shape=box,
-        label="Containerize App\n+ Digital Twins",
-        prompt="You are the Crucible containerization agent.\n\nWorkspace: $workspace\n\n1. Read the generated Dockerfile and docker-compose.yml in .dark-factory/generated/\n2. If digital twins are configured in .dark-factory/twins/, include them via compose merge\n3. Run: docker compose build\n4. Run: docker compose up -d\n5. Health-check all services (app + twins)\n6. Mount crucible tests into the container at /crucible/\n\nReport: HEALTHY if all services pass health checks, UNHEALTHY otherwise."
+        label="Generate Dockerfile",
+        prompt="You are the Crucible containerization agent.\n\nWorkspace: $workspace\nLanguage: $language\nFramework: $framework\n\nGenerate Docker files for running the app and its dependencies:\n\n1. Read the project structure, package files, and any existing Dockerfile\n2. Generate $workspace/.dark-factory/crucible/Dockerfile:\n   - Use an appropriate base image for $language\n   - Install project dependencies\n   - Copy source code\n   - Set the entrypoint to start the app\n3. Generate $workspace/.dark-factory/crucible/docker-compose.yml:\n   - App service from the Dockerfile above\n   - If the app uses a database (check for ORM configs, connection strings):\n     add a database service (postgres, mysql, redis, etc.) as a digital twin\n   - Expose relevant ports\n   - Health check for the app service\n   - Mount crucible tests at /crucible/\n4. Do NOT use .dark-factory/generated/ or .dark-factory/twins/ — generate everything fresh\n\nWrite file paths to: $workspace/.dark-factory/crucible/container-config.json\n\nOutput: READY"
     ]
 
-    health_check [shape=diamond, label="App\nHealthy?"]
-    container_failed [shape=house, label="Container Failure\n-> Obelisk Triage"]
+    containerize [
+        shape=parallelogram,
+        label="Build + Start Containers",
+        prompt="cd $workspace && docker compose -f .dark-factory/crucible/docker-compose.yml -p crucible build && docker compose -f .dark-factory/crucible/docker-compose.yml -p crucible up -d --wait 2>&1",
+        timeout="10m"
+    ]
 
-    // --- Phase 4: Scenario Generation ---
+    health_check [shape=diamond, label="Containers\nHealthy?"]
+    container_failed [shape=house, label="Container Failure"]
+
+    // --- Console path: native setup ---
+
+    native_setup [
+        shape=box,
+        label="Native Test Setup",
+        prompt="You are the Crucible native test setup agent.\n\nWorkspace: $workspace\nLanguage: $language\nFramework: $framework\nTest command: $test_cmd\n\nSet up the test environment directly in the workspace (no Docker):\n\n1. Read $workspace/.dark-factory/crucible/framework-detection.json\n2. Install any missing test frameworks from the detection results:\n   - Python: pip install into .venv (cd $workspace && .venv/bin/pip install ...)\n   - Node: npm install --save-dev ...\n   - Go/Rust: already available via go test / cargo test\n3. Verify the test command works: run $test_cmd with --co or --collect-only if available\n4. Verify crucible test directory exists: $workspace/.dark-factory/crucible-tests/\n\nOutput: READY if setup succeeded, FAILED if critical setup failed"
+    ]
+
+    native_check [shape=diamond, label="Setup OK?"]
+    native_failed [shape=house, label="Setup Failure"]
+
+    // =============================================
+    // PHASE 4: SCENARIO TEST GENERATION
+    // (both paths converge here)
+    // =============================================
+
     generate_scenarios [
         shape=box,
-        label="Scenario Test\nGeneration Agent",
-        prompt="$eng_crucible_scenario_agent\n\nRead the PR diff and generate end-to-end scenario tests.\n\nWorkspace: $workspace\nPR number: $pr_number\nPR branch: $pr_branch\nBase SHA: $base_sha\nHead SHA: $head_sha\nCrucible tests: $workspace/.dark-factory/crucible-tests/\n\nSteps:\n1. Run: git diff $base_sha...$head_sha in $workspace\n2. Identify changed files, new endpoints, modified UI components\n3. Generate 1-5 test files using detected framework patterns\n4. Write to: crucible-tests/tests/pr-$pr_number-<feature>.spec.<ext>\n\nRules:\n- Each test exercises a USER-VISIBLE behavior change\n- Tests must be self-contained and deterministic\n- Use detected framework idioms\n- Max 500 lines total"
+        label="Scenario Test Generation",
+        prompt="You are the Crucible scenario test generation agent.\n\nWorkspace: $workspace\nApp type: $app_type\nLanguage: $language\nFramework: $framework\nPR number: $pr_number\nPR branch: $pr_branch\nCrucible tests: $workspace/.dark-factory/crucible-tests/\n\nGenerate tests that validate the PR's changes.\n\nSteps:\n1. Run: cd $workspace && git diff origin/main...$pr_branch -- . ':!.dark-factory'\n2. Identify changed files, new functions, modified endpoints or CLI commands\n3. Read $workspace/.dark-factory/crucible/framework-detection.json for framework choices\n4. Generate 1-5 test files based on app type:\n\n   For WEB apps:\n   - E2E tests using detected framework (Playwright, httpx, etc.)\n   - Test against the running container (localhost:<port>)\n   - Exercise new endpoints, UI flows, API responses\n\n   For CONSOLE apps:\n   - Integration tests using project's test framework\n   - Test CLI commands via subprocess if applicable\n   - Test new functions/modules directly\n   - Run in the workspace, not in a container\n\n5. Write to: $workspace/.dark-factory/crucible-tests/tests/pr-$pr_number-<feature>.spec.<ext>\n\nRules:\n- Each test exercises a USER-VISIBLE behavior change from the PR\n- Tests must be self-contained and deterministic\n- Use detected framework idioms\n- Max 500 lines total across all generated files\n\nOutput: GENERATED"
     ]
 
-    // --- Phase 5: Round 1 -- Smoke (PR tests only) ---
+    // =============================================
+    // PHASE 5: ROUND 1 — SMOKE (new PR tests only)
+    // =============================================
+
     round1_smoke [
         shape=box,
         label="ROUND 1: Smoke\n(new PR tests only)",
-        prompt="You are the Crucible smoke test runner.\n\nWorkspace: $workspace\nCrucible: $workspace/.dark-factory/crucible-tests/\nPR number: $pr_number\n\nRun ONLY the newly generated PR tests (files matching tests/pr-$pr_number-*).\nDo NOT run existing tests yet.\n\nFor each failure, classify as:\n- REAL_BUG: Genuine assertion failure on correct behavior\n- FLAKY: Timeout, element not found, race condition\n- ENV_ISSUE: Connection refused, missing service\n- NEEDS_LIVE: Requires external service not available\n\nVerdict: PASS (all tests pass or only FLAKY) | FAIL (any REAL_BUG)"
+        prompt="You are the Crucible smoke test runner.\n\nWorkspace: $workspace\nApp type: $app_type\nCrucible tests: $workspace/.dark-factory/crucible-tests/\nPR number: $pr_number\n\nRun ONLY the newly generated PR tests (files matching tests/pr-$pr_number-*).\nDo NOT run existing tests yet.\n\nFor WEB apps: tests run against the container (localhost:<port>).\nFor CONSOLE apps: tests run directly in the workspace.\n\nFor each failure, classify as:\n- REAL_BUG: Genuine assertion failure on correct behavior\n- FLAKY: Timeout, element not found, race condition\n- ENV_ISSUE: Connection refused, missing service\n- NEEDS_LIVE: Requires external service not available in this environment\n\nWrite results to: $workspace/.dark-factory/crucible/smoke-results.json\n\nOutput verdict as final line: PASS (all pass or only FLAKY) | FAIL (any REAL_BUG)"
     ]
 
-    smoke_verdict [shape=diamond, label="Smoke\nVerdict?"]
-    smoke_failed [shape=house, label="NO_GO\nNew tests failed"]
+    smoke_verdict [shape=diamond, label="Smoke?"]
+    smoke_failed [shape=house, label="NO_GO\nSmoke failed"]
 
-    // --- Phase 6: Round 2 -- Full Regression ---
+    // =============================================
+    // PHASE 6: ROUND 2 — FULL REGRESSION
+    // =============================================
+
     round2_regression [
         shape=box,
         label="ROUND 2: Regression\n(all crucible tests)",
-        prompt="You are the Crucible regression test runner.\n\nWorkspace: $workspace\nCrucible: $workspace/.dark-factory/crucible-tests/\n\nRun the FULL test suite: all existing crucible tests PLUS the new PR tests.\nThis validates the new tests do not break existing tests.\n\nClassify failures the same way as Round 1.\n\nVerdict:\n- PASS: All tests pass (>= 95% pass rate AND zero REAL_BUG)\n- FAIL: Any REAL_BUG found\n- NEEDS_LIVE: Tests require live services (zero REAL_BUG)"
+        prompt="You are the Crucible regression test runner.\n\nWorkspace: $workspace\nApp type: $app_type\nCrucible tests: $workspace/.dark-factory/crucible-tests/\n\nRun the FULL test suite: all existing crucible tests PLUS the new PR tests.\nThis validates the new code does not break existing tests.\n\nFor WEB apps: tests run against the container.\nFor CONSOLE apps: tests run directly in the workspace.\n\nClassify failures the same way as Round 1.\n\nWrite results to: $workspace/.dark-factory/crucible/regression-results.json\n\nOutput verdict as final line:\n- PASS: All tests pass (>= 95% pass rate AND zero REAL_BUG)\n- FAIL: Any REAL_BUG found\n- NEEDS_LIVE: Tests require live services not available (zero REAL_BUG)"
     ]
 
-    regression_verdict [shape=diamond, label="Regression\nVerdict?"]
+    regression_verdict [shape=diamond, label="Regression?"]
 
-    // --- Phase 7: Test Graduation ---
-    graduate_tests [
-        shape=box,
-        label="Graduate Tests\n(PR to crucible repo)",
-        prompt="$eng_crucible_graduation_agent\n\nTests passed both rounds — time to make them permanent.\n\nCrucible repo: $workspace/.dark-factory/crucible-tests/\nApp repo: $app_repo\nPR number: $pr_number\n\nSteps:\n1. Rename test files: remove 'pr-$pr_number-' prefix\n2. Check for naming conflicts with existing tests\n3. Create branch: crucible/graduate-pr-$pr_number\n4. Commit: 'feat(crucible): graduate tests from PR #$pr_number'\n5. Push and create PR to crucible repo\n\nThe bill becomes law."
-    ]
+    // =============================================
+    // PHASE 7: TEARDOWN (web only) + TEST GRADUATION
+    // =============================================
 
-    // --- Terminals ---
-    go [shape=Msquare, label="GO\nAll tests pass\nNew tests graduated"]
-    no_go [shape=Msquare, label="NO_GO\nRegression failure"]
-    needs_live [shape=Msquare, label="NEEDS_LIVE\nRequires live services"]
-
-    // --- Teardown ---
     teardown [
         shape=parallelogram,
         label="Teardown containers",
-        prompt="cd $workspace && docker compose -p crucible down -v --remove-orphans 2>&1 || true",
+        prompt="cd $workspace && docker compose -f .dark-factory/crucible/docker-compose.yml -p crucible down -v --remove-orphans 2>&1 || true",
         timeout="2m"
     ]
 
-    // --- Flow ---
+    graduate_tests [
+        shape=box,
+        label="Graduate Tests\n(PR to crucible repo)",
+        prompt="You are the Crucible test graduation agent.\n\nCrucible repo: $workspace/.dark-factory/crucible-tests/\nPR number: $pr_number\n\nTests passed both rounds — time to make them permanent.\n\nSteps:\n1. Find all test files matching: tests/pr-$pr_number-*\n2. Rename: remove 'pr-$pr_number-' prefix (e.g. pr-42-auth.spec.ts → auth.spec.ts)\n3. Check for naming conflicts with existing tests\n4. cd $workspace/.dark-factory/crucible-tests/\n5. git checkout -b crucible/graduate-pr-$pr_number\n6. git add -A && git commit -m 'feat(crucible): graduate tests from PR #$pr_number'\n7. git push -u origin crucible/graduate-pr-$pr_number\n8. gh pr create --title 'crucible: graduate PR #$pr_number tests' --label crucible-passed\n\nThe bill becomes law.\n\nOutput: GO"
+    ]
+
+    // =============================================
+    // TERMINALS
+    // =============================================
+
+    go [shape=Msquare, label="GO"]
+    no_go [shape=Msquare, label="NO_GO"]
+    needs_live [shape=Msquare, label="NEEDS_LIVE"]
+
+    // =============================================
+    // FLOW
+    // =============================================
+
+    // Provision
     start -> clone_crucible -> clone_pr -> detect_frameworks
-    detect_frameworks -> containerize -> health_check
 
-    health_check -> generate_scenarios [label="HEALTHY"]
-    health_check -> container_failed [label="UNHEALTHY"]
+    // Split by app type
+    detect_frameworks -> app_type_check
+    app_type_check -> generate_dockerfile [label="WEB"]
+    app_type_check -> native_setup [label="CONSOLE"]
 
+    // Web path: dockerfile → build → health check
+    generate_dockerfile -> containerize -> health_check
+    health_check -> generate_scenarios [label="PASS"]
+    health_check -> container_failed [label="FAIL"]
+
+    // Console path: native setup → check
+    native_setup -> native_check
+    native_check -> generate_scenarios [label="READY"]
+    native_check -> native_failed [label="FAILED"]
+
+    // Both paths converge: generate → smoke → regression
     generate_scenarios -> round1_smoke -> smoke_verdict
-
     smoke_verdict -> round2_regression [label="PASS"]
     smoke_verdict -> smoke_failed [label="FAIL"]
 
     round2_regression -> regression_verdict
-
     regression_verdict -> graduate_tests [label="PASS"]
     regression_verdict -> no_go [label="FAIL"]
     regression_verdict -> needs_live [label="NEEDS_LIVE"]
 
+    // Graduate then done (web tears down containers first)
     graduate_tests -> teardown -> go
 
+    // Failure paths also teardown containers (no-op for console)
     smoke_failed -> teardown
     no_go -> teardown
     needs_live -> teardown
+    container_failed -> teardown
+    native_failed -> no_go
 }
