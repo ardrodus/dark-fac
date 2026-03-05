@@ -1,9 +1,55 @@
-"""Onboarding orchestrator with rotating diagnostic log.
+"""Onboarding orchestrator — thin sequencer over DOT pipelines.
 
-Sequences all onboarding phases: platform detection, dependency check,
-Claude model, GitHub auth, repo connection (with retry), shallow clone,
-project analysis, strategy selection, config init, dep install, Docker gen,
-GitHub provisioning (labels, CI, branch protection), and GITHUB_REPO export.
+Architecture
+~~~~~~~~~~~~
+This module is the **entry point** for ``dark-factory onboard``.  It sequences
+10 numbered phases displayed to the user and returns 0 (success) or 1 (failure).
+
+**Key design rule: this file is WIRING, not LOGIC.**
+All substantive work lives in either:
+  - DOT pipeline files under ``pipelines/`` (executed by FactoryPipelineEngine)
+  - Dedicated setup modules under ``setup/``
+
+Do NOT add heuristics, pattern tables, or detection logic here.  If a phase
+needs smarts, create a DOT pipeline and call it via ``_run_pipeline()``.
+
+Phase flow
+~~~~~~~~~~
+::
+
+    [1/10]  Platform Detection       detect_platform() + check_dependencies()
+    [2/10]  Dependencies             print found/missing via print_stage_result()
+    [3/10]  Claude Model             detect_claude_model()
+    [4/10]  GitHub Authentication    auto_connect_github() / connect_github()
+    [5/10]  Repository Connection    GITHUB_REPO env or interactive prompt
+    [6/10]  Workspace                create_workspace() — permanent clone
+    [7/10]  Project Analysis         ← DOT pipeline (project_analysis.dot)
+    [8/10]  Environment Setup        ← DOT pipeline (workspace_bootstrap.dot)
+    [9/10]  Configuration            init_config() + add_repo_to_config()
+    [10/10] GitHub Provisioning      provision_github() + crucible + app_type
+
+Pipeline integration
+~~~~~~~~~~~~~~~~~~~~
+- ``_run_project_analysis(ws_path)`` — runs ``project_analysis`` pipeline,
+  parses JSON output into ``AnalysisResult`` (from ``project_analyzer.py``).
+- ``_bootstrap_workspace_env(ws_path, analysis)`` — runs ``workspace_bootstrap``
+  pipeline, parses JSON output into ``BootstrapResult`` (from ``dep_installer.py``).
+  Accepts ``_run_pipeline`` kwarg for DI in tests.
+
+Both pipeline calls are wrapped in ``spinner()`` for visual feedback.
+
+Display
+~~~~~~~
+All user-facing output uses ``ui.cli_colors`` (``cprint``, ``phase_header``,
+``print_stage_result``, ``completion_panel``, ``print_error``, ``spinner``).
+Raw ``sys.stdout.write`` is only used in ``_prompt_repo`` / ``_detect_existing_repo``
+for interactive input prompts.
+
+Diagnostic log
+~~~~~~~~~~~~~~
+Every phase writes markers to ``onboarding.log`` via the ``_Log`` class.
+The log is rotated to keep at most 3 runs.  This log is for post-mortem
+debugging, NOT for user display.
 """
 from __future__ import annotations
 
@@ -150,6 +196,107 @@ def _detect_existing_repo(w, dl: _Log, start: Path | None) -> str:  # type: igno
     return ""
 
 
+def _run_project_analysis(clone_dir: str) -> AnalysisResult:
+    """Run the project_analysis DOT pipeline and parse the result."""
+    import asyncio  # noqa: PLC0415
+    import json  # noqa: PLC0415
+
+    from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+    from dark_factory.setup.project_analyzer import AnalysisResult  # noqa: PLC0415
+
+    engine = FactoryPipelineEngine()
+    result = asyncio.run(engine.run_pipeline("project_analysis", {
+        "workspace": clone_dir,
+    }))
+
+    raw = result.context.get("codergen.analyze.output", "")
+    if not raw:
+        return AnalysisResult(description="Pipeline produced no output")
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return AnalysisResult(description="Pipeline output was not valid JSON")
+
+    if not isinstance(data, dict):
+        return AnalysisResult(description="Pipeline output was not a JSON object")
+
+    # Convert list fields to tuples for the frozen dataclass
+    for key in ("required_tools", "source_dirs", "test_dirs", "aws_services"):
+        val = data.get(key)
+        if isinstance(val, list):
+            data[key] = tuple(val)
+
+    # Only pass keys that AnalysisResult accepts
+    import dataclasses  # noqa: PLC0415
+    valid_keys = {f.name for f in dataclasses.fields(AnalysisResult)}
+    filtered = {k: v for k, v in data.items() if k in valid_keys}
+
+    return AnalysisResult(**filtered)
+
+
+def _bootstrap_workspace_env(
+    workspace: str,
+    analysis: object,
+    *,
+    _run_pipeline: object = None,
+) -> BootstrapResult:
+    """Run workspace_bootstrap pipeline to set up a scoped dev environment.
+
+    Parameters
+    ----------
+    _run_pipeline:
+        Callable ``(name, context) -> result`` for DI in tests.
+        Defaults to ``asyncio.run(engine.run_pipeline(...))``.
+    """
+    import json  # noqa: PLC0415
+
+    from dark_factory.setup.dep_installer import BootstrapResult  # noqa: PLC0415
+
+    if _run_pipeline is None:
+        import asyncio  # noqa: PLC0415
+
+        from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+
+        engine = FactoryPipelineEngine()
+
+        def _run_pipeline(name: str, ctx: dict) -> object:  # type: ignore[misc]
+            return asyncio.run(engine.run_pipeline(name, ctx))
+
+    result = _run_pipeline("workspace_bootstrap", {  # type: ignore[operator]
+        "workspace": workspace,
+        "language": getattr(analysis, "language", ""),
+        "framework": getattr(analysis, "framework", ""),
+        "test_cmd": getattr(analysis, "test_cmd", ""),
+    })
+
+    raw = result.context.get("codergen.bootstrap.output", "")  # type: ignore[union-attr]
+    if not raw:
+        return BootstrapResult(errors=("Pipeline produced no output",))
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return BootstrapResult(errors=("Pipeline output was not valid JSON",))
+
+    if not isinstance(data, dict):
+        return BootstrapResult(errors=("Pipeline output was not a JSON object",))
+
+    errors = data.get("errors", [])
+    if isinstance(errors, list):
+        errors = tuple(str(e) for e in errors)
+    else:
+        errors = ()
+
+    return BootstrapResult(
+        runtime_ok=bool(data.get("runtime_ok", False)),
+        env_created=bool(data.get("env_created", False)),
+        deps_installed=bool(data.get("deps_installed", False)),
+        env_path=str(data.get("env_path", "")),
+        errors=errors,
+    )
+
+
 def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int:  # noqa: PLR0912, PLR0915
     """Sequence all onboarding phases. Returns 0 on success, 1 on failure."""
     from dark_factory.integrations.shell import gh as gh_cmd  # noqa: PLC0415
@@ -161,42 +308,55 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
     from dark_factory.setup.config_init import (  # noqa: PLC0415
         add_repo_to_config,
         init_config,
-        prompt_app_type,
     )
-    from dark_factory.setup.dep_installer import install_project_deps  # noqa: PLC0415
-    from dark_factory.setup.docker_gen import write_generated_files  # noqa: PLC0415
     from dark_factory.setup.github_auth import auto_connect_github, connect_github  # noqa: PLC0415
     from dark_factory.setup.github_provision import provision_github  # noqa: PLC0415
     from dark_factory.setup.platform import check_dependencies, detect_platform  # noqa: PLC0415
     from dark_factory.setup.project_analyzer import (  # noqa: PLC0415
-        analyze_project,
         confirm_or_override_analysis,
         display_analysis_results,
     )
+    from dark_factory.ui.cli_colors import (  # noqa: PLC0415
+        completion_panel,
+        cprint,
+        phase_header,
+        print_error,
+        print_stage_result,
+        spinner,
+    )
+    from dark_factory.ui.theme import FULL_HEADER_BANNER  # noqa: PLC0415
 
+    _TOTAL = 10
     lp = _log_path(start)
     _rotate(lp)
     dl = _Log(lp)
     dl.start()
-    w = sys.stdout.write
-    clone_dir: Path | None = None
+    w = sys.stdout.write  # kept for interactive prompts in _prompt_repo/_detect_existing_repo
 
     try:
-        # ── Phase A: Platform & Dependencies ──────────────────────
+        # ── Banner ───────────────────────────────────────────────
+        cprint(FULL_HEADER_BANNER)
+        cprint("")
+
+        # ── [1/10] Platform Detection ────────────────────────────
+        cprint(phase_header(1, _TOTAL, "Platform Detection"), end="")
         with _phase(dl, "platform-detect"):
             plat = detect_platform()
         dl.info(f"os={plat.os} arch={plat.arch} shell={plat.shell}")
-        w(f"  Platform: {plat.os}/{plat.arch} ({plat.shell})\n")
+        cprint(f"  {plat.os}/{plat.arch} ({plat.shell})", "info")
 
+        # ── [2/10] Dependencies ──────────────────────────────────
+        cprint(phase_header(2, _TOTAL, "Dependencies"), end="")
         with _phase(dl, "deps-check"):
             deps = check_dependencies(plat)
         missing = [d.name for d in deps if not d.found]
         for d in deps:
-            status = "found" if d.found else "MISSING"
-            w(f"    {d.name}: {status}\n")
+            print_stage_result(d.name, "passed" if d.found else "failed")
         if missing:
             dl.info(f"missing: {', '.join(missing)}")
 
+        # ── [3/10] Claude Model ──────────────────────────────────
+        cprint(phase_header(3, _TOTAL, "Claude Model"), end="")
         with _phase(dl, "claude-detect"):
             model = detect_claude_model()
             if not model and not auto_mode:
@@ -204,106 +364,110 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
             if model:
                 save_claude_model(model)
         dl.info(f"model={model or 'none'}")
-        w(f"  Claude model: {model or 'not configured'}\n")
+        if model:
+            cprint(f"  {model}", "success")
+        else:
+            cprint("  not configured", "muted")
 
-        # ── Phase B: GitHub Auth ──────────────────────────────────
+        # ── [4/10] GitHub Authentication ─────────────────────────
+        cprint(phase_header(4, _TOTAL, "GitHub Authentication"), end="")
         with _phase(dl, "github-auth"):
             gh_ok = auto_connect_github() if auto_mode else connect_github()
         if not gh_ok:
             dl.info("github auth failed -- continuing")
-            w("  GitHub: not authenticated (continuing)\n")
+            cprint("  not authenticated (continuing)", "warning")
         else:
-            w("  GitHub: authenticated\n")
+            cprint("  authenticated", "success")
 
-        # ── Phase C: Repo Connection ──────────────────────────────
+        # ── [5/10] Repository Connection ─────────────────────────
+        cprint(phase_header(5, _TOTAL, "Repository Connection"), end="")
         with _phase(dl, "repo-connect"):
             if auto_mode:
                 repo = os.environ.get("GITHUB_REPO", "")
                 if not repo:
                     dl.error("GITHUB_REPO not set in auto mode")
-                    w("  No GITHUB_REPO set\n")
+                    print_error("No GITHUB_REPO set", hint="export GITHUB_REPO=owner/repo")
                     return 1
             else:
-                # Check for previously configured repo
                 repo = _detect_existing_repo(w, dl, start)
                 if not repo:
                     repo = _prompt_repo(w, dl)
                 if not repo:
                     dl.error("No repo provided")
-                    w("  Onboarding cancelled -- no repo provided.\n")
+                    print_error("Onboarding cancelled — no repo provided")
                     return 1
 
-            # Validate access via gh CLI
             check = gh_cmd(["repo", "view", repo], timeout=30)
             if check.returncode != 0:
                 dl.error(f"Cannot access repo: {repo}")
-                w(f"  Cannot access repo: {repo}\n")
-                w("  Make sure you have access and gh is authenticated.\n")
+                print_error(f"Cannot access repo: {repo}", hint="Check access and gh auth status")
                 return 1
         dl.info(f"repo={repo}")
-        w(f"  Repository: {repo}\n")
+        cprint(f"  {repo}", "success")
 
-        # Export for downstream use
         os.environ["GITHUB_REPO"] = repo
 
-        # ── Phase C7: Clone & Analyze ─────────────────────────────
-        with _phase(dl, "clone"):
-            import tempfile  # noqa: PLC0415
-            clone_dir = Path(tempfile.mkdtemp(prefix="df-onboard-"))
-            clone_result = gh_cmd(
-                ["repo", "clone", repo, str(clone_dir), "--", "--depth", "1"],
-                timeout=120,
-            )
-            if clone_result.returncode != 0:
-                dl.error(f"Clone failed: {clone_result.stderr}")
-                w(f"  Failed to clone {repo}\n")
-                return 1
-        w(f"  Cloned {repo} (shallow)\n")
+        # ── [6/10] Workspace ─────────────────────────────────────
+        cprint(phase_header(6, _TOTAL, "Workspace"), end="")
+        with _phase(dl, "acquire-workspace"):
+            from dark_factory.workspace.manager import create_workspace  # noqa: PLC0415
 
+            ws_result = create_workspace(repo, f"https://github.com/{repo}.git")
+            if not ws_result.success:
+                dl.error(f"Workspace creation failed: {ws_result.message}")
+                print_error(f"Failed to create workspace for {repo}")
+                return 1
+            ws_path = ws_result.workspace.path  # type: ignore[union-attr]
+        dl.info(f"workspace={ws_path}")
+        cprint(f"  {ws_path}", "success")
+
+        # ── [7/10] Project Analysis ──────────────────────────────
+        cprint(phase_header(7, _TOTAL, "Project Analysis"), end="")
         with _phase(dl, "analyze"):
-            analysis = analyze_project(str(clone_dir))
+            with spinner("Analyzing project..."):
+                analysis = _run_project_analysis(ws_path)
             display_analysis_results(analysis)
             if not auto_mode:
                 analysis = confirm_or_override_analysis(analysis)
         dl.info(f"lang={analysis.language} fw={analysis.framework} app_type={analysis.detected_app_type}")
 
-        # ── Phase C9: App Type Selection ──────────────────────────
-        with _phase(dl, "app-type-select"):
-            app_type = analysis.detected_app_type if auto_mode else prompt_app_type(analysis)
-        dl.info(f"app_type={app_type}")
-        w(f"  App type: {app_type}\n")
+        app_type = analysis.detected_app_type
 
-        # ── Phase C11: Install Project Deps ───────────────────────
-        with _phase(dl, "install-deps"):
-            dep_result = install_project_deps(analysis, plat_os=plat.os)
-        dl.info(f"deps: installed={dep_result.installed} skipped={dep_result.skipped} failed={dep_result.failed}")
+        # ── [8/10] Environment Setup ─────────────────────────────
+        cprint(phase_header(8, _TOTAL, "Environment Setup"), end="")
+        with _phase(dl, "workspace-bootstrap"):
+            with spinner("Bootstrapping workspace environment..."):
+                bootstrap = _bootstrap_workspace_env(ws_path, analysis)
+        if bootstrap.success:
+            cprint(f"  Environment ready: {bootstrap.env_path or 'default'}", "success")
+        else:
+            for err in bootstrap.errors:
+                cprint(f"  ! {err}", "error")
+            if not bootstrap.runtime_ok:
+                cprint("  Runtime not found — install it and re-run onboarding.", "warning")
+        dl.info(f"bootstrap: runtime={bootstrap.runtime_ok} env={bootstrap.env_created} deps={bootstrap.deps_installed}")
 
-        # ── Phase C12: Config Init ────────────────────────────────
+        # ── [9/10] Configuration ─────────────────────────────────
+        cprint(phase_header(9, _TOTAL, "Configuration"), end="")
         with _phase(dl, "config-init"):
             init_config(start=start)
             add_repo_to_config(repo, app_type, analysis, start=start)
-        w("  Config initialized\n")
+        cprint("  Config initialized", "success")
 
-        # ── Phase C13-C14: Docker Gen ─────────────────────────────
-        with _phase(dl, "docker-gen"):
-            df, dc = write_generated_files(analysis, start=start)
-        dl.info(f"dockerfile={df} compose={dc}")
-        w(f"  Docker files generated: {df.parent}\n")
-
-        # ── Phase D: GitHub Provisioning ──────────────────────────
+        # ── [10/10] GitHub Provisioning ──────────────────────────
+        cprint(phase_header(10, _TOTAL, "GitHub Provisioning"), end="")
         with _phase(dl, "github-provision"):
             prov = provision_github(repo)
         label_count = prov.get("labels", 0)
         dl.info(f"provision: labels={label_count} ci={prov.get('ci_workflow')} "
                 f"template={prov.get('issue_template')} protection={prov.get('branch_protection')}")
 
-        # ── Phase D2: Crucible Repo Provision ─────────────────────
         with _phase(dl, "crucible-repo"):
             want_crucible = False
             if auto_mode:
                 want_crucible = True
             else:
-                w("\n  Crucible uses a companion test repo for end-to-end validation.\n")
+                cprint("\n  Crucible uses a companion test repo for end-to-end validation.", "muted")
                 try:
                     choice = input("  Set up Crucible test repo now? [Y/n]: ").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -318,11 +482,10 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
                 cr_result = provision_crucible_repo(repo, global_cfg.data)
                 if cr_result.error:
                     dl.info(f"crucible-repo: {cr_result.error} (non-fatal)")
-                    w(f"  Crucible repo: {cr_result.error}\n")
+                    cprint(f"  Crucible repo: {cr_result.error}", "warning")
                 else:
                     dl.info(f"crucible-repo: {cr_result.crucible_repo} created={cr_result.created}")
-                    w(f"  Crucible repo: {cr_result.crucible_repo}\n")
-                    # Stage crucible repo in workspace_config for bootstrap
+                    cprint(f"  Crucible repo: {cr_result.crucible_repo}", "success")
                     for entry in global_cfg.data.get("repos", []):
                         if isinstance(entry, dict) and entry.get("name") == repo:
                             ws_cfg = entry.setdefault("workspace_config", {})
@@ -331,45 +494,63 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
                     save_config(global_cfg)
             else:
                 dl.info("crucible-repo: skipped by user")
-                w("  Crucible repo: skipped (configure later in Settings)\n")
+                cprint("  Crucible repo: skipped", "muted")
 
-        # ── Phase E: App Type Bootstrap ──────────────────────────
+        with _phase(dl, "ouroboros-config"):
+            ouroboros_repo = ""
+            if auto_mode:
+                ouroboros_repo = os.environ.get("OUROBOROS_REPO", "")
+            else:
+                cprint("")
+                cprint("  Ouroboros can improve Dark Factory itself — fix bugs,", "muted")
+                cprint("  add features, and refine code autonomously.", "muted")
+                cprint("")
+                cprint("  [1] Contribute to Dark Factory (upstream)", "info")
+                cprint("  [2] Point to your own fork", "info")
+                cprint("  [3] Skip — disable Ouroboros", "muted")
+                cprint("")
+                try:
+                    choice = input("  Enable Ouroboros? [1/2/3]: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    choice = "3"
+                if choice == "1":
+                    ouroboros_repo = "pdickeyg/dark-factory"
+                    cprint(f"  Ouroboros: {ouroboros_repo}", "success")
+                elif choice == "2":
+                    try:
+                        ouroboros_repo = input("  Enter fork repo (owner/repo): ").strip()
+                    except (EOFError, KeyboardInterrupt):
+                        ouroboros_repo = ""
+                    if ouroboros_repo and _REPO_RE.match(ouroboros_repo):
+                        cprint(f"  Ouroboros: {ouroboros_repo}", "success")
+                    else:
+                        cprint("  Invalid repo — Ouroboros disabled", "warning")
+                        ouroboros_repo = ""
+                else:
+                    cprint("  Ouroboros: disabled", "muted")
+
+            if ouroboros_repo:
+                from dark_factory.core.config_manager import load_config as _load_ouro_cfg, save_config as _save_ouro_cfg  # noqa: PLC0415
+                ouro_cfg = _load_ouro_cfg(start)
+                for entry in ouro_cfg.data.get("repos", []):
+                    if isinstance(entry, dict) and entry.get("name") == repo:
+                        ws_cfg = entry.setdefault("workspace_config", {})
+                        ws_cfg["ouroboros"] = {"repo": ouroboros_repo}
+                        break
+                _save_ouro_cfg(ouro_cfg)
+            dl.info(f"ouroboros: repo={ouroboros_repo or 'disabled'}")
+
         with _phase(dl, "app-type-bootstrap"):
             from dark_factory.strategies import resolve_app_type  # noqa: PLC0415
             cfg = resolve_app_type(app_type)
             dl.info(f"app-type-deps={', '.join(cfg.bootstrap_deps)}")
-            w(f"  App type deps: {', '.join(cfg.bootstrap_deps)}\n")
 
-        # ── Phase F: Acquire Workspace ────────────────────────────
-        with _phase(dl, "acquire-workspace"):
-            from dark_factory.workspace.manager import create_workspace  # noqa: PLC0415
-
-            ws_result = create_workspace(repo, f"https://github.com/{repo}.git")
-            if ws_result.success:
-                dl.info(f"workspace={ws_result.workspace.path if ws_result.workspace else 'unknown'}")
-                w(f"  Workspace ready: {ws_result.workspace.path if ws_result.workspace else 'created'}\n")
-            else:
-                # Non-fatal — workspace can be created on first pipeline run
-                dl.info(f"workspace: {ws_result.message} (non-fatal)")
-                w(f"  Workspace: {ws_result.message} (will create on first run)\n")
-
-        # ── Cleanup ───────────────────────────────────────────────
-        import shutil  # noqa: PLC0415
-        if clone_dir:
-            shutil.rmtree(clone_dir, ignore_errors=True)
-
+        # ── Completion ───────────────────────────────────────────
         dl.flush()
-        w("\n  Onboarding complete!\n")
-        w(f"  Repository: {repo}\n")
-        w(f"  App type:   {app_type}\n")
-        w(f"  Labels:     {label_count} created\n")
-        w(f"  GITHUB_REPO={repo}\n\n")
+        cprint("")
+        cprint(completion_panel(repo, app_type, label_count))
         return 0
     except Exception as exc:  # noqa: BLE001
         dl.flush()
-        if clone_dir:
-            import shutil  # noqa: PLC0415
-            shutil.rmtree(clone_dir, ignore_errors=True)
-        w(f"\n  Onboarding failed: {exc}\n")
-        w(f"  Diagnostic log: {lp}\n")
+        print_error(f"Onboarding failed: {exc}", hint=f"Diagnostic log: {lp}")
         return 1

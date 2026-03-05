@@ -49,10 +49,13 @@ def _make_success_mocks():
     fake_analysis.required_tools = ("python", "pip")
     fake_analysis.base_image = "python:3.12-bookworm"
 
-    fake_install = MagicMock()
-    fake_install.installed = 1
-    fake_install.skipped = 1
-    fake_install.failed = 0
+    fake_bootstrap = MagicMock()
+    fake_bootstrap.success = True
+    fake_bootstrap.runtime_ok = True
+    fake_bootstrap.env_created = True
+    fake_bootstrap.deps_installed = True
+    fake_bootstrap.env_path = ".venv"
+    fake_bootstrap.errors = ()
 
     fake_prov = {"labels": 17, "ci_workflow": True, "issue_template": True, "branch_protection": True}
 
@@ -64,7 +67,7 @@ def _make_success_mocks():
         "plat": fake_plat,
         "deps": [fake_dep_git, fake_dep_gh, fake_dep_docker],
         "analysis": fake_analysis,
-        "install": fake_install,
+        "bootstrap": fake_bootstrap,
         "prov": fake_prov,
         "strat_cfg": fake_strat_cfg,
     }
@@ -81,14 +84,12 @@ def _apply_success_patches(stack: ExitStack, mocks: dict, captured: list[str], r
     p(patch("dark_factory.setup.claude_detect.save_claude_model"))
     p(patch("dark_factory.setup.github_auth.auto_connect_github", return_value=True))
     p(patch("dark_factory.setup.github_auth.connect_github", return_value=True))
-    p(patch("dark_factory.setup.project_analyzer.analyze_project", return_value=mocks["analysis"]))
+    p(patch("dark_factory.setup.orchestrator._run_project_analysis", return_value=mocks["analysis"]))
     p(patch("dark_factory.setup.project_analyzer.display_analysis_results"))
     p(patch("dark_factory.setup.project_analyzer.confirm_or_override_analysis", return_value=mocks["analysis"]))
-    p(patch("dark_factory.setup.config_init.prompt_app_type", return_value="web"))
     p(patch("dark_factory.setup.config_init.init_config"))
     p(patch("dark_factory.setup.config_init.add_repo_to_config"))
-    p(patch("dark_factory.setup.dep_installer.install_project_deps", return_value=mocks["install"]))
-    p(patch("dark_factory.setup.docker_gen.write_generated_files", return_value=(Path("/tmp/Dockerfile"), Path("/tmp/docker-compose.yml"))))
+    p(patch("dark_factory.setup.orchestrator._bootstrap_workspace_env", return_value=mocks["bootstrap"]))
     p(patch("dark_factory.setup.github_provision.provision_github", return_value=mocks["prov"]))
     p(patch("dark_factory.strategies.resolve_app_type", return_value=mocks["strat_cfg"]))
     p(patch("dark_factory.crucible.repo_provision.provision_crucible_repo"))
@@ -96,9 +97,9 @@ def _apply_success_patches(stack: ExitStack, mocks: dict, captured: list[str], r
     p(patch("dark_factory.core.config_manager.resolve_config_path", return_value=Path("/tmp/.dark-factory/config.json")))
     p(patch("dark_factory.core.config_manager.load_config"))
     p(patch("dark_factory.core.config_manager.save_config"))
+    fake_ws = MagicMock(success=True, workspace=MagicMock(path="/tmp/df-onboard-test"))
+    p(patch("dark_factory.workspace.manager.create_workspace", return_value=fake_ws))
     p(patch("sys.stdout.write", side_effect=lambda s: captured.append(s)))
-    p(patch("tempfile.mkdtemp", return_value="/tmp/df-onboard-test"))
-    p(patch("shutil.rmtree"))
     p(patch.dict(os.environ, {"GITHUB_REPO": repo}))
 
 
@@ -152,9 +153,12 @@ class TestE2EOnboarding:
         assert "GITHUB_REPO=" in output
 
     def test_output_contains_welcome_at_start(self) -> None:
-        """Output contains welcome/platform info at start."""
+        """Output contains banner and platform info at start."""
         exit_code, output = _run_full_flow()
-        assert "Platform" in output[:200] or "linux" in output[:200]
+        # Banner (factory silhouette) appears before platform info
+        platform_idx = output.find("Platform")
+        assert platform_idx >= 0, "Platform phase missing"
+        assert platform_idx < len(output) // 2, "Platform should appear in first half"
 
     def test_output_contains_phase_headers(self) -> None:
         """Output contains styled phase headers for key phases."""

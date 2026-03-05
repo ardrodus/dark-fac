@@ -1,0 +1,50 @@
+// Project Analysis Pipeline
+//
+// ARCHITECTURE: This is the source of truth for how Dark Factory understands
+// a repository.  The orchestrator (setup/orchestrator.py) calls this pipeline
+// during onboarding phase [7/10].  The Python side is thin wiring — it just
+// parses the JSON output into an AnalysisResult dataclass.
+//
+// If you need to change what gets detected or how, MODIFY THIS FILE.
+// Do NOT add heuristics to project_analyzer.py or orchestrator.py.
+//
+// Two nodes:
+//   1. scan_structure (shell) — file tree snapshot ($workspace, max 200 lines)
+//   2. analyze (LLM)          — reads tree + config files, outputs JSON
+//
+// Entry point: engine.run_pipeline("project_analysis", {workspace: ...})
+// Output:      result.context["codergen.analyze.output"] is a JSON string
+//              matching the AnalysisResult dataclass fields in project_analyzer.py
+//
+// Node shapes: box = LLM agent, parallelogram = shell, Mdiamond = start, Msquare = exit
+// Context vars: $variable expands from pipeline context dict
+
+digraph project_analysis {
+    graph [
+        goal="Analyze a repository to detect language, framework, app type, and dependencies"
+    ]
+
+    // --- Entry ---
+    start [shape=Mdiamond, label="Repository Cloned"]
+
+    // --- Scan file tree ---
+    scan_structure [
+        shape=parallelogram,
+        label="Scan Project Structure",
+        prompt="cd $workspace && find . -maxdepth 3 -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/__pycache__/*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/.tox/*' -not -path '*/target/*' | head -200",
+        timeout="30s"
+    ]
+
+    // --- LLM analysis ---
+    analyze [
+        shape=box,
+        label="Analyze Project",
+        prompt="You are the project analysis agent for Dark Factory.\n\nYou have the file tree from the previous step:\n${tool.scan_structure.output}\n\nYour job: determine the language, framework, app type, and tooling for this repository.\n\nInstructions:\n1. Read the file tree above carefully.\n2. Read key config files in $workspace to confirm your assessment:\n   - package.json, tsconfig.json (JS/TS)\n   - pyproject.toml, requirements.txt, setup.py (Python)\n   - Cargo.toml (Rust)\n   - go.mod (Go)\n   - pom.xml, build.gradle (Java)\n   - Gemfile (Ruby)\n   - CMakeLists.txt (C/C++)\n   - Dockerfile, docker-compose.yml\n   - README.md\n3. Read only the files that exist -- do not fail on missing files.\n\nDetermine:\n- language: Primary programming language\n- framework: Main framework (e.g. FastAPI, Next.js, Express, Django, Spring Boot) or empty string\n- app_type: \"web\" if it has a web server, Docker, or CI/CD deployment. \"console\" otherwise.\n- confidence: \"high\" if config files clearly indicate, \"medium\" if inferred from file extensions, \"low\" if unclear\n- description: Short one-line description (e.g. \"Python/FastAPI project\")\n- build_cmd: Build command (e.g. \"npm run build\", \"cargo build --release\") or empty\n- test_cmd: Test command (e.g. \"pytest\", \"npm test\") or empty\n- run_cmd: Run command (e.g. \"uvicorn main:app\", \"npm start\") or empty\n- base_image: Docker base image (e.g. \"python:3.12-bookworm\", \"node:22-bookworm\")\n- required_tools: Array of CLI tools needed (e.g. [\"python\", \"pip\"])\n- source_dirs: Array of source directories (e.g. [\"src/\", \"app/\"])\n- test_dirs: Array of test directories (e.g. [\"tests/\"])\n- has_web_server: true/false\n- has_database: true/false\n- has_iac: true/false\n\nOutput ONLY a single JSON object with these fields, no markdown fences, no explanation:\n{\"language\": \"...\", \"framework\": \"...\", \"app_type\": \"...\", \"confidence\": \"...\", \"description\": \"...\", \"build_cmd\": \"...\", \"test_cmd\": \"...\", \"run_cmd\": \"...\", \"base_image\": \"...\", \"required_tools\": [...], \"source_dirs\": [...], \"test_dirs\": [...], \"has_web_server\": false, \"has_database\": false, \"has_iac\": false}"
+    ]
+
+    // --- Exit ---
+    done [shape=Msquare, label="Analysis Complete"]
+
+    // --- Flow ---
+    start -> scan_structure -> analyze -> done
+}

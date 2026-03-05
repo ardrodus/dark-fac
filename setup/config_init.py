@@ -1,10 +1,27 @@
-"""App-type selection and config initialization — port of init_config() flow."""
+"""Config initialization — creates .dark-factory/config.json and repo entries.
+
+Architecture
+~~~~~~~~~~~~
+Called by the orchestrator during phase [9/10] Configuration.
+
+- :func:`init_config` — idempotent creation of ``.dark-factory/config.json``
+  with initial structure (version, auth_method, repos[], agents{}).
+  Also creates the ``.secrets/`` directory with restricted permissions.
+
+- :func:`add_repo_to_config` — appends a repo entry to ``repos[]``.
+  Deactivates all existing repos first.  Stages the full
+  :class:`~project_analyzer.AnalysisResult` as ``workspace_config.analysis``
+  so downstream workspace creation has access to language, framework, etc.
+
+The config file is the global state shared across onboarding, workspace
+management, and pipeline execution.  Repo-specific settings go under
+``repos[].workspace_config``, NOT at the top level.
+"""
 from __future__ import annotations
 
 import json
 import os
 import stat
-import sys
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,38 +31,6 @@ if TYPE_CHECKING:
     from dark_factory.setup.project_analyzer import AnalysisResult
 
 _CONFIG_VERSION = 1
-
-_APP_TYPE_MENU = (
-    ("1", "console", "Console     CLI tool, no server deployment"),
-    ("2", "web", "Web         Web app with Docker, CI/CD"),
-)
-
-
-def prompt_app_type(
-    analysis: AnalysisResult | None = None,
-) -> str:
-    """Present app type choices based on analysis signals.
-
-    Returns the selected app type name (``console`` or ``web``).
-    """
-    w = sys.stdout.write
-    w("\n  Select app type:\n\n")
-    for num, _, label in _APP_TYPE_MENU:
-        w(f"    [{num}] {label}\n")
-    if analysis and analysis.detected_app_type != "console":
-        w(
-            f"\n  Detected: {analysis.detected_app_type}"
-            f" (confidence: {analysis.confidence})\n"
-        )
-    w("\n")
-    try:
-        choice = input("  Choice [1]: ").strip() or "1"
-    except (EOFError, KeyboardInterrupt):
-        choice = "1"
-    app_type = next((s for n, s, _ in _APP_TYPE_MENU if choice == n), "console")
-    w(f"  + App type: {app_type}\n")
-    return app_type
-
 
 def init_config(
     *,
@@ -76,8 +61,6 @@ def init_config(
         "version": _CONFIG_VERSION,
         "auth_method": "",
         "repos": [],
-        "analysis": {},
-        "app_type": "",
         "agents": {},
     }
     config_file.write_text(
@@ -97,8 +80,7 @@ def add_repo_to_config(
     """Append a repo entry to the ``repos`` array in config.json.
 
     Deactivates all existing repos first, then adds the new one as active.
-    If *analysis* is provided, its fields are merged into the repo entry and
-    also stored in the top-level ``analysis`` and ``app_type`` keys.
+    If *analysis* is provided, its fields are staged in ``workspace_config``.
     """
     from dark_factory.core.config_manager import (  # noqa: PLC0415
         load_config,

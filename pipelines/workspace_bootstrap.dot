@@ -1,0 +1,49 @@
+// Workspace Bootstrap Pipeline
+//
+// ARCHITECTURE: This is the source of truth for how Dark Factory sets up a
+// development environment.  The orchestrator (setup/orchestrator.py) calls this
+// pipeline during onboarding phase [8/10].  The Python side is thin wiring —
+// it just parses the JSON output into a BootstrapResult dataclass.
+//
+// If you need to change how environments are created, MODIFY THIS FILE.
+// Do NOT add package manager commands or install logic to dep_installer.py
+// or orchestrator.py.
+//
+// The agent:
+//   1. Verifies the language runtime is installed on the host
+//   2. Creates a scoped environment (venv, node_modules, etc.)
+//   3. Installs project dependencies into that scoped env
+//
+// KEY PRINCIPLE: Dependencies are scoped to the workspace, NOT installed
+// globally.  The host only needs the language runtime + Docker + Claude Code.
+//
+// Context variables:
+//   $workspace  — path to the cloned repo (permanent workspace, not temp dir)
+//   $language   — primary language (Python, JavaScript, TypeScript, etc.)
+//   $framework  — framework if any (FastAPI, Next.js, etc.)
+//   $test_cmd   — test command (pytest, npm test, etc.)
+//
+// Entry point: engine.run_pipeline("workspace_bootstrap", {...})
+// Output:      result.context["codergen.bootstrap.output"] is JSON:
+//              {"runtime_ok": true, "env_created": true, "deps_installed": true,
+//               "env_path": ".venv", "errors": []}
+//
+// Node shapes: box = LLM agent, Mdiamond = start, Msquare = exit
+
+digraph workspace_bootstrap {
+    graph [
+        goal="Bootstrap a scoped development environment in the workspace for running tests"
+    ]
+
+    start [shape=Mdiamond, label="Workspace Ready"]
+
+    bootstrap [
+        shape=box,
+        label="Bootstrap Environment",
+        prompt="You are the workspace bootstrap agent for Dark Factory.\n\nWorkspace: $workspace\nLanguage: $language\nFramework: $framework\nTest command: $test_cmd\n\nYour job: set up a scoped development environment so tests can run.\n\nStep 1 — Verify the runtime is installed on the host:\n- Python: check `python3 --version` or `python --version`\n- Node/TypeScript: check `node --version`\n- Go: check `go version`\n- Rust: check `cargo --version`\n- Java: check `java --version`\n- Ruby: check `ruby --version`\n- C#: check `dotnet --version`\nIf the runtime is not found, set runtime_ok=false and stop.\n\nStep 2 — Create a scoped environment:\n- Python: `cd $workspace && python3 -m venv .venv` (or `python -m venv .venv`)\n- Node/TypeScript: already scoped via node_modules (no action needed)\n- Go: already scoped via go modules (no action needed)\n- Rust: already scoped via target/ (no action needed)\n- Ruby: `cd $workspace && bundle config set --local path vendor/bundle`\n- Java: already scoped via build/ or target/ (no action needed)\n\nStep 3 — Install project dependencies into the scoped env:\n- Python: `cd $workspace && .venv/bin/pip install -r requirements.txt` or `cd $workspace && .venv/bin/pip install -e .` if pyproject.toml exists\n- Node/TypeScript: `cd $workspace && npm install`\n- Go: `cd $workspace && go mod download`\n- Rust: `cd $workspace && cargo fetch`\n- Ruby: `cd $workspace && bundle install`\n- Java (Maven): `cd $workspace && mvn dependency:resolve`\n- Java (Gradle): `cd $workspace && gradle dependencies`\n\nStep 4 — Verify by running a quick smoke test if possible:\n- Python: `cd $workspace && .venv/bin/python -c \"print('ok')\"`\n- Node: `cd $workspace && node -e \"console.log('ok')\"`\n\nOutput ONLY a single JSON object:\n{\"runtime_ok\": true, \"env_created\": true, \"deps_installed\": true, \"env_path\": \".venv\", \"errors\": []}\n\nIf anything fails, set the relevant field to false and add error messages to the errors array.\nNo markdown fences, no explanation — just the JSON."
+    ]
+
+    done [shape=Msquare, label="Bootstrap Complete"]
+
+    start -> bootstrap -> done
+}

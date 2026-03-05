@@ -1,19 +1,36 @@
-"""Consistent CLI colour output helpers for the Dark Factory.
+"""CLI output helpers — the ONLY way onboarding talks to the user.
 
-Standard colour coding:
-  - success = green
-  - warning = amber
-  - error   = red
-  - info    = blue
+Architecture
+~~~~~~~~~~~~
+All user-visible output from the onboarding orchestrator (and any future CLI
+commands) must go through this module.  Direct ``sys.stdout.write()`` is
+reserved for interactive input prompts only.
 
-Uses Rich markup for coloured terminal output.  All public functions
-accept plain strings and return Rich-markup-annotated strings, or
-print directly via :func:`cprint`.
+Standard colour coding (semantic levels):
+  - success = green     — phase completed, tool found, auth OK
+  - warning = amber     — non-fatal issue, continuing
+  - error   = red       — fatal failure (prints to stderr)
+  - info    = blue      — neutral status, phase headers
+  - muted   = gray      — optional/skipped items
+
+Key functions used by the orchestrator:
+  - :func:`cprint`              — print styled text (Rich markup or plain fallback)
+  - :func:`phase_header`        — ``[1/10] Platform Detection`` + divider line
+  - :func:`print_stage_result`  — ``✔ PASSED  git`` or ``✘ FAILED  docker``
+  - :func:`completion_panel`    — green bordered summary box (preserves machine-parseable lines)
+  - :func:`print_error`         — ``Error: ...`` + optional ``Hint: ...`` to stderr
+  - :func:`spinner`             — Rich spinner for long-running pipeline calls
+
+All functions gracefully fall back to plain text when Rich is not installed.
+User-controlled strings MUST be escaped with ``rich.markup.escape()`` before
+rendering (SEC-001 — see :func:`completion_panel` for example).
 """
 
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TextIO
 
 from dark_factory.ui.theme import PILLARS, THEME, stage_icon
@@ -184,6 +201,25 @@ def completion_panel(repo: str, app_type: str, label_count: int) -> str:
             f"  GITHUB_REPO={repo}\n"
             f"  {sep}\n"
         )
+
+
+@contextmanager
+def spinner(message: str) -> Iterator[None]:
+    """Show a Rich spinner while long-running work executes.
+
+    The spinner line is transient — it disappears when the block exits,
+    so the caller can print the real result line afterwards.
+    Falls back to a plain text line if Rich is unavailable.
+    """
+    try:
+        from rich.live import Live  # noqa: PLC0415
+        from rich.spinner import Spinner as RichSpinner  # noqa: PLC0415
+
+        with Live(RichSpinner("dots", text=styled(message, "info")), transient=True):
+            yield
+    except ImportError:
+        sys.stdout.write(f"  {message}...\n")
+        yield
 
 
 def print_error(message: str, *, hint: str = "") -> None:

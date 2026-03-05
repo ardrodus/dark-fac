@@ -14,6 +14,7 @@ Each option is navigable via keyboard ([1]–[5]) and mouse click.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -95,7 +96,17 @@ class MenuOption(ListItem):
 class MenuBanner(Static):
     """ASCII-art banner at the top of the menu screen."""
 
+    def __init__(self, active_repo: str = "", **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._active_repo = active_repo
+
     def compose(self) -> ComposeResult:
+        repo_line = ""
+        if self._active_repo:
+            repo_line = (
+                f"     [{THEME.success}]\u25cf[/{THEME.success}] "
+                f"[bold]{self._active_repo}[/bold]\n"
+            )
         yield Label(
             f"[bold {THEME.primary}]"
             f"\n"
@@ -104,6 +115,7 @@ class MenuBanner(Static):
             f"[{THEME.text_muted}]"
             f"     Automated Issue-Dispatch Pipeline\n"
             f"\n"
+            f"{repo_line}"
             f"     [{PILLARS.sentinel}]{COMPACT_ICONS['sentinel']}[/{PILLARS.sentinel}] Sentinel  "
             f"[{PILLARS.dark_forge}]{COMPACT_ICONS['dark_forge']}[/{PILLARS.dark_forge}] Forge  "
             f"[{PILLARS.crucible}]{COMPACT_ICONS['crucible']}[/{PILLARS.crucible}] Crucible\n"
@@ -205,12 +217,16 @@ class InteractiveApp(App[str | None]):
     ]
     CSS = _MENU_CSS
 
+    def __init__(self, active_repo: str = "", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._active_repo = active_repo
+
     # ── Compose ───────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Vertical(
-            MenuBanner(id="menu-banner", classes="themed-border"),
+            MenuBanner(active_repo=self._active_repo, id="menu-banner", classes="themed-border"),
             ListView(
                 *(MenuOption(item) for item in MENU_ITEMS),
                 id="menu-list",
@@ -274,8 +290,13 @@ class InteractiveApp(App[str | None]):
             self.exit(event.item.item.key)
 
 
-def run_interactive_tui() -> str | None:
+def run_interactive_tui(active_repo: str = "") -> str | None:
     """Launch the interactive TUI and return the selected menu key.
+
+    Parameters
+    ----------
+    active_repo:
+        The active ``owner/repo`` string to display on the banner.
 
     Returns
     -------
@@ -283,5 +304,5 @@ def run_interactive_tui() -> str | None:
         The key of the selected option (``"1"`` – ``"5"``), or
         ``None`` if the user quit without selecting.
     """
-    app = InteractiveApp()
+    app = InteractiveApp(active_repo=active_repo)
     return app.run()

@@ -291,10 +291,8 @@ def _run_subsystem(key: str) -> None:
         # Ouroboros — invoke → gather deps → execute (same as other pillars)
         _run_ouroboros_interactive()
     elif key == "4":
-        # Foundry — workspace manager TUI
-        from dark_factory.modes.foundry import run_foundry_tui  # noqa: PLC0415
-
-        run_foundry_tui()
+        # Foundry — workspace manager TUI (loops until Escape)
+        _run_foundry_interactive()
     elif key == "5":
         # Settings — config editor TUI
         from dark_factory.modes.settings import run_settings_tui  # noqa: PLC0415
@@ -349,6 +347,28 @@ def _forge_event_printer(event: object) -> None:
         sys.stdout.write(f"{indent}parallel ({event.branch_count} branches)...\n")
     elif isinstance(event, ParallelCompleted):
         sys.stdout.write(f"{indent}parallel done ({event.duration:.1f}s)\n")
+
+
+def _run_foundry_interactive() -> None:
+    """Foundry workspace manager — loops until the user presses Escape.
+
+    When the user presses Enter on a workspace row, opens the per-workspace
+    config editor.  When ``"add"`` is returned, launches onboarding.
+    ``None`` (Escape/quit) exits back to the main menu.
+    """
+    from dark_factory.modes.foundry import run_foundry_tui, run_workspace_config_tui  # noqa: PLC0415
+
+    while True:
+        result = run_foundry_tui()
+        if result is None:
+            break
+        if result == "add":
+            from dark_factory.setup.orchestrator import run_onboarding  # noqa: PLC0415
+
+            run_onboarding()
+        else:
+            # Open per-workspace config editor
+            run_workspace_config_tui(result)
 
 
 def _run_forge_interactive() -> None:
@@ -498,55 +518,76 @@ def _run_crucible_interactive() -> None:
     input("  Press Enter to return to menu...")
 
 
+def _resolve_ouroboros_repo() -> str:
+    """Return the Ouroboros target repo from config, or empty if disabled."""
+    from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+    cfg = load_config()
+    for r in cfg.data.get("repos", []):
+        if isinstance(r, dict) and r.get("active"):
+            ws_cfg = r.get("workspace_config", {})
+            if isinstance(ws_cfg, dict):
+                ouro = ws_cfg.get("ouroboros", {})
+                if isinstance(ouro, dict):
+                    return str(ouro.get("repo", ""))
+    return ""
+
+
 def _run_ouroboros_interactive() -> None:
     """Run Ouroboros self-improvement pipeline interactively.
 
-    Follows the prepare → gather deps → execute pattern:
-      1. Resolve active repo (the factory repo itself)
-      2. acquire_workspace() — clone/pull factory, bootstrap scaffold
-      3. engine.run_pipeline("ouroboros", {workspace_root, trigger})
+    Follows the Invoke → Gather Dependencies → Execute pattern:
+      1. Resolve Ouroboros target repo (Dark Factory upstream or user's fork)
+      2. acquire_workspace() — clone/pull the factory repo
+      3. engine.run_pipeline("ouroboros", {workspace_root, upstream_repo, trigger})
       4. Print result
 
-    Ouroboros operates on Dark Factory's own code.  The DOT pipeline
-    handles all workflow logic (auto-update, self-forge, feedback).
+    Ouroboros operates on Dark Factory's own code, NOT the user's project.
+    The target repo is configured during onboarding (phase 10).
     """
     import asyncio  # noqa: PLC0415
     import time  # noqa: PLC0415
 
     from dark_factory.pipeline.engine import FactoryPipelineEngine  # noqa: PLC0415
+    from dark_factory.ui.cli_colors import cprint, print_error  # noqa: PLC0415
     from dark_factory.workspace.manager import acquire_workspace  # noqa: PLC0415
 
-    repo = _resolve_active_repo()
-    if not repo:
-        sys.stdout.write("  No active repo configured.\n\n")
-        input("  Press Enter to return to menu...")
+    ouro_repo = _resolve_ouroboros_repo()
+    if not ouro_repo:
+        cprint("\n  Ouroboros is not configured.", "warning")
+        cprint("  Run 'dark-factory onboard' to enable it.", "muted")
+        input("\n  Press Enter to return to menu...")
         return
 
-    sys.stdout.write("\n  Ouroboros: acquiring workspace for self-improvement...\n")
+    cprint(f"\n  Ouroboros: targeting {ouro_repo}", "info")
+    cprint("  Acquiring workspace...", "muted")
     try:
-        workspace = acquire_workspace(repo, "ouroboros")
+        workspace = acquire_workspace(ouro_repo, "ouroboros")
     except Exception as exc:  # noqa: BLE001
-        sys.stdout.write(f"  Failed to acquire workspace: {exc}\n\n")
-        input("  Press Enter to return to menu...")
+        print_error(f"Failed to acquire workspace: {exc}")
+        input("\n  Press Enter to return to menu...")
         return
 
-    sys.stdout.write("  Ouroboros: running self-improvement pipeline...\n")
+    cprint("  Running self-improvement pipeline...", "info")
     engine = FactoryPipelineEngine(on_event=_forge_event_printer)
     t0 = time.monotonic()
     try:
         asyncio.run(engine.run_pipeline("ouroboros", {
             "workspace_root": workspace.path,
+            "upstream_repo": f"https://github.com/{ouro_repo}.git",
             "trigger": "manual",
         }))
         passed = True
     except Exception as exc:  # noqa: BLE001
-        sys.stdout.write(f"  Pipeline error: {exc}\n")
+        print_error(f"Pipeline error: {exc}")
         passed = False
     elapsed = time.monotonic() - t0
 
-    status = "PASSED" if passed else "FAILED"
-    sys.stdout.write(f"  Ouroboros {status} ({elapsed:.1f}s)\n\n")
-    input("  Press Enter to return to menu...")
+    if passed:
+        cprint(f"  Ouroboros PASSED ({elapsed:.1f}s)", "success")
+    else:
+        cprint(f"  Ouroboros FAILED ({elapsed:.1f}s)", "error")
+    input("\n  Press Enter to return to menu...")
 
 
 def dispatch_interactive(parsed: ParsedCommand) -> None:
@@ -569,7 +610,8 @@ def dispatch_interactive(parsed: ParsedCommand) -> None:
     try:
         with instance_lock():
             while True:
-                selection = run_interactive_tui()
+                repo = _resolve_active_repo()
+                selection = run_interactive_tui(active_repo=repo)
                 if selection is None:
                     break
                 _run_subsystem(selection)

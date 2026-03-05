@@ -7,7 +7,6 @@ branch protection on ``main``.
 from __future__ import annotations
 
 import logging
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +93,8 @@ assignees: ''
 def provision_labels(repo: str) -> int:
     """Create all pipeline labels on *repo*. Returns count created."""
     from dark_factory.integrations.shell import gh  # noqa: PLC0415
+    from dark_factory.ui.cli_colors import cprint, styled  # noqa: PLC0415
 
-    w = sys.stdout.write
     created = 0
     for name, color, desc in LABELS:
         result = gh(
@@ -104,11 +103,11 @@ def provision_labels(repo: str) -> int:
             timeout=15,
         )
         if result.returncode == 0:
-            w(f"    + {name}\n")
+            cprint(f"    {styled('+', 'success')} {name}")
             created += 1
         else:
             # --force updates existing, so failure is unexpected
-            w(f"    ! {name}: {result.stderr.strip()}\n")
+            cprint(f"    {styled('!', 'warning')} {name}: {result.stderr.strip()}")
     return created
 
 
@@ -179,31 +178,35 @@ def provision_branch_protection(repo: str, branch: str = "main") -> bool:
     )
     if result.returncode == 0:
         return True
-    logger.warning("Failed to set branch protection: %s", result.stderr.strip())
+    # Soft failure — branch protection requires admin access and may not be
+    # available on free-tier repos.  Not critical for Dark Factory operation.
+    logger.info("Branch protection skipped: %s", result.stderr.strip())
     return False
 
 
 def provision_github(repo: str) -> dict[str, bool | int]:
     """Run all provisioning steps. Returns a status dict."""
-    w = sys.stdout.write
+    from dark_factory.ui.cli_colors import cprint, print_stage_result, styled  # noqa: PLC0415
+
     results: dict[str, bool | int] = {}
 
-    w("  Creating pipeline labels...\n")
+    cprint(styled("  Pipeline labels", "info"))
     results["labels"] = provision_labels(repo)
 
-    w("  Creating issue template...\n")
+    cprint(styled("  Issue template", "info"))
     ok = provision_issue_template(repo)
-    w(f"    {'+ created' if ok else '! skipped'}\n")
+    print_stage_result("issue template", "passed" if ok else "skipped")
     results["issue_template"] = ok
 
-    w("  Creating CI workflow...\n")
+    cprint(styled("  CI workflow", "info"))
     ok = provision_ci_workflow(repo)
-    w(f"    {'+ created' if ok else '! skipped'}\n")
+    print_stage_result("CI workflow", "passed" if ok else "skipped")
     results["ci_workflow"] = ok
 
-    w("  Setting branch protection on main...\n")
+    cprint(styled("  Branch protection", "info"))
     ok = provision_branch_protection(repo)
-    w(f"    {'+ enabled' if ok else '! skipped (may require admin)'}\n")
+    print_stage_result("branch protection", "passed" if ok else "skipped",
+                       detail="" if ok else "requires admin access")
     results["branch_protection"] = ok
 
     return results

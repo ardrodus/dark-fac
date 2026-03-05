@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import shutil
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,17 +35,23 @@ def _detect_factory_repo(root: Path) -> bool:
     return all(m.is_file() for m in markers)
 
 
-def _analyze_self(root: Path) -> AnalysisResult:
-    """Run project analyzer with factory-specific overrides."""
-    from dark_factory.setup.project_analyzer import analyze_project  # noqa: PLC0415
+def _analyze_self(_root: Path) -> AnalysisResult:
+    """Return hardcoded analysis for the factory repo itself.
 
-    result = analyze_project(str(root))
-    return replace(
-        result,
+    No need to run the analysis pipeline -- we know what we are.
+    """
+    from dark_factory.setup.project_analyzer import AnalysisResult as AR  # noqa: PLC0415
+
+    return AR(
         language="Python",
         framework="pytest",
         detected_app_type="console",
         confidence="high",
+        description="Python/pytest project (dark-factory)",
+        test_cmd="pytest",
+        required_tools=("python", "pip", "pytest", "ruff", "mypy"),
+        source_dirs=("dark_factory/",),
+        test_dirs=("tests/",),
     )
 
 
