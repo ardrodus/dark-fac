@@ -1,0 +1,175 @@
+/* Dark Factory — dashboard-specific styles. */
+
+#banner-panel {
+    height: auto;
+    background: #0f172a;
+    padding: 0 1;
+    text-align: center;
+    display: none;
+}
+
+#pipeline-panel {
+    height: auto;
+    max-height: 16;
+    border: round #f97316;
+    border-left: thick #f97316;
+    background: #1e293b;
+    padding: 1 2;
+}
+
+#agent-panel {
+    height: auto;
+    max-height: 14;
+    border: round #7c3aed;
+    border-left: thick #7c3aed;
+    background: #1e293b;
+    padding: 1 2;
+    width: 1fr;
+}
+
+#health-panel {
+    height: auto;
+    max-height: 10;
+    border: round #10b981;
+    border-left: thick #10b981;
+    background: #1e293b;
+    padding: 1 2;
+    width: 1fr;
+}
+
+#gate-panel {
+    height: auto;
+    max-height: 12;
+    border: round #3b82f6;
+    border-left: thick #3b82f6;
+    background: #1e293b;
+    padding: 1 2;
+}
+
+#security-panel {
+    height: auto;
+    max-height: 14;
+    border: round #3b82f6;
+    border-left: thick #3b82f6;
+    background: #1e293b;
+    padding: 1 2;
+}
+
+#notification-panel {
+    height: auto;
+    max-height: 8;
+    border: round #f59e0b;
+    border-left: thick #f59e0b;
+    background: #1e293b;
+    padding: 1 2;
+}
+
+#log-panel {
+    height: 1fr;
+    border: round #334155;
+    background: #1e293b;
+    padding: 1 2;
+}
+
+/* --- Grid layout --- */
+
+#dashboard-grid {
+    height: 1fr;
+}
+
+#middle-row {
+    height: auto;
+    max-height: 14;
+}
+
+/* --- Pipeline flow diagram --- */
+
+PipelineFlowDiagram {
+    height: auto;
+    layout: horizontal;
+    padding: 0 1;
+}
+
+PipelineNode {
+    width: auto;
+    height: auto;
+    min-width: 14;
+    padding: 0 1;
+    content-align: center middle;
+}
+
+PipelineNode.-pending {
+    color: #94a3b8;
+}
+
+PipelineNode.-running {
+    color: #3b82f6;
+}
+
+PipelineNode.-passed {
+    color: #22c55e;
+}
+
+PipelineNode.-failed {
+    color: #ef4444;
+}
+
+PipelineNode.-skipped {
+    color: #94a3b8;
+}
+
+PipelineConnector {
+    width: auto;
+    height: auto;
+    min-width: 5;
+    content-align: center middle;
+    padding: 0;
+}
+
+PipelineConnector.-completed {
+    color: #22c55e;
+}
+
+PipelineConnector.-pending {
+    color: #334155;
+}
+
+/* --- Toast overlay --- */
+
+#toast-stack {
+    dock: right;
+    width: 40;
+    max-height: 100%;
+    layer: overlay;
+    offset-x: 0;
+    padding: 1;
+}
+
+ToastNotification {
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #334155;
+}
+
+ToastNotification.-info {
+    border-left: thick #3b82f6;
+}
+
+ToastNotification.-success {
+    border-left: thick #22c55e;
+}
+
+ToastNotification.-warning {
+    border-left: thick #f59e0b;
+}
+
+ToastNotification.-error {
+    border-left: thick #ef4444;
+}
+
+/* Focus glow: applied per-panel via :focus-within in Textual */
+
+/* Animations are driven by Python timers (AnimatedSpinner),
+   not CSS @keyframes (unsupported in Textual). */

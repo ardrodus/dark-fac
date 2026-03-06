@@ -1,0 +1,66 @@
+/* Dark Factory — shared base styles.
+ *
+ * Imported by all screens.  Contains Screen, Header, Footer,
+ * DataTable, ProgressBar, RichLog, and semantic colour classes.
+ *
+ * Theme custom-property values are set at mount time by each App
+ * via build_theme_css().  Static fallbacks use the default palette.
+ */
+
+Screen {
+    background: #0f172a;
+}
+
+Header {
+    background: #7c3aed;
+    color: #e2e8f0;
+}
+
+Footer {
+    background: #1e293b;
+    color: #94a3b8;
+}
+
+DataTable {
+    background: #1e293b;
+    color: #e2e8f0;
+}
+
+DataTable > .datatable--header {
+    background: #7c3aed;
+    color: #e2e8f0;
+}
+
+ProgressBar Bar > .bar--bar {
+    color: #7c3aed;
+}
+
+ProgressBar Bar > .bar--complete {
+    color: #22c55e;
+}
+
+RichLog {
+    background: #1e293b;
+    color: #e2e8f0;
+    scrollbar-color: #94a3b8;
+}
+
+.success {
+    color: #22c55e;
+}
+
+.warning {
+    color: #f59e0b;
+}
+
+.error {
+    color: #ef4444;
+}
+
+.muted {
+    color: #94a3b8;
+}
+
+.accent {
+    color: #a78bfa;
+}

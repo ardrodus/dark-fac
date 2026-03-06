@@ -134,52 +134,6 @@ class SettingsStatusBar(Static):
 
 _SETTINGS_ACCENT = "#94a3b8"
 
-_SETTINGS_CSS = f"""
-Screen {{
-    background: {THEME.bg_dark};
-}}
-
-Header {{
-    background: {THEME.bg_header};
-    color: {THEME.text};
-}}
-
-Footer {{
-    background: {THEME.bg_panel};
-    color: {THEME.text_muted};
-}}
-
-#settings-banner {{
-    height: auto;
-    padding: 1 2;
-    background: {THEME.bg_panel};
-    border: tall {_SETTINGS_ACCENT};
-    margin: 1 2;
-}}
-
-#settings-table {{
-    height: auto;
-    min-height: 7;
-    margin: 0 2;
-    padding: 1 0;
-    background: {THEME.bg_panel};
-    border: tall {THEME.border};
-}}
-
-#settings-status-bar {{
-    height: auto;
-    padding: 0 2;
-    margin: 0 2;
-}}
-
-#save-indicator {{
-    height: auto;
-    padding: 0 4;
-    margin: 0 2;
-    color: {THEME.success};
-}}
-""" + build_theme_css()
-
 
 # ── Value formatting helpers ─────────────────────────────────────
 
@@ -223,7 +177,10 @@ class SettingsScreen(App[str | None]):
         Binding("s", "save_settings", "Save"),
         Binding("q", "quit", "Quit"),
     ]
-    CSS = _SETTINGS_CSS
+    CSS_PATH = str(
+        (Path(__file__).resolve().parent.parent / "ui" / "styles" / "settings.tcss").resolve()
+    )
+    DEFAULT_CSS = build_theme_css()
 
     def __init__(
         self,

@@ -1,4 +1,4 @@
-"""Dark Factory UI — dashboard, notifications, status reporting, and theming."""
+"""Dark Factory UI — dashboard, notifications, status reporting, theming, and widgets."""
 
 from dark_factory.ui.notifications import (
     Notification,

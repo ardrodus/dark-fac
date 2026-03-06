@@ -1,0 +1,46 @@
+/* Dark Factory — settings screen styles. */
+
+Screen {
+    background: #0f172a;
+}
+
+Header {
+    background: #7c3aed;
+    color: #e2e8f0;
+}
+
+Footer {
+    background: #1e293b;
+    color: #94a3b8;
+}
+
+#settings-banner {
+    height: auto;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #94a3b8;
+    border-left: thick #94a3b8;
+    margin: 1 2;
+}
+
+#settings-table {
+    height: auto;
+    min-height: 7;
+    margin: 0 2;
+    padding: 1 0;
+    background: #1e293b;
+    border: round #334155;
+}
+
+#settings-status-bar {
+    height: auto;
+    padding: 0 2;
+    margin: 0 2;
+}
+
+#save-indicator {
+    height: auto;
+    padding: 0 4;
+    margin: 0 2;
+    color: #22c55e;
+}

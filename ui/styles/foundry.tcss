@@ -1,0 +1,46 @@
+/* Dark Factory — foundry workspace list styles. */
+
+Screen {
+    background: #0f172a;
+}
+
+Header {
+    background: #7c3aed;
+    color: #e2e8f0;
+}
+
+Footer {
+    background: #1e293b;
+    color: #94a3b8;
+}
+
+#foundry-banner {
+    height: auto;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #a78bfa;
+    border-left: thick #a78bfa;
+    margin: 1 2;
+}
+
+#workspace-table {
+    height: auto;
+    min-height: 5;
+    margin: 0 2;
+    padding: 1 0;
+    background: #1e293b;
+    border: round #334155;
+}
+
+#foundry-status-bar {
+    height: auto;
+    padding: 0 2;
+    margin: 0 2;
+}
+
+#empty-message {
+    height: auto;
+    padding: 1 4;
+    margin: 0 2;
+    color: #94a3b8;
+}

@@ -56,6 +56,9 @@ class ThemeColors:
     border: str = "#334155"
     border_focus: str = "#7c3aed"
 
+    # Active / focused panel background (3-tier system)
+    bg_active: str = "#283548"
+
 
 # Singleton instance used throughout the UI layer.
 THEME = ThemeColors()
@@ -220,7 +223,7 @@ def build_theme_css() -> str:
             f"}}\n"
             f"\n"
             f"Screen.{c} .themed-border {{\n"
-            f"    border: tall {a};\n"
+            f"    border: round {a};\n"
             f"}}\n"
             f"\n"
             f"Screen.{c} DataTable > .datatable--header {{\n"
@@ -239,152 +242,13 @@ def build_theme_css() -> str:
     return "\n\n".join(rules)
 
 
-_CSS_TEMPLATE = """
-Screen {{
-    background: {bg_dark};
-}}
-
-Header {{
-    background: {bg_header};
-    color: {text};
-}}
-
-Footer {{
-    background: {bg_panel};
-    color: {text_muted};
-}}
-
-#banner-panel {{
-    height: auto;
-    background: {bg_dark};
-    padding: 0 1;
-    text-align: center;
-}}
-
-#pipeline-panel {{
-    height: auto;
-    max-height: 16;
-    border: tall {p_dark_forge};
-    background: {bg_panel};
-    padding: 1 2;
-}}
-
-#agent-panel {{
-    height: auto;
-    max-height: 14;
-    border: tall {p_ouroboros};
-    background: {bg_panel};
-    padding: 1 2;
-    width: 1fr;
-}}
-
-#health-panel {{
-    height: auto;
-    max-height: 10;
-    border: tall {p_obelisk};
-    background: {bg_panel};
-    padding: 1 2;
-    width: 1fr;
-}}
-
-#gate-panel {{
-    height: auto;
-    max-height: 12;
-    border: tall {p_sentinel};
-    background: {bg_panel};
-    padding: 1 2;
-}}
-
-#security-panel {{
-    height: auto;
-    max-height: 14;
-    border: tall {p_sentinel};
-    background: {bg_panel};
-    padding: 1 2;
-}}
-
-#notification-panel {{
-    height: auto;
-    max-height: 8;
-    border: tall {p_crucible};
-    background: {bg_panel};
-    padding: 1 2;
-}}
-
-#log-panel {{
-    height: 1fr;
-    border: tall {border};
-    background: {bg_panel};
-    padding: 1 2;
-}}
-
-DataTable {{
-    background: {bg_panel};
-    color: {text};
-}}
-
-DataTable > .datatable--header {{
-    background: {primary};
-    color: {text};
-}}
-
-ProgressBar Bar > .bar--bar {{
-    color: {primary};
-}}
-
-ProgressBar Bar > .bar--complete {{
-    color: {success};
-}}
-
-RichLog {{
-    background: {bg_panel};
-    color: {text};
-    scrollbar-color: {text_muted};
-}}
-
-.success {{
-    color: {success};
-}}
-
-.warning {{
-    color: {warning};
-}}
-
-.error {{
-    color: {error};
-}}
-
-.muted {{
-    color: {text_muted};
-}}
-
-.accent {{
-    color: {text_accent};
-}}
-"""
-
-
 def build_css() -> str:
-    """Return the Textual CSS string with theme colours interpolated."""
-    base = _CSS_TEMPLATE.format(
-        bg_dark=THEME.bg_dark,
-        bg_header=THEME.bg_header,
-        bg_panel=THEME.bg_panel,
-        border=THEME.border,
-        primary=THEME.primary,
-        success=THEME.success,
-        warning=THEME.warning,
-        error=THEME.error,
-        text=THEME.text,
-        text_muted=THEME.text_muted,
-        text_accent=THEME.text_accent,
-        p_sentinel=PILLARS.sentinel,
-        p_dark_forge=PILLARS.dark_forge,
-        p_crucible=PILLARS.crucible,
-        p_obelisk=PILLARS.obelisk,
-        p_ouroboros=PILLARS.ouroboros,
-    )
-    return base + "\n\n" + build_theme_css()
+    """Return the Textual CSS for dynamic theme switching.
+
+    Static CSS has been extracted to .tcss files under ``ui/styles/``.
+    This function now returns only the dynamic subsystem theme rules.
+    """
+    return build_theme_css()
 
 
 # ── Pipeline stage transition icons ──────────────────────────────
