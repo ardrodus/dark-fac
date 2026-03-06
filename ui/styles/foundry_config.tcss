@@ -1,0 +1,46 @@
+/* Dark Factory — workspace config editor styles. */
+
+Screen {
+    background: #0f172a;
+}
+
+Header {
+    background: #7c3aed;
+    color: #e2e8f0;
+}
+
+Footer {
+    background: #1e293b;
+    color: #94a3b8;
+}
+
+#config-banner {
+    height: auto;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #a78bfa;
+    border-left: thick #a78bfa;
+    margin: 1 2;
+}
+
+#config-fields {
+    height: auto;
+    margin: 0 2;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #334155;
+}
+
+#config-analysis {
+    height: auto;
+    margin: 1 2;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #334155;
+}
+
+#config-status-bar {
+    height: auto;
+    padding: 0 2;
+    margin: 0 2;
+}

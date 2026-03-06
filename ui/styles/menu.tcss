@@ -1,0 +1,80 @@
+/* Dark Factory — main menu styles. */
+
+Screen {
+    background: #0f172a;
+}
+
+Header {
+    background: #7c3aed;
+    color: #e2e8f0;
+}
+
+Footer {
+    background: #1e293b;
+    color: #94a3b8;
+}
+
+#menu-banner {
+    height: auto;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #7c3aed;
+    margin: 1 2;
+}
+
+#menu-list {
+    height: auto;
+    min-height: 7;
+    margin: 0 2;
+    padding: 1 0;
+    background: #0f172a;
+}
+
+#menu-list > ListItem {
+    height: 3;
+    padding: 0 1;
+    background: #1e293b;
+    margin: 0 0 1 0;
+}
+
+#menu-list > ListItem:hover {
+    background: #334155;
+}
+
+#menu-list:focus > .listview--highlight-top {
+    background: #334155;
+}
+
+#menu-list:focus > .listview--highlight {
+    background: #334155;
+}
+
+#status-bar {
+    height: auto;
+    padding: 0 2;
+    margin: 0 2;
+}
+
+/* --- Menu preview pane --- */
+
+#menu-content {
+    height: 1fr;
+}
+
+#menu-sidebar {
+    height: auto;
+    min-height: 7;
+    margin: 0 2;
+    padding: 1 0;
+    background: #0f172a;
+    width: 2fr;
+}
+
+#menu-preview {
+    width: 1fr;
+    margin: 0 2;
+    padding: 1 2;
+    background: #1e293b;
+    border: round #334155;
+    border-left: thick #7c3aed;
+}

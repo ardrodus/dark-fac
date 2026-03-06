@@ -16,11 +16,11 @@ from dark_factory.modes.interactive import (
 
 
 def test_menu_items_structure() -> None:
-    """MENU_ITEMS has 5 frozen items with correct keys, titles, and descriptions."""
-    assert len(MENU_ITEMS) == 5
-    assert [item.key for item in MENU_ITEMS] == ["1", "2", "3", "4", "5"]
+    """MENU_ITEMS has 6 frozen items with correct keys, titles, and descriptions."""
+    assert len(MENU_ITEMS) == 6
+    assert [item.key for item in MENU_ITEMS] == ["1", "2", "3", "4", "5", "6"]
     assert [item.title for item in MENU_ITEMS] == [
-        "Dark Forge", "Crucible", "Ouroboros", "Foundry", "Settings",
+        "Dark Forge", "Crucible", "Ouroboros", "Foundry", "Settings", "Obelisk",
     ]
     assert [item.description for item in MENU_ITEMS] == [
         "Build an issue",
@@ -28,6 +28,7 @@ def test_menu_items_structure() -> None:
         "Self-improve / update",
         "Manage workspaces",
         "Configure factory",
+        "Launch supervisor",
     ]
     with pytest.raises(AttributeError):
         MENU_ITEMS[0].title = "changed"  # type: ignore[misc]
@@ -41,13 +42,13 @@ async def test_app_renders_menu_list() -> None:
     app = InteractiveApp()
     async with app.run_test():
         list_view = app.query_one("#menu-list", ListView)
-        assert len(list_view.children) == 5
+        assert len(list_view.children) == 6
 
 
 @pytest.mark.asyncio
 async def test_keyboard_1_through_5_selects_menu_items() -> None:
     """Keys 1-5 each return their key string as the selection."""
-    for key in ("1", "2", "3", "4", "5"):
+    for key in ("1", "2", "3", "4", "5", "6"):
         app = InteractiveApp()
         async with app.run_test() as pilot:
             await pilot.press(key)
