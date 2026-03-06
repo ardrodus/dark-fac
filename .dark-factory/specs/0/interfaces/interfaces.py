@@ -1,1 +1,0 @@
-{"interfaces": "class AuthService(Protocol): ...", "validation_passed": true}

@@ -1,1 +1,0 @@
-{"schema_type": "sql", "db_engine": "postgresql", "tables": [{"name": "users", "columns": ["id", "email"]}], "migrations": ["CREATE TABLE users (id SERIAL, email TEXT)"]}
