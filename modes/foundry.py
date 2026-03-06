@@ -118,53 +118,6 @@ _APP_TYPE_COLOUR: dict[str, str] = {
 
 # ── Main application ─────────────────────────────────────────────
 
-_FOUNDRY_CSS = f"""
-Screen {{
-    background: {THEME.bg_dark};
-}}
-
-Header {{
-    background: {THEME.bg_header};
-    color: {THEME.text};
-}}
-
-Footer {{
-    background: {THEME.bg_panel};
-    color: {THEME.text_muted};
-}}
-
-#foundry-banner {{
-    height: auto;
-    padding: 1 2;
-    background: {THEME.bg_panel};
-    border: tall {THEME.primary_light};
-    margin: 1 2;
-}}
-
-#workspace-table {{
-    height: auto;
-    min-height: 5;
-    margin: 0 2;
-    padding: 1 0;
-    background: {THEME.bg_panel};
-    border: tall {THEME.border};
-}}
-
-#foundry-status-bar {{
-    height: auto;
-    padding: 0 2;
-    margin: 0 2;
-}}
-
-#empty-message {{
-    height: auto;
-    padding: 1 4;
-    margin: 0 2;
-    color: {THEME.text_muted};
-}}
-""" + build_theme_css()
-
-
 class FoundryScreen(App[str | None]):
     """Foundry workspace list screen.
 
@@ -179,7 +132,10 @@ class FoundryScreen(App[str | None]):
         Binding("a", "add_workspace", "Add Workspace"),
         Binding("q", "quit", "Quit"),
     ]
-    CSS = _FOUNDRY_CSS
+    CSS_PATH = str(
+        (Path(__file__).resolve().parent.parent / "ui" / "styles" / "foundry.tcss").resolve()
+    )
+    DEFAULT_CSS = build_theme_css()
 
     def __init__(
         self,
@@ -314,53 +270,6 @@ def _save_repo_fields(repo: str, *, app_type: str, active: bool) -> None:
     save_config(cfg)
 
 
-_CONFIG_CSS = f"""
-Screen {{
-    background: {THEME.bg_dark};
-}}
-
-Header {{
-    background: {THEME.bg_header};
-    color: {THEME.text};
-}}
-
-Footer {{
-    background: {THEME.bg_panel};
-    color: {THEME.text_muted};
-}}
-
-#config-banner {{
-    height: auto;
-    padding: 1 2;
-    background: {THEME.bg_panel};
-    border: tall {THEME.primary_light};
-    margin: 1 2;
-}}
-
-#config-fields {{
-    height: auto;
-    margin: 0 2;
-    padding: 1 2;
-    background: {THEME.bg_panel};
-    border: tall {THEME.border};
-}}
-
-#config-analysis {{
-    height: auto;
-    margin: 1 2;
-    padding: 1 2;
-    background: {THEME.bg_panel};
-    border: tall {THEME.border};
-}}
-
-#config-status-bar {{
-    height: auto;
-    padding: 0 2;
-    margin: 0 2;
-}}
-""" + build_theme_css()
-
-
 class WorkspaceConfigScreen(App[str | None]):
     """Per-workspace config editor.
 
@@ -377,7 +286,10 @@ class WorkspaceConfigScreen(App[str | None]):
         Binding("enter", "save", "Save"),
         Binding("q", "go_back", "Quit"),
     ]
-    CSS = _CONFIG_CSS
+    CSS_PATH = str(
+        (Path(__file__).resolve().parent.parent / "ui" / "styles" / "foundry_config.tcss").resolve()
+    )
+    DEFAULT_CSS = build_theme_css()
 
     def __init__(self, repo: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)

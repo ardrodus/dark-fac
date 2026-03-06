@@ -15,17 +15,19 @@ Each option is navigable via keyboard ([1]–[6]) and mouse click.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
 
 from dark_factory import __version__
 from dark_factory.ui.theme import (
     COMPACT_ICONS,
     PILLARS,
+    SUBSYSTEM_ICONS,
     THEME,
     apply_subsystem_theme,
     build_theme_css,
@@ -91,43 +93,68 @@ class MenuOption(ListItem):
 
     def compose(self) -> ComposeResult:
         item = self._item
+        icon = COMPACT_ICONS.get(item.subsystem, "\u25a0")
         yield Label(
-            f"  [{item.color}][{item.key}][/{item.color}]  "
+            f"  [{item.color}]{icon} [{item.key}][/{item.color}]  "
             f"[bold]{item.title}[/bold]  "
             f"[{THEME.text_muted}]{item.description}[/{THEME.text_muted}]"
         )
 
+    def on_mount(self) -> None:
+        self.styles.border_left = ("thick", self._item.color)
+
 
 class MenuBanner(Static):
-    """ASCII-art banner at the top of the menu screen."""
+    """Compact single-line title bar for the menu screen."""
 
     def __init__(self, active_repo: str = "", **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._active_repo = active_repo
 
     def compose(self) -> ComposeResult:
-        repo_line = ""
+        repo_part = ""
         if self._active_repo:
-            repo_line = (
-                f"     [{THEME.success}]\u25cf[/{THEME.success}] "
-                f"[bold]{self._active_repo}[/bold]\n"
+            repo_part = (
+                f"  [{THEME.success}]\u25cf[/{THEME.success}] "
+                f"[bold]{self._active_repo}[/bold]"
             )
         yield Label(
-            f"[bold {THEME.primary}]"
-            f"\n"
-            f"     Dark Factory  v{__version__}\n"
-            f"[/]"
-            f"[{THEME.text_muted}]"
-            f"     Automated Issue-Dispatch Pipeline\n"
-            f"\n"
-            f"{repo_line}"
-            f"     [{PILLARS.sentinel}]{COMPACT_ICONS['sentinel']}[/{PILLARS.sentinel}] Sentinel  "
-            f"[{PILLARS.dark_forge}]{COMPACT_ICONS['dark_forge']}[/{PILLARS.dark_forge}] Forge  "
-            f"[{PILLARS.crucible}]{COMPACT_ICONS['crucible']}[/{PILLARS.crucible}] Crucible\n"
-            f"     [{PILLARS.obelisk}]{COMPACT_ICONS['obelisk']}[/{PILLARS.obelisk}] Obelisk   "
-            f"[{PILLARS.ouroboros}]{COMPACT_ICONS['ouroboros']}[/{PILLARS.ouroboros}] Ouroboros\n"
+            f"[bold {THEME.primary}] Dark Factory  v{__version__}[/]"
+            f"  [{THEME.text_muted}]\u2502  Automated Issue-Dispatch Pipeline[/{THEME.text_muted}]"
+            f"{repo_part}"
+            f"  [{THEME.text_muted}]\u2502  "
+            f"[{PILLARS.sentinel}]{COMPACT_ICONS['sentinel']}[/{PILLARS.sentinel}] "
+            f"[{PILLARS.dark_forge}]{COMPACT_ICONS['dark_forge']}[/{PILLARS.dark_forge}] "
+            f"[{PILLARS.crucible}]{COMPACT_ICONS['crucible']}[/{PILLARS.crucible}] "
+            f"[{PILLARS.obelisk}]{COMPACT_ICONS['obelisk']}[/{PILLARS.obelisk}] "
+            f"[{PILLARS.ouroboros}]{COMPACT_ICONS['ouroboros']}[/{PILLARS.ouroboros}]"
             f"[/{THEME.text_muted}]"
         )
+
+
+class MenuPreview(Static):
+    """Preview pane showing description for the currently selected menu option."""
+
+    def compose(self) -> ComposeResult:
+        yield Label("", id="preview-content")
+
+    def show_item(self, item: MenuItem | None) -> None:
+        """Update the preview for the given menu item."""
+        try:
+            label = self.query_one("#preview-content", Label)
+        except Exception:  # noqa: BLE001
+            return
+        if item is None:
+            label.update("")
+            return
+        icon_art = SUBSYSTEM_ICONS.get(item.subsystem, "")
+        lines = [
+            f"[bold {item.color}]{item.title}[/]",
+            f"[{THEME.text_muted}]{item.description}[/{THEME.text_muted}]",
+        ]
+        if icon_art:
+            lines.append(f"\n[{item.color}]{icon_art}[/{item.color}]")
+        label.update("\n".join(lines))
 
 
 class StatusBar(Static):
@@ -143,64 +170,6 @@ class StatusBar(Static):
 
 
 # ── Main application ─────────────────────────────────────────────
-
-
-_MENU_CSS = f"""
-Screen {{
-    background: {THEME.bg_dark};
-}}
-
-Header {{
-    background: {THEME.bg_header};
-    color: {THEME.text};
-}}
-
-Footer {{
-    background: {THEME.bg_panel};
-    color: {THEME.text_muted};
-}}
-
-#menu-banner {{
-    height: auto;
-    padding: 1 2;
-    background: {THEME.bg_panel};
-    border: tall {THEME.primary};
-    margin: 1 2;
-}}
-
-#menu-list {{
-    height: auto;
-    min-height: 7;
-    margin: 0 2;
-    padding: 1 0;
-    background: {THEME.bg_dark};
-}}
-
-#menu-list > ListItem {{
-    height: 3;
-    padding: 0 1;
-    background: {THEME.bg_panel};
-    margin: 0 0 1 0;
-}}
-
-#menu-list > ListItem:hover {{
-    background: {THEME.border};
-}}
-
-#menu-list:focus > .listview--highlight-top {{
-    background: {THEME.border};
-}}
-
-#menu-list:focus > .listview--highlight {{
-    background: {THEME.border};
-}}
-
-#status-bar {{
-    height: auto;
-    padding: 0 2;
-    margin: 0 2;
-}}
-""" + build_theme_css()
 
 
 class InteractiveApp(App[str | None]):
@@ -221,7 +190,10 @@ class InteractiveApp(App[str | None]):
         Binding("5", "select_5", "Settings", show=False),
         Binding("6", "select_6", "Obelisk", show=False),
     ]
-    CSS = _MENU_CSS
+    CSS_PATH = str(
+        (Path(__file__).resolve().parent.parent / "ui" / "styles" / "menu.tcss").resolve()
+    )
+    DEFAULT_CSS = build_theme_css()
 
     def __init__(self, active_repo: str = "", **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -233,9 +205,13 @@ class InteractiveApp(App[str | None]):
         yield Header()
         yield Vertical(
             MenuBanner(active_repo=self._active_repo, id="menu-banner", classes="themed-border"),
-            ListView(
-                *(MenuOption(item) for item in MENU_ITEMS),
-                id="menu-list",
+            Horizontal(
+                ListView(
+                    *(MenuOption(item) for item in MENU_ITEMS),
+                    id="menu-list",
+                ),
+                MenuPreview(id="menu-preview"),
+                id="menu-content",
             ),
             StatusBar(id="status-bar"),
         )
@@ -251,14 +227,22 @@ class InteractiveApp(App[str | None]):
     # ── Theme switching ───────────────────────────────────────
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        """Preview subsystem theme when menu item highlight changes."""
+        """Preview subsystem theme and update preview pane on highlight change."""
         if self._skip_initial_highlight:
             self._skip_initial_highlight = False
             return
         if isinstance(event.item, MenuOption) and event.item.item.subsystem:
             apply_subsystem_theme(self, event.item.item.subsystem)
+            try:
+                self.query_one("#menu-preview", MenuPreview).show_item(event.item.item)
+            except Exception:  # noqa: BLE001
+                pass
         else:
             reset_theme(self)
+            try:
+                self.query_one("#menu-preview", MenuPreview).show_item(None)
+            except Exception:  # noqa: BLE001
+                pass
 
     def action_reset_theme(self) -> None:
         """Reset to default neutral theme (bound to Escape)."""

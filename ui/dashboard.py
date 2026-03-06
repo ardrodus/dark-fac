@@ -4,7 +4,8 @@ Built with Textual — a Python TUI framework with reactive widgets, layout,
 and CSS-like styling.  This module replaces any previous ANSI-based console
 output with first-class Textual widgets:
 
-* :class:`~textual.widgets.DataTable` for pipeline-stage metrics
+* :class:`PipelineFlowDiagram` for pipeline-stage visualization
+* :class:`~textual.widgets.DataTable` for agent/health/gate metrics
 * :class:`~textual.widgets.RichLog` for live log streaming
 * :class:`~textual.widgets.ProgressBar` for pipeline-stage progress
 * :class:`~textual.widgets.Header` / :class:`~textual.widgets.Footer` for
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from textual.app import App, ComposeResult
@@ -29,9 +31,11 @@ from dark_factory.ui.theme import (
     FULL_HEADER_BANNER,
     PILLARS,
     THEME,
-    build_css,
+    build_theme_css,
     stage_icon,
 )
+from dark_factory.ui.widgets.pipeline_flow import PipelineFlowDiagram
+from dark_factory.ui.widgets.toast import ToastStack
 
 if TYPE_CHECKING:
     from textual.timer import Timer
@@ -113,6 +117,22 @@ class DashboardState:
     queue_depth: int = 0
     refresh_interval: float = 2.0
     human_gate_queue: Any = None  # Optional HumanGateQueue instance
+    show_banner: bool = False
+
+    # Dirty flags for repaint optimization
+    _dirty_stages: bool = True
+    _dirty_agents: bool = True
+    _dirty_health: bool = True
+    _dirty_gates: bool = True
+    _dirty_notifications: bool = True
+
+    def mark_all_dirty(self) -> None:
+        """Mark all fields as dirty, triggering a full repaint."""
+        self._dirty_stages = True
+        self._dirty_agents = True
+        self._dirty_health = True
+        self._dirty_gates = True
+        self._dirty_notifications = True
 
 
 # ── Helper: state → colour ────────────────────────────────────────
@@ -151,38 +171,26 @@ class BannerPanel(Static):
 
 
 class PipelinePanel(Static):
-    """Pipeline-stage progress table with a progress bar."""
+    """Pipeline-stage panel with flow diagram and a progress bar."""
 
     def compose(self) -> ComposeResult:
         yield Label(f"[b][{PILLARS.dark_forge}]{COMPACT_ICONS['dark_forge']}[/] Pipeline Stages[/b]")
-        yield DataTable(id="stage-table")
+        yield PipelineFlowDiagram(id="flow-diagram")
         yield ProgressBar(id="stage-progress", total=100, show_eta=False)
 
-    def on_mount(self) -> None:
-        table: DataTable[Any] = self.query_one("#stage-table", DataTable)
-        table.add_columns("", "Stage", "State", "Detail", "Time (ms)")
-        table.cursor_type = "none"
-
     def refresh_stages(self, stages: list[StageStatus]) -> None:
-        """Replace all rows in the stage table and update the progress bar."""
-        table: DataTable[Any] = self.query_one("#stage-table", DataTable)
-        table.clear()
-        completed = 0
-        for s in stages:
-            colour = _colour_for(s.state)
-            icon = stage_icon(s.state)
-            table.add_row(
-                f"[{colour}]{icon}[/]",
-                s.name,
-                f"[{colour}]{s.state}[/]",
-                s.detail[:60],
-                f"{s.duration_ms:.1f}",
-            )
-            if s.state in ("passed", "failed", "skipped"):
-                completed += 1
-        bar = self.query_one("#stage-progress", ProgressBar)
-        pct = int(completed / max(len(stages), 1) * 100)
-        bar.update(progress=pct)
+        """Update the flow diagram and progress bar."""
+        try:
+            self.query_one("#flow-diagram", PipelineFlowDiagram).refresh_stages(stages)
+        except Exception:  # noqa: BLE001
+            pass
+        completed = sum(1 for s in stages if s.state in ("passed", "failed", "skipped"))
+        try:
+            bar = self.query_one("#stage-progress", ProgressBar)
+            pct = int(completed / max(len(stages), 1) * 100)
+            bar.update(progress=pct)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 class AgentPanel(Static):
@@ -335,8 +343,13 @@ class DashboardApp(App[None]):
         Binding("r", "force_refresh", "Refresh"),
         Binding("a", "approve_gate", "Approve Gate"),
         Binding("x", "reject_gate", "Reject Gate"),
+        Binding("b", "toggle_banner", "Banner", show=True),
+        Binding("n", "toggle_notifications", "Notifications", show=True),
     ]
-    DEFAULT_CSS = build_css()
+    CSS_PATH = str(
+        (Path(__file__).parent / "styles" / "dashboard.tcss").resolve()
+    )
+    DEFAULT_CSS = build_theme_css()
 
     # Reactive state: bump to trigger a repaint.
     tick: reactive[int] = reactive(0)
@@ -360,11 +373,13 @@ class DashboardApp(App[None]):
             Horizontal(
                 AgentPanel(id="agent-panel"),
                 HealthPanel(id="health-panel"),
+                id="middle-row",
             ),
             GatePanel(id="gate-panel"),
-            NotificationPanel(id="notification-panel"),
             LogPanel(id="log-panel"),
+            id="dashboard-grid",
         )
+        yield ToastStack(id="toast-stack")
         yield Footer()
 
     # ── Lifecycle ─────────────────────────────────────────────
@@ -374,6 +389,13 @@ class DashboardApp(App[None]):
             self._state.refresh_interval,
             self._on_tick,
         )
+        # Banner hidden by default
+        try:
+            banner = self.query_one("#banner-panel", BannerPanel)
+            banner.display = self._state.show_banner
+        except Exception:  # noqa: BLE001
+            pass
+        self._state.mark_all_dirty()
         self._repaint()
 
     def _on_tick(self) -> None:
@@ -393,6 +415,7 @@ class DashboardApp(App[None]):
     def update_state(self, state: DashboardState) -> None:
         """Replace the dashboard state and force a repaint."""
         self._state = state
+        self._state.mark_all_dirty()
         self._repaint()
 
     def log_message(self, message: str) -> None:
@@ -404,7 +427,21 @@ class DashboardApp(App[None]):
 
     def action_force_refresh(self) -> None:
         """Bound to the ``r`` key — manually trigger a repaint."""
+        self._state.mark_all_dirty()
         self._repaint()
+
+    def action_toggle_banner(self) -> None:
+        """Bound to the ``b`` key — toggle the ASCII banner visibility."""
+        self._state.show_banner = not self._state.show_banner
+        try:
+            banner = self.query_one("#banner-panel", BannerPanel)
+            banner.display = self._state.show_banner
+        except Exception:  # noqa: BLE001
+            pass
+
+    def action_toggle_notifications(self) -> None:
+        """Bound to the ``n`` key — open full notification history."""
+        pass
 
     def _respond_to_first_gate(self, approved: bool) -> None:
         """Resolve the first pending human gate if one exists."""
@@ -430,27 +467,49 @@ class DashboardApp(App[None]):
     # ── Internal ──────────────────────────────────────────────
 
     def _repaint(self) -> None:
-        """Push current state into every panel widget."""
+        """Push current state into every panel widget.
+
+        Uses dirty flags to avoid wasteful full repaints — only updates
+        panels whose data has actually changed.
+        """
         try:
-            self.query_one("#pipeline-panel", PipelinePanel).refresh_stages(
-                self._state.stages,
-            )
-            self.query_one("#agent-panel", AgentPanel).refresh_agents(
-                self._state.agents,
-            )
-            self.query_one("#health-panel", HealthPanel).refresh_health(
-                self._state.health,
-                self._state.queue_depth,
-                obelisk=self._state.obelisk,
-            )
-            self.query_one("#gate-panel", GatePanel).refresh_gates(
-                self._state.gate_summaries,
-                human_gate_queue=self._state.human_gate_queue,
-            )
-            notifs = self._state.notifications or get_store().items
-            self.query_one("#notification-panel", NotificationPanel).refresh_notifications(
-                notifs,
-            )
+            if self._state._dirty_stages:
+                self.query_one("#pipeline-panel", PipelinePanel).refresh_stages(
+                    self._state.stages,
+                )
+                self._state._dirty_stages = False
+
+            if self._state._dirty_agents:
+                self.query_one("#agent-panel", AgentPanel).refresh_agents(
+                    self._state.agents,
+                )
+                self._state._dirty_agents = False
+
+            if self._state._dirty_health:
+                self.query_one("#health-panel", HealthPanel).refresh_health(
+                    self._state.health,
+                    self._state.queue_depth,
+                    obelisk=self._state.obelisk,
+                )
+                self._state._dirty_health = False
+
+            if self._state._dirty_gates:
+                self.query_one("#gate-panel", GatePanel).refresh_gates(
+                    self._state.gate_summaries,
+                    human_gate_queue=self._state.human_gate_queue,
+                )
+                self._state._dirty_gates = False
+
+            if self._state._dirty_notifications:
+                notifs = self._state.notifications or get_store().items
+                # Push new notifications to toast stack
+                try:
+                    toast_stack = self.query_one("#toast-stack", ToastStack)
+                    for n in notifs:
+                        toast_stack.push_notification(n)
+                except Exception:  # noqa: BLE001
+                    pass
+                self._state._dirty_notifications = False
         except Exception:  # noqa: BLE001
             # Widgets may not be mounted yet during early startup.
-            logger.debug("Repaint skipped -- widgets not ready")
+            logger.debug("Repaint skipped — widgets not ready")

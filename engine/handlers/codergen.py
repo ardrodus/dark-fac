@@ -21,8 +21,13 @@ from dark_factory.engine.variable_expansion import expand_node_prompt
 
 logger = logging.getLogger(__name__)
 
-# Verdict keywords that agents can emit on their final line to drive
-# conditional edge routing (e.g. arch_verdict diamond).
+# How many non-empty tail lines to scan for a verdict keyword.
+# The LLM often emits the verdict followed by summary text, JSON, or
+# file-path references, so only checking the very last line is fragile.
+_VERDICT_SCAN_LINES: int = 30
+
+# Verdict keywords that agents can emit to drive conditional edge routing
+# (e.g. arch_verdict diamond).
 _VERDICT_KEYWORDS: frozenset[str] = frozenset({
     # Dark Forge arch review
     "APPROVED", "NEEDS_CHANGES", "NEEDS_HUMAN",
@@ -44,10 +49,16 @@ _VERDICT_KEYWORDS: frozenset[str] = frozenset({
 
 
 def _extract_verdict(output: str) -> str:
-    """Scan the last non-empty line of *output* for a known verdict keyword.
+    """Scan the tail of *output* for a known verdict keyword.
+
+    Scans backwards through the last ``_VERDICT_SCAN_LINES`` non-empty
+    lines looking for a verdict.  The LLM often emits the verdict keyword
+    followed by a few lines of summary, JSON output, or file paths, so
+    checking only the very last line is too fragile.
 
     Returns the keyword (uppercase) if found, otherwise empty string.
     """
+    lines_checked = 0
     for line in reversed(output.splitlines()):
         stripped = line.strip()
         if not stripped:
@@ -60,12 +71,14 @@ def _extract_verdict(output: str) -> str:
         last_word = upper.rsplit(None, 1)[-1] if upper else ""
         if last_word in _VERDICT_KEYWORDS:
             return last_word
-        # Only check the last non-empty line
-        logger.debug(
-            "_extract_verdict: last non-empty line %r (upper=%r) matched no keyword",
-            stripped[:120], upper[:120],
-        )
-        break
+        lines_checked += 1
+        if lines_checked >= _VERDICT_SCAN_LINES:
+            logger.debug(
+                "_extract_verdict: scanned %d tail lines, no keyword found. "
+                "Last line checked: %r",
+                lines_checked, stripped[:120],
+            )
+            break
     if not output.strip():
         logger.debug("_extract_verdict: output was empty/whitespace-only")
     return ""
