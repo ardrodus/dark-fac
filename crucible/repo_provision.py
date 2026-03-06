@@ -36,82 +36,111 @@ def _clone_url(repo: str) -> str:
 def _repo_exists(cr: str) -> bool:
     return gh(["repo", "view", cr], timeout=30).returncode == 0
 
-def _scaffold(target: Path, repo_name: str, frameworks: list[str] | None = None) -> None:
-    """Scaffold crucible repo structure. Framework-aware."""
-    for d in ("tests", "reports", "screenshots", "helpers", "fixtures", "config"):
-        (target / d).mkdir(parents=True, exist_ok=True)
+def _scaffold(target: Path, repo_name: str, frameworks: list[str] | None = None) -> None:  # noqa: ARG001
+    """Scaffold crucible repo with scenario-based layout.
 
-    # Always create a base config
-    fws = frameworks or ["playwright"]
+    Scenarios are natural language prompts organized by feature.
+    The Crucible agent traverses all subdirectories to find *.scenario files.
+
+    Layout::
+
+        scenarios/
+            _example/
+                api-health.scenario
+            README.md
+        crucible.json
+        .gitignore
+        README.md
+    """
+    scenarios = target / "scenarios"
+    scenarios.mkdir(parents=True, exist_ok=True)
+
+    # Example feature directory with a starter scenario
+    example_dir = scenarios / "_example"
+    example_dir.mkdir(parents=True, exist_ok=True)
+    (example_dir / "api-health.scenario").write_text(
+        "# API Health Check\n"
+        "#\n"
+        "# Verifies the application starts and responds to a basic health probe.\n"
+        "#\n"
+        "# For web apps: GET the root URL or /health endpoint. Expect HTTP 200.\n"
+        "# For console apps: Run the binary with --version or --help. Expect exit code 0.\n"
+        "#\n"
+        "# This is an example scenario. Replace it with real scenarios for your app.\n\n"
+        "If this is a web app:\n"
+        "  GET http://localhost:$PORT/health\n"
+        "  Expect: HTTP 200 with a JSON body\n\n"
+        "If this is a console app:\n"
+        "  Run the main binary with --help\n"
+        "  Expect: exit code 0 and usage text on stdout\n",
+        encoding="utf-8",
+    )
+
+    (scenarios / "README.md").write_text(
+        "# Scenarios\n\n"
+        "Each `.scenario` file is a natural language prompt that the Crucible agent\n"
+        "reads and executes using bash/curl. Organize scenarios into feature\n"
+        "subdirectories as you see fit.\n\n"
+        "## Layout\n\n"
+        "```\n"
+        "scenarios/\n"
+        "  auth/\n"
+        "    login.scenario\n"
+        "    logout.scenario\n"
+        "  cart/\n"
+        "    add-item.scenario\n"
+        "    checkout.scenario\n"
+        "```\n\n"
+        "## Naming\n\n"
+        "- Graduated (permanent) scenarios: `<name>.scenario`\n"
+        "- New PR scenarios (pending graduation): `pr-<number>-<name>.scenario`\n"
+        "- After graduation, the `pr-<number>-` prefix is stripped.\n\n"
+        "## Writing Scenarios\n\n"
+        "Scenarios are plain English instructions, NOT code. Example:\n\n"
+        "```\n"
+        "# Create User\n"
+        "POST /api/users with body {\"name\": \"test\", \"email\": \"test@example.com\"}\n"
+        "Expect: HTTP 201 with an 'id' field in the JSON response\n"
+        "```\n\n"
+        "The Crucible agent will read the instructions and execute them using\n"
+        "bash commands (curl, httpx, the app binary, etc.).\n",
+        encoding="utf-8",
+    )
+
     (target / "crucible.json").write_text(json.dumps({
         "name": f"{repo_name}-crucible",
-        "frameworks": fws,
+        "version": "2.0",
+        "type": "scenario",
         "created_by": "dark-factory",
     }, indent=2) + "\n", encoding="utf-8")
 
-    # Framework-specific scaffolding
-    if "playwright" in fws:
-        _scaffold_playwright(target, repo_name)
-    if "pytest" in fws:
-        _scaffold_pytest(target, repo_name)
-    if "jest" in fws:
-        _scaffold_jest(target, repo_name)
-
     (target / ".gitignore").write_text(
-        "node_modules/\ntest-results/\nplaywright-report/\nreports/\nscreenshots/\n"
-        ".env\n__pycache__/\n.pytest_cache/\nvenv/\n", encoding="utf-8")
+        "reports/\n.env\n__pycache__/\n", encoding="utf-8")
+
     (target / "README.md").write_text(
-        "# Crucible Tests\n\nReal-world validation tests managed by the Dark Factory "
-        "Crucible agent.\n\n**Do not manually edit tests in this repo.** The Crucible agent "
-        "writes, runs, and\ncommits tests automatically after each PR deploys to dev.\n", encoding="utf-8")
-
-
-def _scaffold_playwright(target: Path, repo_name: str) -> None:
-    (target / "playwright.config.ts").write_text(
-        "import { defineConfig } from '@playwright/test';\n\nexport default defineConfig({\n"
-        "  testDir: './tests',\n  timeout: 30_000,\n  retries: 1,\n  use: {\n"
-        "    baseURL: process.env.DEV_ENDPOINT,\n    screenshot: 'only-on-failure',\n"
-        "    trace: 'retain-on-failure',\n  },\n  reporter: [\n"
-        "    ['html', { outputFolder: './reports' }],\n"
-        "    ['json', { outputFile: './reports/results.json' }],\n  ],\n});\n", encoding="utf-8")
-    pkg = {"name": "crucible-tests", "private": True,
-           "description": f"Crucible real-world validation tests for {repo_name}",
-           "scripts": {"test": "npx playwright test", "test:ui": "npx playwright test --ui"},
-           "devDependencies": {"@playwright/test": "^1.40.0"}}
-    pkg_path = target / "package.json"
-    if pkg_path.is_file():
-        existing = json.loads(pkg_path.read_text(encoding="utf-8"))
-        existing.setdefault("devDependencies", {}).update(pkg["devDependencies"])
-        existing.setdefault("scripts", {}).update(pkg["scripts"])
-        pkg = existing
-    pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8")
-
-
-def _scaffold_pytest(target: Path, _repo_name: str) -> None:
-    (target / "pytest.ini").write_text(
-        "[pytest]\ntestpaths = tests\naddopts = -v --json-report "
-        "--json-report-file=reports/results.json\n", encoding="utf-8")
-    reqs = target / "requirements.txt"
-    existing = reqs.read_text(encoding="utf-8").splitlines() if reqs.is_file() else []
-    for dep in ("pytest", "pytest-json-report", "httpx"):
-        if not any(dep in line for line in existing):
-            existing.append(dep)
-    reqs.write_text("\n".join(existing) + "\n", encoding="utf-8")
-
-
-def _scaffold_jest(target: Path, repo_name: str) -> None:
-    (target / "jest.config.js").write_text(
-        "module.exports = {\n  testMatch: ['**/tests/**/*.test.{js,ts}'],\n"
-        "  reporters: ['default', ['jest-json-reporter', {\n"
-        "    outputFile: './reports/results.json'\n  }]],\n};\n", encoding="utf-8")
-    pkg_path = target / "package.json"
-    pkg = json.loads(pkg_path.read_text(encoding="utf-8")) if pkg_path.is_file() else {
-        "name": "crucible-tests", "private": True,
-        "description": f"Crucible tests for {repo_name}",
-    }
-    pkg.setdefault("devDependencies", {}).update({"jest": "^29.0.0"})
-    pkg.setdefault("scripts", {}).update({"test": "npx jest"})
-    pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8")
+        "# Crucible Tests\n\n"
+        "Scenario-based validation tests managed by the Dark Factory Crucible agent.\n\n"
+        "## How it works\n\n"
+        "Scenarios are **natural language prompts** — not code. The Crucible agent reads\n"
+        "each `.scenario` file, executes the instructions using bash/curl, and reports\n"
+        "PASS or FAIL.\n\n"
+        "No test frameworks. No Playwright. No pytest. The LLM + bash + curl IS the\n"
+        "test harness.\n\n"
+        "## Structure\n\n"
+        "```\n"
+        "scenarios/           ← organize by feature\n"
+        "  auth/\n"
+        "    login.scenario\n"
+        "  cart/\n"
+        "    add-item.scenario\n"
+        "crucible.json        ← repo metadata\n"
+        "```\n\n"
+        "See `scenarios/README.md` for writing guidelines.\n\n"
+        "## Graduation\n\n"
+        "When a PR passes Crucible validation, its new scenarios are \"graduated\"\n"
+        "into this repo permanently — the bill becomes law.\n",
+        encoding="utf-8",
+    )
 
 def _init_and_push(init_dir: Path, cr: str) -> bool:
     cwd = str(init_dir)

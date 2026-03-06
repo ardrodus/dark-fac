@@ -177,7 +177,7 @@ def _build_crucible_context(
 
     Resolves workspace_config from config.json to populate all context
     variables referenced by crucible.dot ($workspace, $app_type, $language,
-    $framework, $test_cmd, $test_repo, $pr_number, $pr_branch).
+    $framework, $test_repo, $pr_number, $pr_branch).
     """
     ws_cfg = _resolve_workspace_config(repo)
     analysis = ws_cfg.get("analysis", {})
@@ -194,7 +194,6 @@ def _build_crucible_context(
         "app_type": str(ws_cfg.get("app_type", analysis.get("detected_app_type", "console"))),
         "language": str(analysis.get("language", "")),
         "framework": str(analysis.get("framework", "")),
-        "test_cmd": str(analysis.get("test_cmd", "")),
         "test_repo": str(crucible_cfg.get("test_repo", "")),
     }
 
