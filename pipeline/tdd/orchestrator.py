@@ -151,7 +151,7 @@ def run_tdd_pipeline(
     if tw_result.errors:
         errors.extend(tw_result.errors)
     if not tw_result.test_files_created:
-        logger.error("Test Writer produced no test files — aborting pipeline")
+        logger.error("Test Writer produced no test files -- aborting pipeline")
         return TDDResult(
             success=False, rounds=0, test_results=(),
             test_writer_result=tw_result, errors=tuple(errors),
@@ -167,7 +167,7 @@ def run_tdd_pipeline(
     metrics.append(red_m)
     test_results.append(red_result)
     if red_result.passed:
-        logger.warning("Tests passed before implementation — continuing anyway")
+        logger.warning("Tests passed before implementation -- continuing anyway")
 
     # Feedback loop: Feature Writer + tests + Code Reviewer
     cur_test = red_result

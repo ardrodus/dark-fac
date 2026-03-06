@@ -116,7 +116,8 @@ def _get_version(name: str) -> str:
     import subprocess  # noqa: PLC0415
     try:
         proc = subprocess.run(  # noqa: S603
-            [name, "--version"], capture_output=True, text=True, timeout=10,
+            [name, "--version"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=10,
         )
         if proc.returncode == 0 and proc.stdout.strip():
             return proc.stdout.strip().splitlines()[0]

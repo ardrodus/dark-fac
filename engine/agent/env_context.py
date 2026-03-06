@@ -25,13 +25,15 @@ def get_git_context(working_dir: str | None = None) -> dict[str, Any]:
     try:
         root = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, cwd=cwd, timeout=5,
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", cwd=cwd, timeout=5,
         )
         if root.returncode == 0:
             result["git_root"] = root.stdout.strip()
         branch = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=cwd, timeout=5,
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", cwd=cwd, timeout=5,
         )
         if branch.returncode == 0:
             result["branch"] = branch.stdout.strip()

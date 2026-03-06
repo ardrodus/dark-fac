@@ -113,16 +113,16 @@ def run_pipeline(story: StoryContext, *, cwd: str | None = None) -> PipelineResu
             StageResult(stage=Stage.TEST, passed=test_result.passed, detail=test_result.output)
         )
     else:
-        results.append(StageResult(stage=Stage.TEST, passed=True, detail="No changed files — skipped."))
+        results.append(StageResult(stage=Stage.TEST, passed=True, detail="No changed files -- skipped."))
 
     # ── Quality gate ──────────────────────────────────────────────
     if story.changed_files:
-        logger.info("Pipeline: quality gate stage — %s", _select_gates(story.changed_files))
+        logger.info("Pipeline: quality gate stage -- %s", _select_gates(story.changed_files))
         qr: QualityReport = run_quality_gates(story.changed_files, cwd=cwd, run_tests=False)
         gate_detail = "; ".join(f"{r.gate}: {'PASS' if r.passed else 'FAIL'}" for r in qr.results)
         results.append(StageResult(stage=Stage.QUALITY_GATE, passed=qr.passed, detail=gate_detail))
     else:
-        results.append(StageResult(stage=Stage.QUALITY_GATE, passed=True, detail="No changed files — skipped."))
+        results.append(StageResult(stage=Stage.QUALITY_GATE, passed=True, detail="No changed files -- skipped."))
 
     # ── Review ────────────────────────────────────────────────────
     logger.info("Pipeline: review stage")

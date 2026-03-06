@@ -297,7 +297,7 @@ def show_status(cwd: Path | None = None) -> str:
     dm = load_dispatch_metrics(cwd)
     verdict = "PASS" if ps.passed else ("FAIL" if ps.stages else "NO DATA")
     lines: list[str] = [
-        "Dark Factory — Status", "=" * 40, "",
+        "Dark Factory -- Status", "=" * 40, "",
         f"Pipeline: {verdict}  (attempts: {ps.attempts})",
         f"Total duration: {ps.total_duration_ms:.1f}ms",
         "", "Stages:", format_stage_table(ps.stages),
@@ -316,7 +316,7 @@ def show_epic_status(cwd: Path | None = None) -> str:
     epics = load_epic_statuses(cwd)
     if not epics:
         return "No epics found in .dark-factory/epics.json"
-    lines: list[str] = ["Dark Factory — Epic Status", "=" * 40]
+    lines: list[str] = ["Dark Factory -- Epic Status", "=" * 40]
     grand_completed, grand_total = 0, 0
     for epic in epics:
         lines.append("")
@@ -338,7 +338,7 @@ def show_bootstrap_status(cwd: Path | None = None) -> str:
     bs = load_bootstrap_status(cwd)
     verdict = "PASS" if bs.passed else ("FAIL" if bs.stages else "NO DATA")
     lines: list[str] = [
-        "Dark Factory — Bootstrap Status", "=" * 40, "",
+        "Dark Factory -- Bootstrap Status", "=" * 40, "",
         f"Bootstrap pipeline: {verdict}",
         f"Total duration: {bs.total_duration_ms:.1f}ms",
         "", "Stages:", format_stage_table(bs.stages),

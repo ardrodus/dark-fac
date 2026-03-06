@@ -139,6 +139,8 @@ class ToolHandler:
                 ["bash", "-c", command],  # noqa: S607
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout_seconds,
                 cwd=os.getcwd(),
                 start_new_session=True,

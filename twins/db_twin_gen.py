@@ -117,7 +117,7 @@ def _val(col: _Column, i: int) -> str:
 
 def _seed_sql(tables: list[tuple[str, tuple[_Column, ...]]]) -> str:
     if not tables:
-        return "-- No tables found — no seed data generated.\n"
+        return "-- No tables found -- no seed data generated.\n"
     parts: list[str] = ["-- Seed data: realistic representative records", ""]
     for tname, cols in tables:
         names = ", ".join(c.name for c in cols)

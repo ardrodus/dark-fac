@@ -209,6 +209,8 @@ class LocalEnvironment:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=cwd,
                     env=shell_env,
                     start_new_session=True,
@@ -490,6 +492,8 @@ class DockerEnvironment:
                     cmd,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=timeout,
                     input=input_data,
                 )

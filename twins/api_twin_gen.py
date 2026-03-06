@@ -186,7 +186,7 @@ def generate_api_twin(contract: ContractResult, *, service_name: str = "") -> Tw
                                description=f"Catch-all for {svc}",
                                response_body={"status": "ok", "service": svc,
                                                "message": "Mock response from WireMock twin"})]
-        logger.info("No endpoints extracted — using catch-all stubs for '%s'", svc)
+        logger.info("No endpoints extracted -- using catch-all stubs for '%s'", svc)
     mappings: dict[str, str] = {}
     for ep in endpoints:
         mappings.update(_stubs(ep, svc))

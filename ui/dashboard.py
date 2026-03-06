@@ -453,4 +453,4 @@ class DashboardApp(App[None]):
             )
         except Exception:  # noqa: BLE001
             # Widgets may not be mounted yet during early startup.
-            logger.debug("Repaint skipped — widgets not ready")
+            logger.debug("Repaint skipped -- widgets not ready")

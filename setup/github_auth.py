@@ -78,7 +78,8 @@ def auth_github_pat() -> bool:
         return False
     proc = subprocess.run(  # noqa: S603
         ["gh", "auth", "login", "--with-token"],
-        input=token, capture_output=True, text=True, timeout=30,
+        input=token, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=30,
     )
     if proc.returncode != 0:
         print("  Token authentication failed -- check token scopes")

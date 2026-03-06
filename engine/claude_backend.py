@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,7 +63,18 @@ class ClaudeCodeBackend:
 
         Raises ``RuntimeError`` on non-zero exit codes.
         """
-        cmd: list[str] = [self._config.claude_path, "--print", "--dangerously-skip-permissions"]
+        # Resolve the claude executable path.  On Windows,
+        # asyncio.create_subprocess_exec cannot find .cmd/.bat wrappers
+        # (e.g. claude.cmd) so we use shutil.which() to get the full path.
+        claude_exe = shutil.which(self._config.claude_path)
+        if claude_exe is None:
+            msg = (
+                f"Claude CLI not found: '{self._config.claude_path}' is not on PATH. "
+                "Install it or set claude_path in ClaudeCodeConfig."
+            )
+            raise FileNotFoundError(msg)
+
+        cmd: list[str] = [claude_exe, "--print", "--dangerously-skip-permissions"]
 
         # Model: node override > backend config
         model = node.llm_model or self._config.model

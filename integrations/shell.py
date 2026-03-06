@@ -48,12 +48,19 @@ def _run_subprocess(
     cwd: str | None,
     env: dict[str, str] | None,
 ) -> subprocess.CompletedProcess[str]:
-    """Invoke ``subprocess.run`` with platform-appropriate flags."""
+    """Invoke ``subprocess.run`` with platform-appropriate flags.
+
+    Always uses ``encoding='utf-8'`` to avoid Windows cp1252 decode
+    errors when subprocess output contains non-ASCII bytes (e.g. from
+    Claude CLI emitting UTF-8 encoded text).
+    """
     if _IS_WINDOWS:
         return subprocess.run(  # noqa: S603
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             cwd=cwd,
             env=env,
@@ -63,6 +70,8 @@ def _run_subprocess(
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         cwd=cwd,
         env=env,
@@ -108,8 +117,8 @@ def run_command(
 
     duration_ms = (time.monotonic() - start) * 1000
     result = CommandResult(
-        stdout=proc.stdout,
-        stderr=proc.stderr,
+        stdout=proc.stdout or "",
+        stderr=proc.stderr or "",
         returncode=proc.returncode,
         duration_ms=duration_ms,
     )

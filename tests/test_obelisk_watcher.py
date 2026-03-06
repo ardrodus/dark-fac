@@ -53,6 +53,10 @@ class TestShouldAlert:
         record = _make_record(level="ERROR", source="runner")
         assert _should_alert(record) is True
 
+    def test_error_from_process_triggers(self) -> None:
+        record = _make_record(level="ERROR", source="process")
+        assert _should_alert(record) is True
+
     def test_error_from_non_runner_does_not_trigger(self) -> None:
         record = _make_record(level="ERROR", source="llm")
         assert _should_alert(record) is False

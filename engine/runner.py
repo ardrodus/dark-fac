@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -47,6 +48,8 @@ from dark_factory.engine.graph import Edge, Graph, Node
 from dark_factory.engine.json_logger import FactoryJsonLogger
 from dark_factory.engine.stylesheet import apply_stylesheet
 from dark_factory.engine.types import RetryPolicy
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------ #
 # Retry presets (Spec §3.6, §11.5)
@@ -239,7 +242,7 @@ def select_edge(
         if node.shape == "diamond" and all(e.label for e in edges):
             logger.warning(
                 "Diamond '%s': all %d edges have labels but preferred_label='%s' "
-                "matched none — refusing lexical fallback (would silently misroute).",
+                "matched none -- refusing lexical fallback (would silently misroute).",
                 node.id, len(edges), result.preferred_label,
             )
             return None

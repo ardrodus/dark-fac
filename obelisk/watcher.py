@@ -67,12 +67,19 @@ def _record_to_alert(record: dict[str, Any], signature: str) -> Alert:
 
 
 def _should_alert(record: dict[str, Any]) -> bool:
-    """Return True if a single log record warrants an immediate alert."""
+    """Return True if a single log record warrants an immediate alert.
+
+    Alerts on:
+    - Any FATAL line (regardless of source).
+    - ERROR from ``runner`` (pipeline-level failures).
+    - ERROR from ``process`` (handler exceptions -- e.g. subprocess
+      crashes, encoding errors, or backend failures).
+    """
     level = record.get("level", "")
     source = record.get("source", "")
     if level == "FATAL":
         return True
-    if level == "ERROR" and source == "runner":
+    if level == "ERROR" and source in ("runner", "process"):
         return True
     return False
 
@@ -220,7 +227,7 @@ def make_investigation_handler(
         tier = cache.check(alert.signature)
         if tier is not None:
             logger.info(
-                "Skipping alert %s — dedup cache hit on %s",
+                "Skipping alert %s -- dedup cache hit on %s",
                 alert.signature,
                 tier,
             )
@@ -229,7 +236,7 @@ def make_investigation_handler(
         # ── Cache miss — investigate ─────────────────────────────
         from dark_factory.obelisk.investigator import investigate
 
-        logger.info("Cache miss for %s — launching investigation", alert.signature)
+        logger.info("Cache miss for %s -- launching investigation", alert.signature)
         result = await investigate(
             alert,
             factory_workspace,

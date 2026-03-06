@@ -423,7 +423,7 @@ def _parse_repo_key(repo: str) -> tuple[str, str]:
     """Split ``"owner/repo"`` into ``(owner, repo_name)``."""
     parts = repo.split("/", 1)
     if len(parts) != 2 or not parts[0] or not parts[1]:  # noqa: PLR2004
-        msg = f"Invalid repo key {repo!r} — expected 'owner/repo'"
+        msg = f"Invalid repo key {repo!r} -- expected 'owner/repo'"
         raise ValueError(msg)
     return parts[0], parts[1]
 
