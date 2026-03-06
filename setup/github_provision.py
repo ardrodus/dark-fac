@@ -32,6 +32,7 @@ LABELS: tuple[tuple[str, str, str], ...] = (
     ("released", "0E8A16", "Published and released"),
     ("release-failed", "B60205", "Publish step failed"),
     ("done", "0E8A16", "Issue fully complete"),
+    ("obelisk", "6F42C1", "Obelisk auto-investigation"),
 )
 
 # ── CI workflow template ──────────────────────────────────────────

@@ -1,0 +1,113 @@
+// Obelisk: Investigation & Remediation Pipeline
+//
+// ARCHITECTURE: This DOT file IS the pipeline implementation.
+// Python only does: fire alert -> acquire workspace -> engine.run_pipeline("obelisk").
+// ALL investigation logic, fix proposal, and escalation live HERE -- not in Python.
+// If you need to change how Obelisk investigates or fixes, modify THIS file.
+//
+// Dark Factory's self-healing layer. Runs when the log watcher detects
+// an error or crash in a Dark Factory pipeline.
+//
+// SCOPE RULE: Obelisk fixes FACTORY code only (same repo as Ouroboros).
+// It NEVER modifies user repo code. If the failure is caused by user code,
+// Obelisk escalates (creates a GitHub issue) and lets Dark Forge handle it.
+//
+// Entry point: obelisk/investigator.py -> engine.run_pipeline("obelisk", ctx)
+// Follows: alert fired -> acquire_workspace() -> engine.run_pipeline()
+//
+// Context variables:
+//   $workspace          -- path to the FACTORY repo workspace (not user repo)
+//   $user_workspace     -- path to the user repo workspace (read-only, for context)
+//   $alert              -- JSON alert data (error_type, source, message)
+//   $investigation_id   -- unique ID for this investigation run
+//
+// Artifacts: $workspace/.dark-factory/obelisk/ (per-subsystem convention)
+//
+// Verdict keywords (registered in codergen.py _VERDICT_KEYWORDS):
+//   FACTORY_BUG, USER_CODE, INFRASTRUCTURE, FIXED, ESCALATED, CONTEXT_GATHERED, FIX_PROPOSED
+//
+// Node shapes: box = LLM agent, parallelogram = shell, diamond = decision,
+//              house = terminal (non-exit), Mdiamond = start, Msquare = exit
+
+digraph obelisk {
+    graph [
+        goal="Investigate a Dark Factory pipeline failure, fix target repo code if possible, or escalate"
+    ]
+
+    // --- Entry ---
+    start [shape=Mdiamond, label="Alert Received"]
+
+    // --- Stage 1: Gather Context ---
+    gather_context [
+        shape=box,
+        prompt="You are the Obelisk context gatherer.\n\nFactory workspace: $workspace\nUser workspace (read-only): $user_workspace\nAlert: $alert\nInvestigation ID: $investigation_id\n\nCollect diagnostic context for the investigation:\n\n1. Read the last 100 lines of the factory log: $workspace/.dark-factory/logs/factory.jsonl\n2. Read the workflow log if it exists: $workspace/.dark-factory/logs/workflow-*.log (most recent)\n3. Read per-node logs from the failed pipeline: $workspace/.dark-factory/logs/*.log\n4. Run: cd $workspace && git log --oneline -10\n5. Run: cd $workspace && git diff --stat\n6. If user workspace exists, check: cd $user_workspace && git log --oneline -5\n7. Read .dark-factory/specs/ for recent pipeline artifacts\n8. Read any checkpoint file: $workspace/.dark-factory/checkpoint.json\n\nSynthesize all findings into a structured diagnostic report.\n\nWrite report to: $workspace/.dark-factory/obelisk/context-$investigation_id.json\nInclude: error_type, error_message, source_pipeline, source_node, failed_at, git_state, recent_changes, pipeline_artifacts\n\nOutput the single word: CONTEXT_GATHERED"
+    ]
+
+    // --- Stage 2: Analyze Failure ---
+    analyze_failure [
+        shape=box,
+        prompt="You are the Obelisk failure analyst.\n\nFactory workspace: $workspace\nUser workspace (read-only): $user_workspace\nAlert: $alert\nInvestigation ID: $investigation_id\n\nRead the diagnostic context at: $workspace/.dark-factory/obelisk/context-$investigation_id.json\n\nPerform root-cause analysis:\n1. Identify the exact error and its origin (file, line, function)\n2. Classify the failure source:\n   - FACTORY_BUG: the error is in Dark Factory code (engine, handlers, pipeline wiring, agents)\n   - USER_CODE: the error is caused by user repo code (bad imports, test failures, syntax errors)\n   - INFRASTRUCTURE: auth failure, disk full, network issue, missing tool\n3. If FACTORY_BUG: identify the specific factory file(s) that need fixing\n4. If USER_CODE: describe what's wrong so it can be reported as an issue\n5. Look for patterns: is this a recurring failure? Check $workspace/.dark-factory/obelisk/investigations.jsonl\n6. Assess severity: blocking (pipeline can't continue) vs degraded (continues with reduced quality)\n\nWrite analysis to: $workspace/.dark-factory/obelisk/analysis-$investigation_id.json\nInclude: root_cause, category (factory_bug|user_code|infrastructure), affected_files[], severity, confidence\n\nOutput your verdict as the final line: FACTORY_BUG or USER_CODE or INFRASTRUCTURE"
+    ]
+
+    // --- Stage 3: Classify ---
+    // Three paths: factory bugs get fixed, everything else gets escalated
+    classify [shape=diamond, label="Failure Source?"]
+
+    // --- Stage 4a: User code or infrastructure -> Escalate ---
+    create_issue [
+        shape=box,
+        prompt="You are the Obelisk escalation agent.\n\nWorkspace: $workspace\nInvestigation ID: $investigation_id\n\nRead the analysis at: $workspace/.dark-factory/obelisk/analysis-$investigation_id.json\n\nThis is an infrastructure issue that cannot be fixed by modifying target repo code.\n\nCreate a GitHub issue with:\n- Title: 'obelisk: [category] - concise description'\n- Label: obelisk\n- Body:\n  - ## Root Cause Analysis\n  - ## Error Details (source, traceback)\n  - ## Affected Pipeline + Node\n  - ## Suggested Resolution (human action needed)\n  - ## Investigation ID: $investigation_id\n\nRun in $workspace:\n  gh issue create --title 'obelisk: <description>' --label obelisk --body '<body>'\n\nWrite issue URL to: $workspace/.dark-factory/obelisk/outcome-$investigation_id.json\n\nOutput the single word: ESCALATED"
+    ]
+    escalated [shape=Msquare, label="Issue Created"]
+
+    // --- Stage 4b: Factory bug -> Propose Fix (against factory code only) ---
+    propose_fix [
+        shape=box,
+        prompt="You are the Obelisk self-healing agent.\n\nFactory workspace: $workspace\nInvestigation ID: $investigation_id\n\nRead the analysis at: $workspace/.dark-factory/obelisk/analysis-$investigation_id.json\n\nPropose a minimal fix to DARK FACTORY'S OWN CODE:\n1. Read the affected factory files identified in the analysis\n2. Understand the root cause and what the factory code should do\n3. Write the smallest possible fix -- do NOT refactor, do NOT add features\n4. Only modify files in the factory codebase ($workspace/)\n5. NEVER modify user repo files -- this is a factory self-heal, not a user code fix\n6. Write your proposed changes directly to the workspace files\n\nConstraints:\n- Maximum 50 lines changed\n- No new dependencies\n- Must not break existing factory tests\n- Must address the specific root cause, nothing else\n\nWrite fix summary to: $workspace/.dark-factory/obelisk/fix-$investigation_id.json\nInclude: files_modified[], lines_changed, fix_description, root_cause_addressed\n\nOutput the single word: FIX_PROPOSED"
+    ]
+
+    // --- Stage 5: Validate Fix ---
+    validate_fix [
+        shape=parallelogram,
+        label="Validate Fix",
+        prompt="cd $workspace && python -m ruff check . --fix && python -m pytest tests/ -x --tb=short 2>&1",
+        timeout="5m"
+    ]
+
+    // --- Stage 6: Validation Verdict ---
+    fix_verdict [shape=diamond, label="Fix Valid?"]
+
+    // --- Stage 7a: Fix Passed -> Commit + PR ---
+    apply_fix [
+        shape=parallelogram,
+        label="Commit fix",
+        prompt="cd $workspace && git add -A && git commit -m 'obelisk: auto-fix for investigation $investigation_id' 2>&1"
+    ]
+
+    create_pr [
+        shape=box,
+        prompt="You are the Obelisk PR creation agent.\n\nWorkspace: $workspace\nInvestigation ID: $investigation_id\n\nRead the fix summary at: $workspace/.dark-factory/obelisk/fix-$investigation_id.json\nRead the analysis at: $workspace/.dark-factory/obelisk/analysis-$investigation_id.json\n\nCreate a pull request:\n1. Push the fix branch: git push -u origin HEAD\n2. Create a PR with:\n   - Title: 'obelisk: <concise fix description>'\n   - Label: obelisk\n   - Body:\n     - ## Root Cause\n     - ## Fix Applied\n     - ## Files Changed\n     - ## Test Results\n     - ## Investigation ID: $investigation_id\n\nRun in $workspace:\n  git push -u origin HEAD 2>&1\n  gh pr create --title 'obelisk: <description>' --label obelisk --body '<body>'\n\nWrite PR URL to: $workspace/.dark-factory/obelisk/outcome-$investigation_id.json\n\nOutput the single word: FIXED"
+    ]
+    fixed [shape=Msquare, label="PR Created"]
+
+    // --- Stage 7b: Fix Failed -> Escalate with context ---
+    create_issue_with_fix [
+        shape=box,
+        prompt="You are the Obelisk escalation agent (fix attempt failed).\n\nWorkspace: $workspace\nInvestigation ID: $investigation_id\n\nRead the analysis at: $workspace/.dark-factory/obelisk/analysis-$investigation_id.json\nRead the fix summary at: $workspace/.dark-factory/obelisk/fix-$investigation_id.json\n\nThe proposed fix did not pass validation. Revert the changes:\n  cd $workspace && git checkout -- .\n\nCreate a GitHub issue with the diagnosis AND the suggested fix:\n- Title: 'obelisk: [code_bug] - concise description (fix attempted)'\n- Label: obelisk, needs-human-review\n- Body:\n  - ## Root Cause Analysis\n  - ## Suggested Fix (could not be auto-applied)\n  - ## Validation Failure (why the fix didn't pass)\n  - ## Investigation ID: $investigation_id\n\nRun in $workspace:\n  git checkout -- . 2>&1\n  gh issue create --title 'obelisk: <description>' --label obelisk --label needs-human-review --body '<body>'\n\nWrite issue URL to: $workspace/.dark-factory/obelisk/outcome-$investigation_id.json\n\nOutput the single word: ESCALATED"
+    ]
+    escalated_with_fix [shape=Msquare, label="Issue Created"]
+
+    // --- Flow ---
+    start -> gather_context -> analyze_failure -> classify
+
+    // Factory bugs get fixed; user code and infrastructure get escalated
+    classify -> propose_fix [label="FACTORY_BUG"]
+    classify -> create_issue [label="USER_CODE"]
+    classify -> create_issue [label="INFRASTRUCTURE"]
+    create_issue -> escalated
+    propose_fix -> validate_fix -> fix_verdict
+    fix_verdict -> apply_fix [label="PASS"]
+    fix_verdict -> create_issue_with_fix [label="FAIL"]
+    apply_fix -> create_pr -> fixed
+    create_issue_with_fix -> escalated_with_fix
+}

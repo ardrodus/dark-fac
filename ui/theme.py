@@ -101,6 +101,9 @@ SUBSYSTEM_THEMES: dict[str, SubsystemTheme] = {
     "foundry": SubsystemTheme(
         name="Foundry", accent="#a78bfa", css_class="theme-foundry",
     ),
+    "obelisk": SubsystemTheme(
+        name="Obelisk", accent="#10b981", css_class="theme-obelisk",
+    ),
     "settings": SubsystemTheme(
         name="Settings", accent="#94a3b8", css_class="theme-settings",
     ),

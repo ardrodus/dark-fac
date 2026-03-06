@@ -44,6 +44,7 @@ from dark_factory.engine.events import (
     StageStarted,
 )
 from dark_factory.engine.graph import Edge, Graph, Node
+from dark_factory.engine.json_logger import FactoryJsonLogger
 from dark_factory.engine.stylesheet import apply_stylesheet
 from dark_factory.engine.types import RetryPolicy
 
@@ -588,6 +589,60 @@ def _check_aggregate_goal_gates(
     return ("pass", redirect_count, None)
 
 
+def _make_json_event_listener(
+    jlog: FactoryJsonLogger,
+    pipeline_name: str,
+) -> Callable[[PipelineEvent], None]:
+    """Create a callback that translates PipelineEvents to JSON log lines."""
+
+    def _on_event(event: PipelineEvent) -> None:
+        if isinstance(event, PipelineStarted):
+            jlog.info("runner", "Pipeline started", pipeline=event.name)
+        elif isinstance(event, PipelineCompleted):
+            jlog.info(
+                "runner",
+                f"Pipeline completed in {event.duration:.1f}s",
+                pipeline=pipeline_name,
+                extra={"duration_s": round(event.duration, 1)},
+            )
+        elif isinstance(event, PipelineFailed):
+            jlog.error(
+                "runner",
+                "Pipeline failed",
+                pipeline=pipeline_name,
+                error=event.error,
+            )
+        elif isinstance(event, StageStarted):
+            jlog.info("runner", "Stage started", pipeline=pipeline_name, node=event.name)
+        elif isinstance(event, StageCompleted):
+            jlog.info(
+                "runner",
+                f"Stage completed in {event.duration:.1f}s",
+                pipeline=pipeline_name,
+                node=event.name,
+                extra={"duration_s": round(event.duration, 1)},
+            )
+        elif isinstance(event, StageFailed):
+            level = "error" if not event.will_retry else "warn"
+            getattr(jlog, level)(
+                "runner",
+                "Stage failed",
+                pipeline=pipeline_name,
+                node=event.name,
+                error=event.error,
+            )
+        elif isinstance(event, StageRetrying):
+            jlog.warn(
+                "runner",
+                f"Stage retrying (attempt {event.attempt})",
+                pipeline=pipeline_name,
+                node=event.name,
+                error=event.error,
+            )
+
+    return _on_event
+
+
 async def run_pipeline(
     graph: Graph,
     handlers: HandlerRegistry,
@@ -637,8 +692,23 @@ async def run_pipeline(
     ctx = pipeline_context._data  # noqa: SLF001  -- internal access by design
     start_time = time.monotonic()
 
+    # Structured JSON logger — writes to .dark-factory/logs/factory.jsonl
+    # when a workspace path is available in context.
+    workspace = ctx.get("_workspace_root") or ctx.get("workspace") or ""
+    jlog: FactoryJsonLogger | None = None
+    json_event_cb: Callable[[PipelineEvent], None] | None = None
+    if workspace:
+        jlog = FactoryJsonLogger(workspace)
+        json_event_cb = _make_json_event_listener(jlog, graph.name)
+
+    def _combined_event_cb(event: PipelineEvent) -> None:
+        if on_event is not None:
+            on_event(event)
+        if json_event_cb is not None:
+            json_event_cb(event)
+
     # Event emitter (Spec §9.6)
-    emitter = EventEmitter(on_event=on_event)
+    emitter = EventEmitter(on_event=_combined_event_cb)
     pipeline_id = str(uuid.uuid4())[:8]
     node_index = 0
 
@@ -852,6 +922,11 @@ async def run_pipeline(
                 status=Outcome.FAIL,
                 failure_reason=f"{type(exc).__name__}: {exc}",
             )
+            if jlog is not None:
+                jlog.log_exception(
+                    "process", "Handler raised exception",
+                    exc, pipeline=graph.name, node=current_node.id,
+                )
         finally:
             ctx.pop("_event_emitter", None)
 

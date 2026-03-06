@@ -36,8 +36,8 @@ _VERDICT_KEYWORDS: frozenset[str] = frozenset({
     "ALLOW", "DENY", "PASS", "FAIL",
     "HEALTHY", "UNHEALTHY",
     "UPDATE_AVAILABLE", "UP_TO_DATE",
-    # Obelisk (planned)
-    "FIXABLE", "INFRASTRUCTURE",
+    # Obelisk
+    "FACTORY_BUG", "USER_CODE", "INFRASTRUCTURE",
     "FIXED", "ESCALATED",
     "CONTEXT_GATHERED", "FIX_PROPOSED",
 })

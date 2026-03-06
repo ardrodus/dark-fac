@@ -345,6 +345,9 @@ def _run_subsystem(key: str) -> None:
         from dark_factory.modes.settings import run_settings_tui  # noqa: PLC0415
 
         run_settings_tui()
+    elif key == "6":
+        # Obelisk — supervisor launch
+        _run_obelisk_interactive()
 
 
 _forge_depth = 0  # track nested pipeline depth for indentation
@@ -638,6 +641,46 @@ def _run_ouroboros_interactive() -> None:
         cprint(f"  Ouroboros PASSED ({elapsed:.1f}s)", "success")
     else:
         cprint(f"  Ouroboros FAILED ({elapsed:.1f}s)", "error")
+    input("\n  Press Enter to return to menu...")
+
+
+def _run_obelisk_interactive() -> None:
+    """Launch Obelisk supervisor from the interactive menu.
+
+    Follows the Ouroboros dispatch pattern:
+      1. Resolve active repo (monitored repo)
+      2. Resolve Ouroboros repo (self-heal target, optional)
+      3. Print status showing monitored repo and self-heal target
+      4. Call run_supervisor() — blocks until interrupted
+
+    Gracefully degrades if Ouroboros is not configured: the supervisor
+    still monitors and escalates, but self-heal is disabled.
+    """
+    from dark_factory.obelisk.supervisor import run_supervisor  # noqa: PLC0415
+    from dark_factory.ui.cli_colors import cprint, print_error  # noqa: PLC0415
+
+    repo = _resolve_active_repo()
+    if not repo:
+        print_error("No active repo configured", hint="Run 'dark-factory onboard' first")
+        input("\n  Press Enter to return to menu...")
+        return
+
+    factory_repo = _resolve_ouroboros_repo()
+
+    cprint("\n  Obelisk Supervisor", "info")
+    cprint(f"  Monitored repo:  {repo}", "info")
+    if factory_repo:
+        cprint(f"  Self-heal target: {factory_repo}", "info")
+    else:
+        cprint("  Self-heal target: (not configured — monitor + escalate only)", "warning")
+
+    cprint("  Press Ctrl+C to stop.\n", "muted")
+
+    try:
+        run_supervisor(repo, factory_repo=factory_repo or None)
+    except KeyboardInterrupt:
+        pass
+
     input("\n  Press Enter to return to menu...")
 
 

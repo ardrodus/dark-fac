@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 .coverage
 .dark-factory/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

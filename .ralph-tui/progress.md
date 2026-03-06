@@ -1106,3 +1106,68 @@
   - `git add --dry-run .` is useful for verifying `.gitignore` rules before staging
   - The branch `ralph/attractor-engine-port` did not exist — had to be created fresh from `main`
 ---
+
+## 2026-03-06 - US-020
+- Added `('obelisk', '6F42C1', 'Obelisk auto-investigation')` to `LABELS` tuple in `github_provision.py`
+- Files changed: `dark_factory/setup/github_provision.py` (line 35 — new label entry)
+- **Learnings:**
+  - `LABELS` is a flat tuple-of-tuples `(name, hex_color, description)` — new labels just append before the closing paren
+  - `provision_labels()` iterates all `LABELS` entries with `--force` flag, so new labels are created or updated idempotently during onboarding
+  - Pre-existing ruff F541 warnings exist in the file (f-strings without placeholders on lines 126, 151) — not related to label changes
+---
+
+## 2026-03-06 - US-009
+- Created `pipelines/obelisk.dot` — the Obelisk investigation & remediation DOT pipeline
+- Implements the full investigation flow: start -> gather_context -> analyze_failure -> classify (diamond) -> branching paths
+- FACTORY_BUG path: propose_fix -> validate_fix -> fix_verdict -> apply_fix -> create_pr -> fixed (or escalated_with_fix on FAIL)
+- USER_CODE / INFRASTRUCTURE path: create_issue -> escalated
+- Files changed: `dark_factory/pipelines/obelisk.dot` (new file, 113 lines)
+- **Learnings:**
+  - DOT pipeline header convention: ARCHITECTURE note, entry point reference, context variables with $-prefix, node shape legend, artifacts directory
+  - Engine parser (`dark_factory.engine.parser.parse_dot`) successfully parses the file — returns a `dark_factory.engine.graph.Graph` object (not networkx)
+  - Pipeline loader (`discover_pipelines`) auto-discovers any `.dot` file in the `pipelines/` directory by stem name
+  - Diamond nodes (`shape=diamond`) are decision/routing nodes; Msquare nodes are exit terminals; parallelogram nodes are shell commands with optional timeout
+  - Context variables use `$variable` syntax in prompts — expanded by the engine at runtime
+  - Artifacts follow per-subsystem convention: `$workspace/.dark-factory/obelisk/` for all investigation outputs
+---
+
+## 2026-03-06 - US-016
+- Updated supervisor to write AC-compliant obelisk-status.json: `status`, `dark_factory_pid`, `uptime_s`, `crash_count`, `investigations[]`
+- Changed supervisor states from `idle/running/restarting/stopped` to `idle/watching/investigating/crashed/stopped`
+- Added `InvestigationSummary` frozen dataclass for compact investigation records in status file
+- Added `start_time` tracking to `SupervisorState` for uptime calculation
+- Enhanced `HealthPanel` in `ui/dashboard.py` with Obelisk supervisor section: state badge, PID, uptime, crash count, recent investigations table
+- Added `ObeliskStatus` and `ObeliskInvestigation` frozen dataclasses to dashboard data models
+- Added `obelisk` field to `DashboardState` (defaults to empty `ObeliskStatus`)
+- Updated existing supervisor tests to match new JSON format (top-level `status`/`dark_factory_pid`/`crash_count` instead of nested `supervisor.status`/`supervisor.pid`/`supervisor.restarts`)
+- Files changed:
+  - `dark_factory/obelisk/supervisor.py` (new dataclass, status format, state names, uptime)
+  - `dark_factory/ui/dashboard.py` (new data models, HealthPanel enhancement, state colours)
+  - `dark_factory/tests/test_obelisk_supervisor.py` (updated assertions for new JSON format, new test)
+- **Learnings:**
+  - The old status JSON nested fields under `supervisor` key; AC requires flat top-level keys — breaking change to any consumers reading the old format
+  - `HealthPanel.refresh_health` is the single entry point for all health display — adding Obelisk status as an optional param keeps backward compat with existing callers
+  - Dashboard `_repaint()` calls `refresh_health` every tick — Obelisk status display updates automatically when `DashboardState.obelisk` is populated
+  - Verdict color logic: FIXED → green, everything else (ESCALATED, SKIPPED) → warning amber
+---
+
+## 2026-03-06 - US-017
+- Created `dark_factory/tests/test_dashboard_obelisk.py` — 13 tests verifying dashboard Obelisk status integration
+- Test classes organized by acceptance criteria:
+  - `TestLoadObeliskStatus` (4 tests): reads full status JSON, handles missing URL, null PID, skips malformed investigations
+  - `TestLoadObeliskStatusMissing` (4 tests): missing file, missing directory, corrupt JSON, empty file — all return default ObeliskStatus
+  - `TestInvestigationListRendering` (5 tests): Textual pilot tests for verdict+URL in DataTable, empty state, summary label content, URL dash fallback, last-5 slicing
+- Added `load_obelisk_status()` to `ui/status_reporter.py` — reads `.dark-factory/obelisk-status.json` and returns `ObeliskStatus`, following existing `_read_json` pattern
+- Added `url` field to `ObeliskInvestigation` (dashboard.py) and `InvestigationSummary` (supervisor.py) — wired through to status JSON and investigation table
+- Updated `HealthPanel` investigation table to include URL column (3 columns: Investigation, Verdict, URL)
+- Files changed:
+  - `dark_factory/tests/test_dashboard_obelisk.py` (new file, ~230 lines)
+  - `dark_factory/ui/status_reporter.py` (added `load_obelisk_status`, `_OBELISK_STATUS_FILE`, TYPE_CHECKING import)
+  - `dark_factory/ui/dashboard.py` (added `url` field to `ObeliskInvestigation`, URL column in inv table)
+  - `dark_factory/obelisk/supervisor.py` (added `url` field to `InvestigationSummary`, included in status JSON)
+- **Learnings:**
+  - Textual `Label.content` returns the markup string (not `.renderable` which doesn't exist) — use this for asserting label text in pilot tests
+  - `status_reporter._read_json` returns `{}` for missing files, corrupt JSON, and non-dict JSON — perfect base for graceful fallback
+  - The investigation table slices `[-5:]` in `refresh_health` — test this with >5 investigations to verify
+  - Deferred imports inside function bodies need `TYPE_CHECKING` guard for the return type annotation when `from __future__ import annotations` is active
+---

@@ -79,6 +79,27 @@ class GateSummary:
     detail: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class ObeliskInvestigation:
+    """Compact investigation record for dashboard display."""
+
+    id: str
+    verdict: str
+    timestamp: float
+    url: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ObeliskStatus:
+    """Obelisk supervisor status snapshot read from obelisk-status.json."""
+
+    status: str = "unknown"  # watching | investigating | crashed | crash_loop | stopped | unknown
+    dark_factory_pid: int | None = None
+    uptime_s: float = 0.0
+    crash_count: int = 0
+    investigations: tuple[ObeliskInvestigation, ...] = ()
+
+
 @dataclass(slots=True)
 class DashboardState:
     """Mutable aggregate state consumed by the dashboard widgets."""
@@ -88,6 +109,7 @@ class DashboardState:
     health: list[HealthStatus] = field(default_factory=list)
     gate_summaries: list[GateSummary] = field(default_factory=list)
     notifications: tuple[Notification, ...] = ()
+    obelisk: ObeliskStatus = field(default_factory=ObeliskStatus)
     queue_depth: int = 0
     refresh_interval: float = 2.0
     human_gate_queue: Any = None  # Optional HumanGateQueue instance
@@ -104,6 +126,13 @@ _STATE_COLOUR: dict[str, str] = {
     "idle": THEME.text_muted,
     "active": THEME.success,
     "error": THEME.error,
+    # Obelisk supervisor states
+    "watching": THEME.success,
+    "investigating": THEME.info,
+    "crashed": THEME.error,
+    "crash_loop": THEME.error,
+    "stopped": THEME.text_muted,
+    "unknown": THEME.warning,
 }
 
 
@@ -189,16 +218,26 @@ class HealthPanel(Static):
                 Label("0", id="queue-label"),
             ),
         )
+        yield Label(f"[b][{PILLARS.obelisk}]{COMPACT_ICONS['obelisk']}[/] Obelisk Supervisor[/b]")
+        yield Label("", id="obelisk-summary")
+        yield DataTable(id="obelisk-inv-table")
 
     def on_mount(self) -> None:
         table: DataTable[Any] = self.query_one("#health-table", DataTable)
         table.add_columns("Component", "Healthy", "Detail")
         table.cursor_type = "none"
 
+        inv_table: DataTable[Any] = self.query_one("#obelisk-inv-table", DataTable)
+        inv_table.add_columns("Investigation", "Verdict", "URL")
+        inv_table.cursor_type = "none"
+
     def refresh_health(
-        self, health: list[HealthStatus], queue_depth: int,
+        self,
+        health: list[HealthStatus],
+        queue_depth: int,
+        obelisk: ObeliskStatus | None = None,
     ) -> None:
-        """Update health rows and queue depth label."""
+        """Update health rows, queue depth, and Obelisk supervisor status."""
         table: DataTable[Any] = self.query_one("#health-table", DataTable)
         table.clear()
         for h in health:
@@ -206,6 +245,26 @@ class HealthPanel(Static):
             icon = "\u2714" if h.healthy else "\u2718"
             table.add_row(h.component, f"[{colour}]{icon}[/]", h.detail[:40])
         self.query_one("#queue-label", Label).update(str(queue_depth))
+
+        # Obelisk supervisor section
+        if obelisk is None:
+            obelisk = ObeliskStatus()
+        state_colour = _colour_for(obelisk.status)
+        pid_str = str(obelisk.dark_factory_pid) if obelisk.dark_factory_pid else "-"
+        uptime_m = int(obelisk.uptime_s // 60)
+        summary = (
+            f"  State: [{state_colour}]{obelisk.status}[/]"
+            f"  |  PID: {pid_str}"
+            f"  |  Uptime: {uptime_m}m"
+            f"  |  Crashes: {obelisk.crash_count}"
+        )
+        self.query_one("#obelisk-summary", Label).update(summary)
+
+        inv_table: DataTable[Any] = self.query_one("#obelisk-inv-table", DataTable)
+        inv_table.clear()
+        for inv in obelisk.investigations[-5:]:
+            v_colour = THEME.success if inv.verdict == "FIXED" else THEME.warning
+            inv_table.add_row(inv.id, f"[{v_colour}]{inv.verdict}[/]", inv.url or "-")
 
 
 class GatePanel(Static):
@@ -382,6 +441,7 @@ class DashboardApp(App[None]):
             self.query_one("#health-panel", HealthPanel).refresh_health(
                 self._state.health,
                 self._state.queue_depth,
+                obelisk=self._state.obelisk,
             )
             self.query_one("#gate-panel", GatePanel).refresh_gates(
                 self._state.gate_summaries,

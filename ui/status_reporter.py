@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from dark_factory.ui.dashboard import ObeliskStatus
+
 logger = logging.getLogger(__name__)
 
 _STATE_DIR = ".dark-factory"
@@ -23,6 +25,7 @@ _PIPELINE_FILE = "pipeline.json"
 _EPICS_FILE = "epics.json"
 _BOOTSTRAP_FILE = "bootstrap.json"
 _DISPATCH_FILE = "dispatch.json"
+_OBELISK_STATUS_FILE = "obelisk-status.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +219,49 @@ def load_dispatch_metrics(cwd: Path | None = None) -> DispatchMetrics:
     return DispatchMetrics(
         queued=_int("queued"), in_progress=_int("in_progress"),
         completed=_int("completed"), failed=_int("failed"), dlq_count=_int("dlq_count"),
+    )
+
+
+def load_obelisk_status(cwd: Path | None = None) -> ObeliskStatus:
+    """Load Obelisk supervisor status from ``.dark-factory/obelisk-status.json``.
+
+    Returns a default ``ObeliskStatus`` when the file is missing or corrupt.
+    """
+    from dark_factory.ui.dashboard import ObeliskInvestigation, ObeliskStatus  # noqa: PLC0415
+
+    data = _read_json(_OBELISK_STATUS_FILE, cwd)
+    if not data:
+        return ObeliskStatus()
+
+    status = str(data.get("status", "unknown"))
+    pid_raw = data.get("dark_factory_pid")
+    pid = int(pid_raw) if isinstance(pid_raw, (int, float)) and pid_raw is not None else None
+    uptime_raw = data.get("uptime_s", 0.0)
+    uptime_s = float(uptime_raw) if isinstance(uptime_raw, (int, float)) else 0.0
+    crash_raw = data.get("crash_count", 0)
+    crash_count = int(crash_raw) if isinstance(crash_raw, (int, float)) else 0
+
+    raw_invs = data.get("investigations")
+    investigations: list[ObeliskInvestigation] = []
+    if isinstance(raw_invs, list):
+        for raw in raw_invs:
+            if not isinstance(raw, dict):
+                continue
+            inv_id = raw.get("id")
+            verdict = raw.get("verdict")
+            if not isinstance(inv_id, str) or not isinstance(verdict, str):
+                continue
+            ts_raw = raw.get("timestamp", 0.0)
+            ts = float(ts_raw) if isinstance(ts_raw, (int, float)) else 0.0
+            url = str(raw.get("url", ""))
+            investigations.append(ObeliskInvestigation(id=inv_id, verdict=verdict, timestamp=ts, url=url))
+
+    return ObeliskStatus(
+        status=status,
+        dark_factory_pid=pid,
+        uptime_s=uptime_s,
+        crash_count=crash_count,
+        investigations=tuple(investigations),
     )
 
 

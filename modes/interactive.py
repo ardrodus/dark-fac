@@ -1,14 +1,15 @@
 """Interactive mode — Textual TUI main menu for Dark Factory.
 
-Presents a main menu with five options:
+Presents a main menu with six options:
 
 1. **Dark Forge** — build an issue
 2. **Crucible** — validate a build
 3. **Ouroboros** — self-improve / update
 4. **Foundry** — manage workspaces
 5. **Settings** — configure factory
+6. **Obelisk** — launch supervisor
 
-Each option is navigable via keyboard ([1]–[5]) and mouse click.
+Each option is navigable via keyboard ([1]–[6]) and mouse click.
 """
 
 from __future__ import annotations
@@ -65,6 +66,10 @@ MENU_ITEMS: tuple[MenuItem, ...] = (
     MenuItem(
         key="5", title="Settings", description="Configure factory",
         color=THEME.text_muted, subsystem="settings",
+    ),
+    MenuItem(
+        key="6", title="Obelisk", description="Launch supervisor",
+        color=PILLARS.obelisk, subsystem="obelisk",
     ),
 )
 
@@ -214,6 +219,7 @@ class InteractiveApp(App[str | None]):
         Binding("3", "select_3", "Ouroboros", show=False),
         Binding("4", "select_4", "Foundry", show=False),
         Binding("5", "select_5", "Settings", show=False),
+        Binding("6", "select_6", "Obelisk", show=False),
     ]
     CSS = _MENU_CSS
 
@@ -258,7 +264,7 @@ class InteractiveApp(App[str | None]):
         """Reset to default neutral theme (bound to Escape)."""
         reset_theme(self)
 
-    # ── Keyboard actions ([1]–[5]) ────────────────────────────
+    # ── Keyboard actions ([1]–[6]) ────────────────────────────
 
     def _select_by_key(self, key: str) -> None:
         """Activate the menu item matching *key*."""
@@ -281,6 +287,9 @@ class InteractiveApp(App[str | None]):
 
     def action_select_5(self) -> None:
         self._select_by_key("5")
+
+    def action_select_6(self) -> None:
+        self._select_by_key("6")
 
     # ── Mouse / Enter activation via ListView ─────────────────
 
