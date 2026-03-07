@@ -114,7 +114,10 @@ def _build_prompt(design: DesignResult, lang: InterfaceLang, issue: int | str) -
         "3. Define ALL input, output, and error types.\n"
         "4. Show dependency direction between modules.\n"
         "5. Be precise — Test Writer generates assertions from these.\n"
-        "6. Do NOT invent interfaces not in the design.\n")
+        "6. Do NOT invent interfaces not in the design.\n"
+        "7. If the feature does not involve new or changed interfaces, respond with"
+        " NO_OPINION_NEEDED. Do not manufacture interface definitions when the"
+        " feature is entirely outside your domain.\n")
 
 
 def _process(raw: str, lang: InterfaceLang, issue_number: int | str,

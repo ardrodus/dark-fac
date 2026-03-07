@@ -67,17 +67,17 @@ digraph dark_forge {
 
     gen_api_contract [
         shape=box,
-        prompt="You are the API Contract Generator.\n\nRead the technical design document at: $gen_design_path\n\nAuto-detect the contract type from the codebase at $workspace:\n- OpenAPI for REST APIs\n- GraphQL schema for GraphQL\n- Protobuf for gRPC\n- CLI spec for command-line tools\n\nGenerate the appropriate contract spec with endpoints, request/response schemas, error codes.\nWrite output to .dark-factory/specs/$issue_number/api-contract.yaml"
+        prompt="You are the API Contract Generator.\n\nRead the technical design document at: $gen_design_path\n\nAuto-detect the contract type from the codebase at $workspace:\n- OpenAPI for REST APIs\n- GraphQL schema for GraphQL\n- Protobuf for gRPC\n- CLI spec for command-line tools\n\nGenerate the appropriate contract spec with endpoints, request/response schemas, error codes.\nWrite output to .dark-factory/specs/$issue_number/api-contract.yaml\n\nIf the feature being worked on does not involve API contracts or endpoints, respond with NO_OPINION_NEEDED. Do not manufacture a contract when the feature is entirely outside your domain."
     ]
 
     gen_schema [
         shape=box,
-        prompt="You are the Schema Generator.\n\nRead the technical design document at: $gen_design_path\n\nDetect the database type from the codebase at $workspace (PostgreSQL, MySQL, SQLite, MongoDB, etc.).\nGenerate:\n- DDL for new tables/columns\n- Migration scripts for changes\n- Index recommendations\n\nWrite output to .dark-factory/specs/$issue_number/schema.sql"
+        prompt="You are the Schema Generator.\n\nRead the technical design document at: $gen_design_path\n\nDetect the database type from the codebase at $workspace (PostgreSQL, MySQL, SQLite, MongoDB, etc.).\nGenerate:\n- DDL for new tables/columns\n- Migration scripts for changes\n- Index recommendations\n\nWrite output to .dark-factory/specs/$issue_number/schema.sql\n\nIf the feature being worked on does not involve database changes, respond with NO_OPINION_NEEDED. Do not manufacture schema artifacts when the feature is entirely outside your domain."
     ]
 
     gen_interfaces [
         shape=box,
-        prompt="You are the Interface Generator.\n\nRead the technical design document at: $gen_design_path\n\nGenerate language-appropriate typed interface definitions:\n- TypeScript: interfaces/types\n- Python: Protocol classes\n- Go: interfaces\n- Rust: traits\n- Java: interfaces\n\nDetect the language from the codebase at $workspace.\nWrite output to .dark-factory/specs/$issue_number/interfaces/"
+        prompt="You are the Interface Generator.\n\nRead the technical design document at: $gen_design_path\n\nGenerate language-appropriate typed interface definitions:\n- TypeScript: interfaces/types\n- Python: Protocol classes\n- Go: interfaces\n- Rust: traits\n- Java: interfaces\n\nDetect the language from the codebase at $workspace.\nWrite output to .dark-factory/specs/$issue_number/interfaces/\n\nIf the feature being worked on does not involve new or changed interfaces, respond with NO_OPINION_NEEDED. Do not manufacture interface definitions when the feature is entirely outside your domain."
     ]
 
     gen_test_strategy [

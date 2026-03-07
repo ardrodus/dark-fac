@@ -126,7 +126,10 @@ def _build_prompt(design: DesignResult, st: SchemaType, engine: str, issue: int 
         "5. Order tables so referenced tables come first.\n"
         "6. Include both UP and DOWN migrations.\n"
         "7. Do NOT invent tables/columns not in the design.\n"
-        "8. Output ONLY the raw schema — no markdown fences, no preamble.\n")
+        "8. Output ONLY the raw schema — no markdown fences, no preamble.\n"
+        "9. If the feature does not involve database changes, respond with"
+        " NO_OPINION_NEEDED. Do not manufacture schema artifacts when the feature"
+        " is entirely outside your domain.\n")
 
 
 def _process(raw: str, st: SchemaType, engine: str, issue_number: int | str,

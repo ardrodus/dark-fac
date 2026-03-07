@@ -140,7 +140,10 @@ def _build_prompt(design: DesignResult, ct: ContractType, issue: int | str) -> s
         "3. Include ALL status codes (success AND error).\n"
         "4. Be precise — Test Writer generates assertions from this.\n"
         "5. Do NOT invent endpoints not in the design.\n"
-        "6. Output ONLY the raw spec — no markdown fences, no preamble.\n")
+        "6. Output ONLY the raw spec — no markdown fences, no preamble.\n"
+        "7. If the feature does not involve API contracts or endpoints, respond with"
+        " NO_OPINION_NEEDED. Do not manufacture a contract when the feature is"
+        " entirely outside your domain.\n")
 
 
 def _process(raw: str, ct: ContractType, issue_number: int | str,
