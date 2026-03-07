@@ -24,7 +24,7 @@ digraph story_tdd {
     // --- Stage 2: Feature Writer (isolated to src/, blind to tests) ---
     feature_writer [
         shape=box,
-        prompt="You are the Feature Writer. You have access to src/ and lib/ ONLY.\nYou CANNOT see the test source code.\n\nImplement the feature for this user story:\n$current_story\n\nRead the PRD at: $gen_prd_path\nRead the design at: $gen_design_path\n\nRules:\n- Implement against the design spec, NOT by reverse-engineering tests\n- Run pytest to validate (black-box, you see pass/fail only)\n- Production-quality code with proper error handling\n- Follow existing code conventions"
+        prompt="You are the Feature Writer. You have access to src/ and lib/ ONLY.\nYou CANNOT see the test source code.\n\nImplement the feature for this user story:\n$current_story\n\nRead the PRD at: $gen_prd_path\nRead the design at: $gen_design_path\n\nRules:\n- Implement against the design spec, NOT by reverse-engineering tests\n- Run pytest to validate (black-box, you see pass/fail only)\n- Production-quality code with proper error handling\n- Follow existing code conventions\n- CLEANUP RULE: Before finishing, remove any ad-hoc scripts, throwaway tools, temporary files, scratch modules, or other artifacts created during development that are NOT part of the delivered feature. The repo must contain only production code when you are done."
     ]
 
     // --- Run Tests ---

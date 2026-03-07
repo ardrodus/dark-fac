@@ -92,7 +92,11 @@ def _build_prompt(
         "- Write implementation code only — do NOT create or modify test files.",
         "- You CANNOT see test source code — only names and results above.",
         "- Follow design artifacts exactly when provided.",
-        "- Write the minimum code necessary.\n",
+        "- Write the minimum code necessary.",
+        "- CLEANUP: Before finishing, remove any ad-hoc scripts, throwaway tools,",
+        "  temporary files, scratch modules, or other artifacts you created during",
+        "  development that are NOT part of the delivered feature. The repository",
+        "  must contain only production code when you are done.\n",
         "## Output Format\n",
         "Output a JSON object: "
         '{"files_modified": [...], "files_created": [...], '
