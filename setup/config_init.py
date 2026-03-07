@@ -75,12 +75,15 @@ def add_repo_to_config(
     app_type: str = "",
     analysis: AnalysisResult | None = None,
     *,
+    default_branch: str = "",
     start: Path | None = None,
 ) -> None:
     """Append a repo entry to the ``repos`` array in config.json.
 
     Deactivates all existing repos first, then adds the new one as active.
     If *analysis* is provided, its fields are staged in ``workspace_config``.
+    If *default_branch* is provided, it is stored in ``workspace_config``
+    so downstream code can read it instead of re-detecting at runtime.
     """
     from dark_factory.core.config_manager import (  # noqa: PLC0415
         load_config,
@@ -109,6 +112,8 @@ def add_repo_to_config(
 
     # Workspace-scoped config — staged here until workspace creation
     ws_config: dict[str, object] = {}
+    if default_branch:
+        ws_config["default_branch"] = default_branch
     if app_type:
         ws_config["app_type"] = app_type
     if analysis is not None:

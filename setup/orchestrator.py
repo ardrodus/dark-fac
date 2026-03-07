@@ -421,6 +421,23 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
         dl.info(f"workspace={ws_path}")
         cprint(f"  {ws_path}", "success")
 
+        # Detect default branch from the freshly cloned repo
+        from dark_factory.workspace.manager import _detect_default_branch  # noqa: PLC0415
+
+        repo_dir = Path(ws_path) / "repo"
+        detected_branch = _detect_default_branch(repo_dir) if repo_dir.is_dir() else "main"
+        if auto_mode:
+            default_branch = os.environ.get("DEFAULT_BRANCH", detected_branch)
+        else:
+            cprint(f"\n  Detected default branch: {detected_branch}", "info")
+            try:
+                branch_input = input(f"  Confirm default branch [{detected_branch}]: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                branch_input = ""
+            default_branch = branch_input if branch_input else detected_branch
+        dl.info(f"default_branch={default_branch}")
+        cprint(f"  Default branch: {default_branch}", "success")
+
         # ── [7/10] Project Analysis ──────────────────────────────
         cprint(phase_header(7, _TOTAL, "Project Analysis"), end="")
         with _phase(dl, "analyze"):
@@ -451,7 +468,7 @@ def run_onboarding(auto_mode: bool = False, *, start: Path | None = None) -> int
         cprint(phase_header(9, _TOTAL, "Configuration"), end="")
         with _phase(dl, "config-init"):
             init_config(start=start)
-            add_repo_to_config(repo, app_type, analysis, start=start)
+            add_repo_to_config(repo, app_type, analysis, default_branch=default_branch, start=start)
         cprint("  Config initialized", "success")
 
         # ── [10/10] GitHub Provisioning ──────────────────────────

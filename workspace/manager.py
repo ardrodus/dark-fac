@@ -189,6 +189,30 @@ def get_workspace(name: str, *, root: Path | None = None) -> WorkspaceInfo | Non
     return None
 
 
+def _resolve_configured_default_branch(repo_name: str) -> str:
+    """Return the ``default_branch`` stored in the global config for *repo_name*.
+
+    Looks up ``repos[].workspace_config.default_branch`` in
+    ``.dark-factory/config.json``.  Returns ``""`` if not found,
+    letting the caller fall back to ``_detect_default_branch()``.
+    """
+    try:
+        from dark_factory.core.config_manager import load_config  # noqa: PLC0415
+
+        cfg = load_config()
+        for entry in cfg.data.get("repos", []):
+            if isinstance(entry, dict) and entry.get("name") == repo_name:
+                ws_cfg = entry.get("workspace_config", {})
+                if isinstance(ws_cfg, dict):
+                    branch = ws_cfg.get("default_branch", "")
+                    if isinstance(branch, str) and branch:
+                        return branch
+                break
+    except Exception:  # noqa: BLE001
+        logger.debug("Could not resolve configured default branch for %s", repo_name, exc_info=True)
+    return ""
+
+
 def _bootstrap_workspace_config(ws_path: Path, name: str) -> None:
     """Create workspace-level ``.dark-factory/config.json`` from global repo entry.
 
@@ -264,7 +288,7 @@ def create_workspace(
     name: str,
     repo_url: str,
     *,
-    branch: str = "main",
+    branch: str = "",
     root: Path | None = None,
     use_worktree: bool = False,
     worktree_base: str | None = None,
@@ -273,7 +297,13 @@ def create_workspace(
 
     When *use_worktree* is ``True``, *worktree_base* must point to an
     existing local repository that will serve as the worktree parent.
+
+    If *branch* is empty the configured ``default_branch`` is used
+    (falling back to ``"main"``).
     """
+    if not branch:
+        branch = _resolve_configured_default_branch(name) or "main"
+
     resolved = _resolve_root(root)
     ws_path = resolved / name
 
@@ -382,21 +412,29 @@ def acquire_workspace(
     existing = get_workspace(ws_name, root=resolved)
     security_changed = False
 
+    # Resolve the default branch: prefer config, fall back to detection/heuristic
+    configured_branch = _resolve_configured_default_branch(ws_name)
+
     if existing is not None and (repo_dir / ".git").is_dir() and _is_clean(repo_dir):
-        # Smart-pull: existing clean workspace → pull latest
-        default_branch = _detect_default_branch(repo_dir)
+        # Smart-pull: existing clean workspace -> pull latest
+        default_branch = configured_branch or _detect_default_branch(repo_dir)
         security_changed = _smart_pull(repo_dir, default_branch)
     else:
         # Fresh clone (stale/dirty workspace removed first)
         if ws_path.exists():
             _force_rmtree(ws_path)
         _clone_fresh(repo_dir, repo_url)
+        # After a fresh clone, detect if no config value is set
+        if not configured_branch and (repo_dir / ".git").is_dir():
+            configured_branch = _detect_default_branch(repo_dir)
+
+    default_branch_resolved = configured_branch or "main"
 
     # Bootstrap workspace scaffold (agents, pipelines, scripts, logs)
     _bootstrap_workspace_defaults(ws_path)
 
-    # Create issue-specific branch (idempotent)
-    _ensure_branch(repo_dir, branch)
+    # Create issue-specific branch (idempotent) from the default branch
+    _ensure_branch(repo_dir, branch, base_branch=default_branch_resolved)
 
     # Sentinel Gate 1 is skipped during workspace acquisition for now.
     # Security scanning runs at later pipeline stages (sentinel.dot).
@@ -539,9 +577,12 @@ def _clone_fresh(ws_path: Path, repo_url: str) -> None:
     git(["clone", repo_url, str(ws_path)], check=True, timeout=120)
 
 
-def _ensure_branch(ws_path: Path, branch: str) -> None:
-    """Create *branch* from the current HEAD, deleting any stale version first."""
+def _ensure_branch(ws_path: Path, branch: str, *, base_branch: str = "") -> None:
+    """Create *branch* from *base_branch* (or HEAD), deleting any stale version first."""
     cwd = str(ws_path)
+    # Ensure we are on the correct base branch before creating the issue branch
+    if base_branch:
+        git(["checkout", base_branch], cwd=cwd)
     # Delete stale branch if it exists (ignore errors if it doesn't)
     git(["branch", "-D", branch], cwd=cwd)
     # Create fresh from current HEAD (which is default branch after smart_pull)

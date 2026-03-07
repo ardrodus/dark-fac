@@ -136,6 +136,7 @@ class WorkspaceEntry:
     status: str = "active"
     webhook_status: str = "enabled"
     watched_branch: str = "main"
+    default_branch: str = "main"
 
 
 def _config_path(config_root: Path) -> Path:
@@ -194,6 +195,10 @@ def load_workspace_configs(
             if ws_settings.get("app_type"):
                 app_type = str(ws_settings["app_type"])
 
+            default_branch = str(ws_cfg.get("default_branch", "main"))
+            if ws_settings.get("default_branch"):
+                default_branch = str(ws_settings["default_branch"])
+
             entries.append(
                 WorkspaceEntry(
                     repo=repo_name,
@@ -201,7 +206,8 @@ def load_workspace_configs(
                     scan_mode="full",
                     status="active" if item.get("active") else "paused",
                     webhook_status="disabled",
-                    watched_branch="main",
+                    watched_branch=default_branch,
+                    default_branch=default_branch,
                 )
             )
 
@@ -213,6 +219,7 @@ def load_workspace_configs(
                 repo = str(item.get("repo", ""))
                 if repo in seen_repos:
                     continue
+                db = str(item.get("default_branch", item.get("watched_branch", "main")))
                 entries.append(
                     WorkspaceEntry(
                         repo=repo,
@@ -223,8 +230,9 @@ def load_workspace_configs(
                             item.get("webhook_status", "disabled"),
                         ),
                         watched_branch=str(
-                            item.get("watched_branch", "main"),
+                            item.get("watched_branch", db),
                         ),
+                        default_branch=db,
                     )
                 )
     return entries
@@ -284,6 +292,7 @@ def save_workspace_config(
         "status": entry.status,
         "webhook_status": entry.webhook_status,
         "watched_branch": entry.watched_branch,
+        "default_branch": entry.default_branch,
     }
     updated = False
     for i, ws in enumerate(workspaces):
